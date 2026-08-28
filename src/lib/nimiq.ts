@@ -10,8 +10,10 @@
  *
  *  2. `sendBasicTransaction`'s JSDoc says it returns "the serialized
  *     transaction", while the docs site says it returns a transaction hash. The
- *     type is just `string`. We store it verbatim as an opaque `receipt` and do
- *     not assume which it is — see TODO in `payForTile`.
+ *     type is just `string`. We store it verbatim as an opaque `receipt` and
+ *     never depend on which it is — the server verifies a payment by matching
+ *     sender and amount against the receiving address's incoming transactions,
+ *     not by looking the receipt up. See `sendPayment` below.
  */
 import {
   init,
@@ -96,13 +98,16 @@ export function detectLanguage(): string {
  *
  * NOTE: this identifies the DEVICE, not the user, and it is NOT a wallet — the
  * competition's "unique users" criterion counts distinct Nimiq wallets, so this
- * is only ever used for local persistence, never as a substitute for
- * `listAccounts()`.
+ * is never a substitute for `listAccounts()`.
+ *
+ * Cairn sends it to the server for one reason: free generations are granted per
+ * *device*, not per wallet. Wallets are free to mint, so a per-wallet free tier
+ * would be trivially farmable.
  */
 export async function getDeviceId(): Promise<string | null> {
   try {
     return await requestDeviceIdentifier({
-      reason: 'Remember your plot on the Ecoflow grid',
+      reason: 'Keep your free plans on this device',
     })
   } catch {
     return null
@@ -133,28 +138,30 @@ export async function getChainStatus(provider: NimiqProvider): Promise<ChainStat
 }
 
 /**
- * Send NIM from the current user straight to another player's address.
+ * Send NIM from the current user to Cairn's receiving address.
  *
- * Ecoflow never custodies funds: a takeover pays the previous tile holder
- * wallet-to-wallet. `fee` is deliberately omitted — Nimiq Pay picks one, and
- * uses 0 where it can.
+ * Cairn never custodies funds and holds no balances: the send goes straight from
+ * the user's wallet to the app address, and buys a bundle of generations. Nothing
+ * is refundable because nothing is held. `fee` is deliberately omitted — Nimiq
+ * Pay picks one, and uses 0 where it can.
+ *
+ * The returned string is opaque. Whether the SDK hands back a transaction hash or
+ * a serialized transaction (its own type definitions disagree with the docs site —
+ * see the header), the server never reads it: verification matches sender and
+ * amount against the receiving address's incoming transactions. The receipt is
+ * passed along only as an idempotency hint.
  *
  * @param valueLuna amount in LUNA (see lib/units.ts — 1 NIM = 100,000 Luna)
  * @param note      attached to the transaction, visible in the user's history
  */
-export async function payForTile(
+export async function sendPayment(
   provider: NimiqProvider,
   recipient: string,
   valueLuna: number,
   note?: string,
 ): Promise<string> {
   const tx = { recipient, value: valueLuna }
-  const receipt = note
+  return note
     ? unwrap(await provider.sendBasicTransactionWithData({ ...tx, data: note }))
     : unwrap(await provider.sendBasicTransaction(tx))
-
-  // TODO(device): confirm on a real handset whether this string is a tx hash or
-  // a serialized transaction. Server-side payment verification depends on it —
-  // if serialized, the hash must be derived before it can be looked up.
-  return receipt
 }

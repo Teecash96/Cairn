@@ -7,14 +7,17 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1"
     />
-    <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#080c18" />
+    <!-- Both themes are first-class; the WebView picks per the device setting. -->
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fbfbfd" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0d0e13" />
     <meta
       name="description"
-      content="A shared living grid inside Nimiq Pay. Plant free, let it grow, and get paid in NIM when someone wants your plot."
+      content="Describe an idea in plain language and get a structured PRD and a visual user flow in seconds. Pay per plan in NIM — no account, no subscription."
     />
-    <link rel="icon" type="image/svg+xml" href="/leaf.svg" />
-    <title>Ecoflow</title>
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <title>Cairn</title>
   </head>
   <body>
     <div id="app"></div>

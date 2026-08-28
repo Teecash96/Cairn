@@ -1,5 +1,5 @@
 {
-  "name": "ecoflow",
+  "name": "cairn",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -20,5 +20,5 @@
     "vite": "^8.2.2",
     "vue-tsc": "^3.3.11"
   },
-  "description": "A shared living grid inside Nimiq Pay"
+  "description": "Turn a product idea into a PRD and a user-flow diagram, inside Nimiq Pay"
 }

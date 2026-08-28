@@ -3,13 +3,14 @@
  *
  * Two runtime modes:
  *  - `nimiq`   — running in the Nimiq Pay WebView. Real provider, real payments.
- *  - `preview` — a normal browser. The grid is fully explorable and payments are
- *                simulated, so the game can be developed and reviewed on desktop.
+ *  - `preview` — a normal browser. Everything is walkable and payments are
+ *                simulated, so the app can be built and reviewed on desktop.
+ *                A judge's first look will almost certainly be this mode.
  *
- * Wallet connect happens on the FIRST tap rather than behind a splash screen:
- * the competition's only quantitative criterion counts distinct Nimiq wallets,
- * so the prompt has to land inside the first minute, attached to an action the
- * player already wanted to take.
+ * Nothing here prompts at boot. Both native dialogs — wallet, then device id —
+ * fire on the first "Generate plan" tap, because the competition's only
+ * quantitative criterion counts distinct Nimiq wallets and the prompt has to land
+ * inside the first minute, attached to an action the user already wanted to take.
  */
 import { computed, readonly, ref } from 'vue'
 import {
@@ -19,7 +20,7 @@ import {
   getChainStatus,
   getDeviceId,
   getProvider,
-  payForTile,
+  sendPayment,
   type NimiqProvider,
 } from './nimiq'
 
@@ -35,8 +36,10 @@ const lastError = ref<string | null>(null)
 
 let provider: NimiqProvider | null = null
 let booted = false
+let deviceId: string | null = null
+let deviceIdAsked = false
 
-/** Synthetic address used in preview mode so the grid behaves normally. */
+/** Synthetic address used in preview mode so the whole flow stays walkable. */
 const PREVIEW_ADDRESS = 'NQ07 0000 0000 0000 0000 0000 0000 0000 PRVW'
 
 export function useSession() {
@@ -49,8 +52,6 @@ export function useSession() {
       provider = await getProvider()
       mode.value = 'nimiq'
       void refreshChain()
-      // Fire-and-forget: only used to remember this device between visits.
-      void getDeviceId()
     } catch {
       // `init()` times out outside Nimiq Pay. Expected on desktop.
       mode.value = 'preview'
@@ -86,7 +87,7 @@ export function useSession() {
     } catch (error) {
       lastError.value =
         error instanceof ProviderError && error.isDenied
-          ? 'Connect your Nimiq wallet to claim a tile.'
+          ? 'Connect your Nimiq wallet to generate a plan.'
           : error instanceof Error
             ? error.message
             : 'Could not reach your wallet.'
@@ -97,7 +98,24 @@ export function useSession() {
   }
 
   /**
-   * Pay another player, or the network, for a tile.
+   * Pseudonymous device id, fetched once and cached.
+   *
+   * The server caps free generations per device rather than per wallet, since
+   * wallets are free to mint. Declining is not an error — the server falls back to
+   * its weaker IP-based limit, so this never blocks a generation.
+   *
+   * Called AFTER `connect()` so the wallet prompt is never queued behind it.
+   */
+  async function ensureDeviceId(): Promise<string | null> {
+    if (deviceIdAsked) return deviceId
+    deviceIdAsked = true
+    if (mode.value === 'preview' || !provider) return null
+    deviceId = await getDeviceId()
+    return deviceId
+  }
+
+  /**
+   * Pay Cairn's receiving address for a bundle of generations.
    * Resolves with an opaque receipt, or null if the user declined the prompt.
    * In preview mode this returns a marker string and moves no funds.
    */
@@ -108,7 +126,7 @@ export function useSession() {
       return 'preview'
     }
     try {
-      return await payForTile(provider, recipient, valueLuna, note)
+      return await sendPayment(provider, recipient, valueLuna, note)
     } catch (error) {
       lastError.value =
         error instanceof ProviderError && error.isDenied
@@ -132,6 +150,7 @@ export function useSession() {
     isPreview: computed(() => mode.value === 'preview'),
     boot,
     connect,
+    ensureDeviceId,
     pay,
     refreshChain,
   }

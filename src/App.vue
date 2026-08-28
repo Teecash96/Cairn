@@ -1,289 +1,582 @@
 <script setup lang="ts">
 /**
- * Ecoflow — a shared living grid inside Nimiq Pay.
+ * Cairn's shell: three screens, one bottom nav, and the whole generate → pay →
+ * share loop.
  *
- * The whole app is one screen. Seeding is free, so a first-time player can act
- * within seconds of opening it; the wallet prompt lands on that first tap
- * rather than behind a splash screen.
+ * State lives here rather than in a store. There are three screens and one open
+ * plan; a store would be indirection for its own sake, and keeping the sequence
+ * in one file is what makes the ordering rules below checkable at a glance.
+ *
+ * Two orderings matter and are easy to get wrong:
+ *
+ *  1. The wallet prompt fires on the first "Generate plan" tap — never at boot.
+ *     Distinct wallets are the competition's only quantitative measure, so the
+ *     prompt has to arrive attached to something the user already chose to do.
+ *  2. `connect()` comes before `ensureDeviceId()`. Both open native dialogs, and
+ *     the wallet must not be queued behind a permission the user cares less
+ *     about and may well decline.
+ *
+ * Editing autosaves. There is no save button, and the deep watcher that does it
+ * is guarded so that stamping `updatedAt` cannot retrigger itself.
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import ClaimSheet from './components/ClaimSheet.vue'
-import FlowMeter from './components/FlowMeter.vue'
-import TileCell from './components/TileCell.vue'
-import WalletBar from './components/WalletBar.vue'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import CairnMark from './components/CairnMark.vue'
+import Library from './components/Library.vue'
+import NewPlan from './components/NewPlan.vue'
+import PaySheet from './components/PaySheet.vue'
+import Toast from './components/Toast.vue'
+import Workspace from './components/Workspace.vue'
+import { ApiError, generatePlan, getSharedPlan, redeemPayment, sharePlan } from './lib/api'
+import type { CreditState, PriceQuote } from './lib/api'
+import { copyText } from './lib/clipboard'
 import {
-  FREE_SEED_LIMIT,
-  GRID_COLS,
-  canSeed,
-  isProtected,
-  priceOf,
-  tilesHeldBy,
-  type GridState,
-} from './lib/game'
+  createPlan,
+  deletePlan,
+  getPlan,
+  libraryIsPersistent,
+  listPlans,
+  renamePlan,
+  savePlan,
+  type Plan,
+  type PlanInput,
+} from './lib/plan'
 import { useSession } from './lib/session'
-import { LocalGridStore } from './lib/store'
-import { formatNim } from './lib/units'
+import { stubGenerate } from './lib/stub'
+
+type View = 'new' | 'workspace' | 'library'
+type Tone = 'info' | 'success' | 'error'
 
 const session = useSession()
-const store = new LocalGridStore()
 
-const state = ref<GridState | null>(null)
-const now = ref(Date.now())
-const selectedIndex = ref<number | null>(null)
-const busy = ref(false)
-const introDismissed = ref(false)
+const view = ref<View>('new')
+const plans = ref<Plan[]>([])
+const current = ref<Plan | null>(null)
+const persistent = ref(true)
 
-let ticker: number | undefined
-let tickCount = 0
+/** Bumped to remount the form, which is how it gets cleared. */
+const formKey = ref(0)
+const formInitial = ref<PlanInput | undefined>(undefined)
 
-onMounted(async () => {
-  await session.boot()
-  state.value = await store.load()
-  ticker = window.setInterval(tick, 1000)
+const generating = ref(false)
+const sharing = ref(false)
+
+const toast = ref('')
+const toastTone = ref<Tone>('info')
+
+const credits = ref<CreditState | null>(null)
+const price = ref<PriceQuote | null>(null)
+const payOpen = ref(false)
+const payState = ref<'idle' | 'paying' | 'verifying'>('idle')
+const payError = ref<string | null>(null)
+
+/** The request that was refused for want of credits, replayed after payment. */
+const pending = ref<{ input: PlanInput; replaceId?: string } | null>(null)
+
+/** A plan opened from someone else's share link. Read-only, never saved here. */
+const shared = ref<Plan | null>(null)
+/** Single-use token from a share link: a free plan, courtesy of whoever shared it. */
+const gift = ref<string | null>(null)
+
+// -- messages ---------------------------------------------------------------
+
+let toastTimer: ReturnType<typeof setTimeout> | undefined
+
+function notify(message: string, tone: Tone = 'info'): void {
+  toast.value = message
+  toastTone.value = tone
+  if (toastTimer !== undefined) clearTimeout(toastTimer)
+  // Errors need reading; confirmations need only registering.
+  toastTimer = setTimeout(() => (toast.value = ''), tone === 'error' ? 5200 : 2800)
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : 'Something went wrong.'
+}
+
+// -- boot -------------------------------------------------------------------
+
+onMounted(() => {
+  persistent.value = libraryIsPersistent()
+  plans.value = listPlans()
+  readLink()
+  // Deliberately not awaited: the first paint must not wait on the SDK's poll.
+  void session.boot()
 })
 
-onUnmounted(() => window.clearInterval(ticker))
-
-async function tick() {
-  now.value = Date.now()
-  state.value = await store.tick(now.value)
-  // Block height is only a liveness signal — poll it sparingly.
-  if (++tickCount % 30 === 0) void session.refreshChain()
-}
-
-const selectedTile = computed(() =>
-  selectedIndex.value === null ? null : (state.value?.tiles[selectedIndex.value] ?? null),
-)
-
-const myTiles = computed(() => (state.value ? tilesHeldBy(state.value, session.address.value) : 0))
-
-const seedable = computed(() =>
-  state.value ? canSeed(state.value, session.address.value) : false,
-)
-
-/** Total NIM a player would collect if every tile they hold were taken today. */
-const myValueLuna = computed(() => {
-  if (!state.value || !session.address.value) return 0
-  return state.value.tiles
-    .filter((tile) => tile.holder === session.address.value)
-    .reduce((sum, tile) => sum + priceOf(tile, state.value!.flow, now.value), 0)
-})
-
-function openTile(index: number) {
-  session.lastError.value = null
-  selectedIndex.value = index
-}
-
-function closeSheet() {
-  selectedIndex.value = null
-  session.lastError.value = null
-}
-
-async function claim() {
-  const tile = selectedTile.value
-  if (!tile || !state.value || busy.value) return
-
-  busy.value = true
+/**
+ * Share links are query parameters — `?s=<id>&g=<token>` — not paths, so no
+ * server-side rewrite rule stands between a shared link and the app rendering.
+ */
+function readLink(): void {
+  let params: URLSearchParams
   try {
-    // First meaningful tap is also the wallet prompt.
-    const me = await session.connect()
-    if (!me) return
+    params = new URLSearchParams(window.location.search)
+  } catch {
+    return
+  }
 
-    const price = priceOf(tile, state.value.flow, now.value)
-    let receipt: string | null = null
+  const token = params.get('g')
+  if (token) gift.value = token
 
-    if (tile.holder === me) {
-      return
-    } else if (tile.holder) {
-      // Protection window — re-checked here, not just in the UI.
-      if (isProtected(tile, Date.now())) {
-        session.lastError.value = 'This tile was just planted. Give it a moment.'
-        return
-      }
-      // Straight to the previous holder. Nothing routes through Ecoflow.
-      receipt = await session.pay(tile.holder, price, `Ecoflow tile ${tile.index}`)
-      if (!receipt) return // declined or failed — the sheet shows why
-    } else if (!canSeed(state.value, me)) {
-      session.lastError.value = `You're already holding ${FREE_SEED_LIMIT} tiles.`
+  const id = params.get('s')
+  if (id) void loadShared(id)
+}
+
+async function loadShared(shareId: string): Promise<void> {
+  try {
+    const result = await getSharedPlan(shareId)
+    shared.value = result.plan
+    if (result.gift) gift.value = result.gift
+  } catch (error) {
+    notify(
+      error instanceof ApiError && error.code === 'not_found'
+        ? 'That share link has expired.'
+        : "Couldn't open that shared plan.",
+      'error',
+    )
+  }
+}
+
+// -- autosave ---------------------------------------------------------------
+
+let saveTimer: ReturnType<typeof setTimeout> | undefined
+let saving = false
+
+function flush(): void {
+  if (saveTimer !== undefined) clearTimeout(saveTimer)
+  saveTimer = undefined
+
+  const plan = current.value
+  if (!plan) return
+
+  // Guarded: the watcher below would otherwise see this stamp as a fresh edit.
+  saving = true
+  plan.updatedAt = Date.now()
+  if (!savePlan(plan)) persistent.value = false
+  plans.value = listPlans()
+  void nextTick(() => (saving = false))
+}
+
+watch(
+  current,
+  () => {
+    if (saving || !current.value) return
+    if (saveTimer !== undefined) clearTimeout(saveTimer)
+    saveTimer = setTimeout(flush, 700)
+  },
+  { deep: true },
+)
+
+onUnmounted(() => {
+  if (saveTimer !== undefined) clearTimeout(saveTimer)
+  if (toastTimer !== undefined) clearTimeout(toastTimer)
+})
+
+// -- navigation -------------------------------------------------------------
+
+function goNew(input?: PlanInput): void {
+  flush()
+  formInitial.value = input
+  formKey.value += 1
+  shared.value = null
+  view.value = 'new'
+}
+
+function goLibrary(): void {
+  flush()
+  shared.value = null
+  plans.value = listPlans()
+  view.value = 'library'
+}
+
+function open(id: string): void {
+  flush()
+  const plan = getPlan(id)
+  if (!plan) {
+    notify('That plan is no longer on this device.', 'error')
+    plans.value = listPlans()
+    return
+  }
+  current.value = plan
+  shared.value = null
+  view.value = 'workspace'
+  window.scrollTo(0, 0)
+}
+
+function back(): void {
+  flush()
+  // The plan you were just in is saved, so the library is never empty here.
+  view.value = plans.value.length ? 'library' : 'new'
+}
+
+// -- generation -------------------------------------------------------------
+
+/**
+ * `replaceId` regenerates an existing plan in place. "Try again" keeps the plan's
+ * identity and its name — a second near-identical entry in the library is clutter,
+ * not history.
+ */
+async function generate(input: PlanInput, replaceId?: string): Promise<void> {
+  if (generating.value) return
+  generating.value = true
+  pending.value = { input, replaceId }
+
+  try {
+    const address = await session.connect()
+    if (!address) {
+      notify(session.lastError.value ?? 'Connect your Nimiq wallet to generate a plan.', 'error')
       return
     }
 
-    state.value = await store.claim({
-      tileIndex: tile.index,
-      holder: me,
-      pricePaidLuna: tile.holder ? price : 0,
-      paidTo: tile.holder,
-      receipt,
-    })
-    introDismissed.value = true
-    selectedIndex.value = null
+    const deviceId = await session.ensureDeviceId()
+    const result = await generatePlan({ address, input, deviceId, gift: gift.value })
+
+    credits.value = result.credits
+    // Spent, whether or not it was honoured. The server is the authority.
+    gift.value = null
+    pending.value = null
+
+    apply(input, result.prd, result.flow, replaceId)
+  } catch (error) {
+    onGenerateFailed(error, input, replaceId)
   } finally {
-    busy.value = false
+    generating.value = false
   }
+}
+
+function apply(
+  input: PlanInput,
+  prd: Plan['prd'],
+  flow: Plan['flow'],
+  replaceId?: string,
+): void {
+  const existing = replaceId && current.value?.id === replaceId ? current.value : null
+
+  if (existing) {
+    existing.input = input
+    existing.prd = prd
+    existing.flow = flow
+    flush()
+    notify('Regenerated', 'success')
+    return
+  }
+
+  const plan = createPlan(input, prd, flow)
+  if (!savePlan(plan)) persistent.value = false
+  plans.value = listPlans()
+  // Read back the stored copy so the open plan and the saved one are the same.
+  current.value = getPlan(plan.id) ?? plan
+  view.value = 'workspace'
+  window.scrollTo(0, 0)
+}
+
+function onGenerateFailed(error: unknown, input: PlanInput, replaceId?: string): void {
+  if (error instanceof ApiError) {
+    if (error.needsPayment) {
+      if (error.price) price.value = error.price
+      if (error.credits) credits.value = error.credits
+      payError.value = null
+      payOpen.value = true
+      return
+    }
+
+    /**
+     * Development only. `vite dev` has no Worker and therefore no AI key, so
+     * rather than leave every screen unreachable, an obviously-placeholder plan
+     * is produced locally. A deployed build never takes this path.
+     */
+    if (error.isOffline && import.meta.env.DEV) {
+      const stub = stubGenerate(input)
+      apply(input, stub.prd, stub.flow, replaceId)
+      notify('No backend yet — placeholder plan', 'info')
+      return
+    }
+  }
+
+  notify(messageOf(error), 'error')
+}
+
+// -- sharing ----------------------------------------------------------------
+
+async function share(): Promise<void> {
+  const plan = current.value
+  if (!plan || sharing.value) return
+  sharing.value = true
+
+  try {
+    const address = await session.connect()
+    if (!address) {
+      notify(session.lastError.value ?? 'Connect your wallet to share.', 'error')
+      return
+    }
+
+    const result = await sharePlan(address, plan)
+    plan.shareId = result.shareId
+    flush()
+
+    if (await copyText(result.url)) {
+      notify('Link copied — it carries a free plan for whoever opens it', 'success')
+    } else {
+      notify("Shared, but this browser wouldn't let us copy the link", 'error')
+    }
+  } catch (error) {
+    notify(messageOf(error), 'error')
+  } finally {
+    sharing.value = false
+  }
+}
+
+// -- payment ----------------------------------------------------------------
+
+async function pay(): Promise<void> {
+  const quote = price.value
+  if (!quote || payState.value !== 'idle') return
+
+  payError.value = null
+  payState.value = 'paying'
+
+  try {
+    const address = await session.connect()
+    if (!address) {
+      payError.value = session.lastError.value ?? 'Connect your wallet first.'
+      return
+    }
+
+    const receipt = await session.pay(quote.payTo, quote.priceLuna, 'Cairn plans')
+    if (!receipt) {
+      payError.value = session.lastError.value ?? 'Payment cancelled.'
+      return
+    }
+
+    // The send is on the network; the server still has to see it settle.
+    payState.value = 'verifying'
+    const result = await redeemPayment(address, receipt, await session.ensureDeviceId())
+
+    credits.value = result.credits
+    payOpen.value = false
+    notify(`${result.granted} plans added`, 'success')
+
+    const replay = pending.value
+    if (replay) void generate(replay.input, replay.replaceId)
+  } catch (error) {
+    payError.value =
+      error instanceof ApiError && error.code === 'payment_not_found'
+        ? "We can't see that payment on the network yet. Give it a few seconds and try again."
+        : messageOf(error)
+  } finally {
+    payState.value = 'idle'
+  }
+}
+
+// -- library actions --------------------------------------------------------
+
+function remove(id: string): void {
+  deletePlan(id)
+  plans.value = listPlans()
+  if (current.value?.id === id) {
+    current.value = null
+    view.value = plans.value.length ? 'library' : 'new'
+  }
+}
+
+function rename(id: string, name: string): void {
+  renamePlan(id, name)
+  plans.value = listPlans()
+  const open = current.value
+  if (open && open.id === id) open.name = name
+}
+
+/** Leave a shared plan and start your own. Their idea is theirs — the form is blank. */
+function ownIt(): void {
+  goNew()
 }
 </script>
 
 <template>
-  <div class="app">
-    <div class="app__inner">
-      <WalletBar
-        :address="session.address.value"
-        :connecting="session.connecting.value"
-        :is-preview="session.isPreview.value"
-        :block-height="session.blockHeight.value"
-        :consensus="session.consensus.value"
-        @connect="session.connect()"
-      />
-
-      <template v-if="state">
-        <FlowMeter :flow="state.flow" />
-
-        <!-- One-time explainer. Two sentences is the whole rulebook. -->
-        <p v-if="!introDismissed && myTiles === 0" class="intro">
-          <strong>Plant a free tile.</strong> The longer it grows the more it's worth — and anyone
-          who wants it has to pay <em>you</em> for it.
+  <!-- A plan someone shared with you. Same workspace, nothing mutable. -->
+  <Workspace
+    v-if="shared"
+    :plan="shared"
+    read-only
+    @back="ownIt"
+    @notify="notify"
+  >
+    <template #banner>
+      <div class="gifted">
+        <p class="gifted__title">
+          <CairnMark :size="18" class="gifted__mark" />
+          Someone left this for you
         </p>
-
-        <div v-else class="holdings">
-          <span
-            >{{ myTiles }} {{ myTiles === 1 ? 'tile' : 'tiles' }} of
-            {{ FREE_SEED_LIMIT }}</span
-          >
-          <span class="holdings__value mono">worth {{ formatNim(myValueLuna) }} NIM</span>
-        </div>
-
-        <div class="grid" :style="{ '--cols': GRID_COLS }" role="group" aria-label="Ecoflow grid">
-          <TileCell
-            v-for="tile in state.tiles"
-            :key="tile.index"
-            :tile="tile"
-            :flow="state.flow"
-            :now="now"
-            :me="session.address.value"
-            @click="openTile(tile.index)"
-          />
-        </div>
-
-        <p v-if="session.lastError.value && selectedIndex === null" class="banner" role="alert">
-          {{ session.lastError.value }}
+        <p class="gifted__body">
+          <template v-if="gift">
+            Their link carries a free plan. Make your own and it's yours — no card, no account.
+          </template>
+          <template v-else>
+            Cairn turns an idea into a product plan and a user flow. Read this one, then write yours.
+          </template>
         </p>
-
-        <p v-if="session.isPreview.value" class="preview-note">
-          Browser preview — payments are simulated. Open in Nimiq Pay to play for real.
-        </p>
-      </template>
-
-      <div v-else class="boot">
-        <span class="boot__spinner" aria-hidden="true" />
-        <p class="muted">Reaching the grid…</p>
+        <button type="button" class="btn btn--primary btn--sm" @click="ownIt">
+          {{ gift ? 'Claim my free plan' : 'Make my own' }}
+        </button>
       </div>
-    </div>
+    </template>
+  </Workspace>
 
-    <ClaimSheet
-      v-if="selectedTile && state"
-      :tile="selectedTile"
-      :flow="state.flow"
-      :now="now"
-      :me="session.address.value"
-      :can-seed="seedable"
-      :busy="busy"
-      :error="session.lastError.value"
-      @close="closeSheet"
-      @claim="claim"
+  <template v-else>
+    <NewPlan
+      v-if="view === 'new'"
+      :key="formKey"
+      :busy="generating"
+      :initial="formInitial"
+      :free-left="credits ? credits.free : null"
+      @submit="generate"
     />
-  </div>
+
+    <Workspace
+      v-else-if="view === 'workspace' && current"
+      :plan="current"
+      :sharing="sharing"
+      :regenerating="generating"
+      @back="back"
+      @share="share"
+      @regenerate="current && generate(current.input, current.id)"
+      @remove="current && remove(current.id)"
+      @notify="notify"
+    />
+
+    <Library
+      v-else
+      :plans="plans"
+      :persistent="persistent"
+      @open="open"
+      @create="goNew()"
+      @remove="remove"
+      @rename="rename"
+    />
+  </template>
+
+  <nav class="nav" aria-label="Main">
+    <button
+      type="button"
+      class="nav__item"
+      :class="{ 'nav__item--on': view === 'new' && !shared }"
+      :aria-current="view === 'new' && !shared ? 'page' : undefined"
+      @click="goNew()"
+    >
+      <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" focusable="false">
+        <path
+          d="M10 4.5v11M4.5 10h11"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+        />
+      </svg>
+      New plan
+    </button>
+
+    <button
+      type="button"
+      class="nav__item"
+      :class="{ 'nav__item--on': view === 'library' && !shared }"
+      :aria-current="view === 'library' && !shared ? 'page' : undefined"
+      @click="goLibrary"
+    >
+      <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" focusable="false">
+        <g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M4 6h12M4 10h12M4 14h8" />
+        </g>
+      </svg>
+      Library
+      <span v-if="plans.length" class="nav__count mono">{{ plans.length }}</span>
+    </button>
+  </nav>
+
+  <PaySheet
+    v-if="payOpen"
+    :price="price"
+    :state="payState"
+    :error="payError"
+    :credits="credits"
+    @pay="pay"
+    @close="payOpen = false"
+  />
+
+  <Toast :message="toast" :tone="toastTone" />
 </template>
 
 <style scoped>
-.app {
-  min-height: 100dvh;
-  padding: calc(14px + var(--safe-top)) 14px calc(20px + var(--safe-bottom));
-}
+/* -- bottom nav ---------------------------------------------------------- */
 
-.app__inner {
-  display: grid;
-  gap: 13px;
-  max-width: 460px;
-  margin: 0 auto;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(var(--cols), 1fr);
-  gap: 7px;
-}
-
-.intro {
-  padding: 12px 14px;
-  border-radius: var(--radius);
-  font-size: 13.5px;
-  line-height: 1.5;
-  color: var(--muted);
-  background: linear-gradient(180deg, rgba(74, 222, 155, 0.1) 0%, rgba(74, 222, 155, 0.03) 100%);
-  border: 1px solid rgba(74, 222, 155, 0.22);
-}
-
-.intro strong {
-  color: var(--text);
-}
-
-.intro em {
-  font-style: normal;
-  color: var(--flow);
-  font-weight: 700;
-}
-
-.holdings {
+.nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 0 3px;
-  font-size: 13px;
-  color: var(--muted);
+  /* The bar is --nav-h tall; the inset is extra, below it. */
+  height: calc(var(--nav-h) + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
+  background: var(--surface);
+  border-top: 1px solid var(--line);
 }
 
-.holdings__value {
+.nav__item {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.nav__item--on {
+  color: var(--accent);
+}
+
+.nav__count {
+  padding: 1px var(--s2);
+  border-radius: var(--r-full);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  color: var(--text-muted);
+}
+
+/* -- shared-plan banner -------------------------------------------------- */
+
+.gifted {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s2);
+  margin: var(--s4) var(--s4) 0;
+  padding: var(--s4);
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+}
+
+.gifted__title {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--text-sm);
   font-weight: 700;
-  color: var(--gold);
+  color: var(--accent);
 }
 
-.banner {
-  padding: 11px 13px;
-  border-radius: var(--radius);
-  font-size: 13px;
-  color: #ffd9cf;
-  background: rgba(242, 105, 76, 0.14);
-  border: 1px solid rgba(242, 105, 76, 0.35);
+.gifted__mark {
+  color: var(--accent);
 }
 
-.preview-note {
-  padding: 0 3px;
-  font-size: 11.5px;
-  color: var(--muted-dim);
-  text-align: center;
-}
-
-.boot {
-  display: grid;
-  place-items: center;
-  gap: 14px;
-  padding: 22vh 0;
-  font-size: 14px;
-}
-
-.boot__spinner {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  border: 2px solid var(--line);
-  border-top-color: var(--flow);
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+.gifted__body {
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+  color: var(--text-muted);
 }
 </style>

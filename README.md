@@ -1,81 +1,154 @@
-# Ecoflow
+# Cairn
 
-A shared living grid inside [Nimiq Pay](https://nimiq.com/pay).
+**Describe an idea. Get a plan.**
 
-One 6×6 grid that every player sees. Each tile is a plant.
+Cairn is a Nimiq Pay mini app that turns a few sentences about a product idea into
+two things a team can actually work from:
 
-- **Seeding bare soil is free.** You can hold up to three tiles at a time.
-- A planted tile **grows through five stages** while it's left alone.
-- **Anyone can take any tile by paying its current value straight to whoever holds it** —
-  wallet to wallet, in NIM. Value comes from *growth*, not from what anyone paid:
-  **1 / 2 / 4 / 8 NIM** as it matures.
+- a **product requirements document** — summary, problem, target user, core
+  features, user stories, success criteria, and an explicit list of what it
+  assumed and what it left out
+- a **user-flow diagram** — five to eight connected steps from first open to
+  finished task, including one real decision point with both outcomes
 
-So letting a plant grow is literally how you get paid more. Nobody loses NIM when their tile is
-taken — they profit. **Ecoflow holds no treasury and never touches the funds.**
+Every field is editable. Nothing needs an account. You pay per plan, in NIM, and
+the first few are free.
 
-## Flow
+A cairn is a stack of stones left to mark the route for whoever comes next. That
+is what a PRD is for.
 
-Above the grid is one number that belongs to nobody: **Flow**.
+---
 
-It rises while the grid is left to grow, and falls every time someone takes a tile. High Flow
-makes everything grow faster for **everyone**. Low Flow stalls it for everyone.
+## Why it exists
 
-Taking a tile is good for you and bad for the grid. That tension is the whole game — and none of
-it is self-reported. It's all derived from real on-chain payments.
+The gap between "I have an idea" and "I can start building" is a blank page.
+Filling it properly takes a product manager twenty minutes of structured
+thinking, and most ideas never get those twenty minutes — so they either die or
+get built without a plan.
 
-## Running it
+Cairn is those twenty minutes, on a phone, for about the cost of the inference.
 
-```sh
+## How it works
+
+1. Describe the idea in your own words. One field is required.
+2. Tap **Generate plan**. Nimiq Pay asks you to connect your wallet — this is the
+   only time it asks, and it happens on the action you already chose to take.
+3. Claude writes the PRD and the flow. It takes about twenty seconds.
+4. Edit anything. It autosaves to your device.
+5. Copy it out as Markdown, or share a link.
+
+### Pay it forward
+
+Sharing a plan mints a link that carries a **free generation for whoever opens
+it**. They read your plan, tap once, and get their own — paid for by you, without
+costing you a credit.
+
+This is the part we like most. NIM moves because someone chose to pass something
+on, not because a paywall demanded it.
+
+## Paying
+
+The first few plans are free. After that, one payment buys a **bundle** of plans
+rather than a single one — every wallet call opens a native confirmation dialog
+that an app cannot suppress, and nobody should have to approve a transaction
+between every idea and its result.
+
+- The price is set by the server and shown before you confirm. Nothing is
+  hardcoded in the app.
+- Payment goes **straight from your wallet to Cairn's receiving address**. Cairn
+  never holds your funds and has no balance to withdraw.
+- Native NIM transfers inside Nimiq Pay carry no network fee.
+- Credits are held against your wallet address. There is no account, no email,
+  and no card.
+
+## What leaves your phone
+
+Stated plainly, because it matters:
+
+| Data | Where it goes |
+| --- | --- |
+| The idea you type | Anthropic's Claude API, via Cairn's server, to write the plan |
+| The finished plan | Your device's local storage. **Nothing else.** |
+| A plan you tap **Share** on | Cairn's server, so the link can be opened. Explicit, per plan, never automatic |
+| Your wallet address | Cairn's server, as the key your credit balance is held against |
+| A pseudonymous device identifier | Cairn's server, so free plans can't be farmed with fresh wallets. It identifies the device, not you, and declining it does not block anything |
+
+There is no analytics, no tracking, and no third-party script. The app loads no
+external fonts and makes no requests other than to its own API.
+
+Plans are stored per device by design. Clearing the app's storage deletes them,
+and there is no copy on a server to restore from — so copy anything you need to
+keep.
+
+## Running it locally
+
+```bash
 npm install
-npm run dev -- --host     # --host exposes it on your LAN
+npm run dev          # http://localhost:5173
 ```
 
-Open `http://localhost:5173` in a browser for the **preview mode** — the grid is fully playable
-and payments are simulated, so you can explore without a wallet.
+Desktop, with no wallet and no API key, is a first-class path: the app detects
+that it isn't inside Nimiq Pay, simulates the wallet, and — in a dev build only —
+falls back to an obviously-labelled placeholder plan when no backend is reachable.
+Every screen and every state is walkable this way.
 
-To play for real, open Nimiq Pay on your phone → **Mini Apps** → enter your machine's LAN address
-(`http://192.168.x.x:5173`). Phone and computer must be on the same network.
+### On a real device
 
-> LAN HTTP is not a [secure context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts),
-> so browser APIs gated behind HTTPS are unavailable during LAN testing. Feature-detect anything
-> in that category rather than assuming it exists.
+The only form factor that matters is a portrait phone inside the Nimiq Pay
+WebView.
 
-```sh
-npm run build      # typecheck (vue-tsc) + production build
-npm run preview    # serve the production build
+```bash
+npm run dev -- --host
 ```
 
-## How it's put together
+Then in Nimiq Pay: **Mini Apps → open URL → `http://<your-lan-ip>:5173`**.
 
-| Path | What it does |
-|---|---|
-| `src/lib/units.ts` | Luna⇄NIM conversion. **1 NIM = 100,000 Luna** — every provider amount is Luna. |
-| `src/lib/nimiq.ts` | Wrapper over `@nimiq/mini-app-sdk`, including the `unwrap()` guard described below. |
-| `src/lib/game.ts` | Pure rules: pricing, growth stages, Flow, the protection window. No I/O. |
-| `src/lib/store.ts` | `GridStore` interface + a localStorage implementation. |
-| `src/lib/session.ts` | Wallet and runtime-mode state (`nimiq` vs `preview`). |
-| `src/components/` | Grid, tile, plant SVG, Flow meter, claim sheet, wallet bar. |
+Note that LAN HTTP is not a secure context, so `navigator.clipboard` and
+`crypto.randomUUID` are absent there. Both have fallbacks
+(`src/lib/clipboard.ts`, `src/lib/plan.ts`) — which is the whole reason to test
+this way rather than only on `localhost`.
 
-### Two things worth knowing if you're reading the SDK docs alongside this
+### Build
 
-1. **Provider methods resolve with `T | ErrorResponse`. They do not throw.** A declined prompt
-   comes back as `{ error: { type, message } }` on the promise's happy path, so a bare
-   `try/catch` reads a refusal as success. Everything goes through `unwrap()` in
-   `src/lib/nimiq.ts`.
-2. **`init()` polls `window.nimiq` for up to 10 seconds** and rejects outside Nimiq Pay. Waiting
-   that out would mean a ten-second blank screen for anyone opening the URL in a normal browser,
-   so `isInsideNimiqPay()` checks for the synchronously-seeded host objects first and falls back
-   to preview mode straight away.
+```bash
+npm run build        # vue-tsc -b && vite build
+```
 
-### State
+## Layout
 
-`GridStore` is deliberately async and coarse-grained so the local implementation can be swapped
-for an HTTP client without touching a component.
+```
+src/
+  lib/
+    nimiq.ts       Nimiq Pay SDK wrapper. Provider methods RESOLVE with
+                   `T | ErrorResponse` rather than throwing, so every call goes
+                   through unwrap().
+    session.ts     Which mode are we in, and whose wallet is this
+    units.ts       Luna ⇄ NIM. 1 NIM = 100,000 Luna; Luna everywhere internally
+    plan.ts        The data model, and the on-device library
+    api.ts         Typed client for the server
+    markdown.ts    Plan → Markdown / plain text
+    clipboard.ts   Copy, with a non-secure-context fallback
+    stub.ts        Offline placeholder generator, dev only
+  components/
+    NewPlan.vue      Screen one: the description
+    Workspace.vue    One plan: PRD and flow behind two tabs
+    PrdView.vue      The PRD, readable and editable
+    FlowDiagram.vue  The flow diagram
+    Library.vue      Everything you have made
+    PaySheet.vue     Top up, in NIM
+```
 
-The server's job is the part that matters: **the client has no authority to assert that it paid.**
-A claim carries the receipt from `sendBasicTransaction`, and the server resolves that against a
-Nimiq node — confirming recipient and amount — *before* the tile moves.
+## Stack
+
+Vue 3 + TypeScript + Vite on the front, a Cloudflare Worker with KV behind it.
+No component library, no CSS framework, no webfont, no analytics. Type checking
+is strict, including `erasableSyntaxOnly` and `verbatimModuleSyntax`.
+
+No API key, secret, or credential is committed to this repository. The Anthropic
+key lives only in an encrypted Cloudflare secret binding.
 
 ## Licence
 
-MIT
+MIT — see [LICENSE](LICENSE).
+
+Built for the [Nimiq Mini Apps Competition](https://miniappscompetition.com).
