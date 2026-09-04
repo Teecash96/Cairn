@@ -28,10 +28,14 @@ not_found_handling = "none"
 #          and wrangler kv namespace create CAIRN --preview
 [[kv_namespaces]]
 binding = "CAIRN"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
-preview_id = "REPLACE_WITH_PREVIEW_KV_NAMESPACE_ID"
+id = "d8f3f5427e3a405aa8c81da1941a1c38"
+preview_id = "e9d8888ac4344658be9fa668ab85bd0d"
 
 [vars]
+# Current Anthropic Messages API model. Keep this explicit so a local and a
+# deployed Worker cannot silently drift to different model behavior.
+ANTHROPIC_MODEL = "claude-sonnet-5"
+
 # Where payments go. Public information — this is the app's receiving address,
 # and the client is told it in the price quote.
 PAY_TO = "REPLACE_WITH_NIMIQ_ADDRESS"
@@ -54,10 +58,10 @@ FREE_PLANS = "3"
 DAILY_BUDGET = "400"
 
 # Read the receiving address's incoming transactions to verify a payment.
-#
-# TODO(rpc): UNVERIFIED — no public Albatross endpoint has been confirmed. Until
-# one is set here, `/api/redeem` fails closed and grants nothing (payments.ts).
-NIMIQ_RPC_URL = ""
+# This public endpoint was tested against getTransactionHashesByAddress and
+# getTransactionByHash on 2026-09-04. It has no uptime guarantee, so monitor it
+# after launch and replace it with a paid or self-hosted endpoint if needed.
+NIMIQ_RPC_URL = "https://rpc.nimiqwatch.com"
 
 # Absolute base for share links. Leave empty to derive it from the request, which
 # is correct in production; set it when the app and the Worker are on different

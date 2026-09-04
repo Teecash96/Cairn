@@ -9,6 +9,11 @@ interface ChainTransaction {
   blockNumber?: number
 }
 
+interface RpcEnvelope<T> {
+  result?: { data?: T } | T
+  error?: unknown
+}
+
 function compact(value: string): string {
   return value.replace(/\s+/g, '').toUpperCase()
 }
@@ -34,35 +39,51 @@ function isTransaction(value: unknown): value is ChainTransaction {
   return typeof value === 'object' && value !== null && ('hash' in value || 'from' in value)
 }
 
+async function rpcCall<T>(base: string, method: string, params: unknown[]): Promise<T | null> {
+  try {
+    const response = await fetch(base, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    })
+    if (!response.ok) return null
+
+    const body = (await response.json()) as RpcEnvelope<T>
+    if (!body.result || body.error) return null
+
+    const result: unknown = body.result
+    if (typeof result === 'object' && result !== null && 'data' in result) {
+      return (result as { data?: T }).data ?? null
+    }
+    return result as T
+  } catch {
+    return null
+  }
+}
+
 async function loadTransactions(rpcUrl: string, address: string): Promise<ChainTransaction[]> {
   const base = rpcUrl.replace(/\/+$/, '')
   if (!base) return []
-  const candidates: Request[] = [
-    new Request(`${base}/account/${encodeURIComponent(address)}/transactions`),
-    new Request(`${base}/accounts/${encodeURIComponent(address)}/transactions`),
-    new Request(base, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'getTransactionsByAddress',
-        params: [address],
-      }),
-    }),
-  ]
 
-  for (const request of candidates) {
-    try {
-      const response = await fetch(request)
-      if (!response.ok) continue
-      const body: unknown = await response.json()
-      const transactions = collect(body)
-      if (transactions.length) return transactions
-    } catch {
-      continue
+  // Albatross RPC exposes address history as hashes. Fetch the transaction
+  // records only after the hash list succeeds, so the verifier can inspect the
+  // sender, recipient, amount, and confirmation count.
+  const hashes = await rpcCall<string[]>(base, 'getTransactionHashesByAddress', [address, 100, null])
+  if (hashes?.length) {
+    const transactions: ChainTransaction[] = []
+    for (const hash of hashes) {
+      const transaction = await rpcCall<ChainTransaction>(base, 'getTransactionByHash', [hash])
+      if (transaction) transactions.push(transaction)
     }
+    if (transactions.length) return transactions
   }
+
+  // Keep a compatibility fallback for providers that expose the older
+  // convenience method instead of the two-call Albatross history API.
+  const result = await rpcCall<unknown>(base, 'getTransactionsByAddress', [address])
+  const transactions = collect(result)
+  if (transactions.length) return transactions
+
   return []
 }
 
