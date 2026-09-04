@@ -16,11 +16,12 @@
 export interface Env {
   /** Credits, shares, gifts, spent receipts, budget counters. */
   CAIRN: KVNamespace
-  /** The built app. Only used for the Worker's own fallback — see index.ts. */
+  /** The built app. Used for static asset fallback. */
   ASSETS: Fetcher
 
   /** Encrypted secret binding. Never in the repo. */
   ANTHROPIC_API_KEY: string
+  ANTHROPIC_MODEL?: string
 
   PAY_TO: string
   /** Numbers arrive as strings; `intVar()` in index.ts parses them. */

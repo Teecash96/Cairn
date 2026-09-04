@@ -87,6 +87,11 @@ npm install
 npm run dev          # http://localhost:5173
 ```
 
+To run the full local Worker, copy `.dev.vars.example` to `.dev.vars` and add a local Anthropic
+key. Then run `npm run build` and `npm run worker:dev`. The Worker uses its local KV store. The
+`DEV_TRUST_PAYMENTS=1` setting is available only for local testing and is refused on public
+requests. Never commit `.dev.vars`.
+
 Desktop, with no wallet and no API key, is a first-class path: the app detects
 that it isn't inside Nimiq Pay, simulates the wallet, and — in a dev build only —
 falls back to an obviously-labelled placeholder plan when no backend is reachable.

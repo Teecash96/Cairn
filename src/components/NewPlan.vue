@@ -100,21 +100,26 @@ function submit(): void {
 
 <template>
   <div class="screen">
-    <header>
-      <CairnMark :size="26" class="mark" />
-      <h1 class="hero">Turn an idea into a plan.</h1>
+    <header class="new-hero">
+      <div class="brandline">
+        <CairnMark :size="22" class="mark" label="Cairn" />
+        <span class="brandline__name">Cairn</span>
+        <span class="brandline__tag">Product clarity</span>
+      </div>
+      <p class="eyebrow">Start with the rough version</p>
+      <h1 class="hero">Make the idea easier to build.</h1>
       <p class="screen__sub">
-        Describe it in your own words. Get a product requirements doc and a user-flow diagram, both
-        yours to edit.
+        Describe what you have in mind. Cairn turns the messy first thought into a clear product
+        brief and a flow your team can follow.
       </p>
     </header>
 
     <form class="form" @submit.prevent="submit">
-      <div class="field">
-        <label class="field__label" for="idea">
-          Your idea
-          <span class="field__optional">— a few sentences is plenty</span>
-        </label>
+      <div class="idea-field">
+        <div class="idea-field__heading">
+          <label class="field__label" for="idea">Your starting point</label>
+          <span class="idea-field__count">{{ idea.length }}/1500</span>
+        </div>
         <textarea
           id="idea"
           v-model="idea"
@@ -127,7 +132,7 @@ function submit(): void {
         />
 
         <div v-if="!idea.trim()" class="examples">
-          <span class="faint examples__label">Or start from one of these:</span>
+          <span class="faint examples__label">Need a starting point?</span>
           <button
             v-for="(example, i) in EXAMPLES"
             :key="i"
@@ -144,7 +149,7 @@ function submit(): void {
       <div class="field">
         <label class="field__label" for="name">
           Project name
-          <span class="field__optional">— optional</span>
+          <span class="field__optional">Optional</span>
         </label>
         <input
           id="name"
@@ -163,8 +168,8 @@ function submit(): void {
         :disabled="busy"
         @click="expanded = true"
       >
-        Add more detail
-        <span class="field__optional">— optional, but it sharpens the result</span>
+        <span>Add more detail</span>
+        <span class="field__optional">Optional, but it sharpens the result</span>
       </button>
 
       <template v-else>

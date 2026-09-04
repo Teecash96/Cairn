@@ -34,7 +34,7 @@ export interface GenerateResult {
 
 export interface CreditsResult {
   credits: CreditState
-  price: PriceQuote
+  price: PriceQuote | null
 }
 
 export interface RedeemResult {
