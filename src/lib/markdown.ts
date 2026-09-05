@@ -2,7 +2,7 @@
  * Plan → text.
  *
  * The spec asks for three exports: copy the PRD, copy the numbered flow, and
- * one Markdown document containing the title, the PRD and the flow.
+ * one Markdown document containing the complete builder pack.
  *
  * On a phone these are the *only* export paths that reliably work — a page
  * cannot be trusted to initiate a file download inside the Nimiq Pay WebView —
@@ -88,14 +88,77 @@ export function prdToText(plan: Plan): string {
   return join([`# ${titleOf(plan)}`, prdToMarkdown(plan)])
 }
 
+export function buildToText(plan: Plan): string {
+  const { build } = plan
+  const milestones = build.milestones
+    .map((milestone, index) => {
+      const tasks = milestone.tasks
+        .map((task) => `  ${task.done ? '[x]' : '[ ]'} ${task.text}`)
+        .join('\n')
+      return `${index + 1}. ${clean(milestone.title)}\n   Outcome: ${clean(milestone.outcome)}${tasks ? `\n${tasks}` : ''}`
+    })
+    .join('\n\n')
+
+  return join([
+    'MVP scope',
+    bulleted(build.mvpScope),
+    'Milestones',
+    milestones,
+    'Risks',
+    bulleted(build.risks),
+    'Acceptance tests',
+    bulleted(build.acceptanceTests),
+    'Next action',
+    clean(build.nextAction),
+    'Reality check',
+    plan.realityCheck
+      .map((item, index) => `${index + 1}. [${item.priority}] ${clean(item.concern)}\n   Why: ${clean(item.why)}\n   Smallest fix or test: ${clean(item.fix)}`)
+      .join('\n\n'),
+  ])
+}
+
+function buildToMarkdown(plan: Plan): string {
+  const { build } = plan
+  const milestones = build.milestones
+    .map((milestone) => {
+      const tasks = milestone.tasks
+        .map((task) => `- [${task.done ? 'x' : ' '}] ${task.text}`)
+        .join('\n')
+      return join([
+        `### ${clean(milestone.title)}`,
+        clean(milestone.outcome) ? `**Outcome:** ${clean(milestone.outcome)}` : '',
+        tasks,
+      ])
+    })
+    .join('\n\n')
+
+  const reality = plan.realityCheck
+    .map((item) => join([
+      `### ${item.priority.toUpperCase()}: ${clean(item.concern)}`,
+      clean(item.why) ? `**Why:** ${clean(item.why)}` : '',
+      clean(item.fix) ? `**Smallest fix or test:** ${clean(item.fix)}` : '',
+    ]))
+    .join('\n\n')
+
+  return join([
+    section('MVP scope', bulleted(build.mvpScope)),
+    section('Build milestones', milestones),
+    section('Risks', bulleted(build.risks)),
+    section('Acceptance tests', bulleted(build.acceptanceTests)),
+    section('Next action', clean(build.nextAction)),
+    section('Reality check', reality),
+  ])
+}
+
 /**
- * The complete document: title, PRD, numbered flow. This is what
+ * The complete document: title, PRD, builder pack, and numbered flow. This is what
  * `{project-name}-plan.md` contains.
  */
 export function planToMarkdown(plan: Plan): string {
   return `${join([
     `# ${titleOf(plan)}`,
     prdToMarkdown(plan),
+    buildToMarkdown(plan),
     section('User flow', flowToText(plan.flow)),
     '---',
     `_Generated with Cairn._`,

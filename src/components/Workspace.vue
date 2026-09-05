@@ -12,10 +12,12 @@
  * browser actually supports it, and never as the main action.
  */
 import { computed, ref, watch } from 'vue'
+import BuildView from './BuildView.vue'
 import FlowDiagram from './FlowDiagram.vue'
 import PrdView from './PrdView.vue'
 import { copyText, canDownload, downloadText } from '../lib/clipboard'
-import { flowToText, planToMarkdown, prdToText } from '../lib/markdown'
+import { buildToText, flowToText, planToMarkdown, prdToText } from '../lib/markdown'
+import type { RefineAction } from '../lib/api'
 import { relativeTime, slugOf, titleOf, type Plan } from '../lib/plan'
 
 const {
@@ -23,25 +25,28 @@ const {
   readOnly = false,
   sharing = false,
   regenerating = false,
+  refining = false,
 } = defineProps<{
   plan: Plan
   /** A plan shared with you: readable, exportable, not editable. */
   readOnly?: boolean
   sharing?: boolean
   regenerating?: boolean
+  refining?: boolean
 }>()
 
 const emit = defineEmits<{
   back: []
   regenerate: []
   share: []
+  refine: [action: RefineAction]
   remove: []
   notify: [message: string, tone?: 'info' | 'success' | 'error']
 }>()
 
-type Tab = 'prd' | 'flow'
+type Tab = 'brief' | 'flow' | 'build'
 
-const tab = ref<Tab>('prd')
+const tab = ref<Tab>('brief')
 const editing = ref(false)
 const confirmingRemove = ref(false)
 
@@ -55,17 +60,24 @@ const edited = computed(() => relativeTime(plan.updatedAt))
 watch(
   () => plan.id,
   () => {
-    tab.value = 'prd'
+    tab.value = 'brief'
     editing.value = false
     confirmingRemove.value = false
   },
 )
 
-async function copy(what: 'prd' | 'flow' | 'markdown'): Promise<void> {
+async function copy(what: 'prd' | 'flow' | 'build' | 'markdown'): Promise<void> {
   const text =
-    what === 'prd' ? prdToText(plan) : what === 'flow' ? flowToText(plan.flow) : planToMarkdown(plan)
+    what === 'prd'
+      ? prdToText(plan)
+      : what === 'flow'
+        ? flowToText(plan.flow)
+        : what === 'build'
+          ? buildToText(plan)
+          : planToMarkdown(plan)
 
-  const label = what === 'markdown' ? 'Markdown' : what === 'prd' ? 'PRD' : 'Flow'
+  const label =
+    what === 'markdown' ? 'Markdown' : what === 'prd' ? 'Brief' : what === 'flow' ? 'Flow' : 'Builder pack'
 
   if (await copyText(text)) emit('notify', `${label} copied`, 'success')
   else emit('notify', "This browser wouldn't let us copy", 'error')
@@ -87,7 +99,10 @@ function select(next: Tab): void {
 function onTabKey(event: KeyboardEvent): void {
   if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
     event.preventDefault()
-    tab.value = tab.value === 'prd' ? 'flow' : 'prd'
+    const tabs: Tab[] = ['brief', 'flow', 'build']
+    const currentIndex = tabs.indexOf(tab.value)
+    const offset = event.key === 'ArrowRight' ? 1 : -1
+    tab.value = tabs[(currentIndex + offset + tabs.length) % tabs.length] ?? 'brief'
   }
 }
 </script>
@@ -143,17 +158,17 @@ function onTabKey(event: KeyboardEvent): void {
 
     <div class="tabs" role="tablist" aria-label="Plan sections" @keydown="onTabKey">
       <button
-        id="tab-prd"
+        id="tab-brief"
         type="button"
         role="tab"
         class="tab"
-        :class="{ 'tab--on': tab === 'prd' }"
-        :aria-selected="tab === 'prd'"
-        aria-controls="panel-prd"
-        :tabindex="tab === 'prd' ? 0 : -1"
-        @click="select('prd')"
+        :class="{ 'tab--on': tab === 'brief' }"
+        :aria-selected="tab === 'brief'"
+        aria-controls="panel-brief"
+        :tabindex="tab === 'brief' ? 0 : -1"
+        @click="select('brief')"
       >
-        PRD
+        Brief
       </button>
       <button
         id="tab-flow"
@@ -168,21 +183,34 @@ function onTabKey(event: KeyboardEvent): void {
       >
         User flow
       </button>
+      <button
+        id="tab-build"
+        type="button"
+        role="tab"
+        class="tab"
+        :class="{ 'tab--on': tab === 'build' }"
+        :aria-selected="tab === 'build'"
+        aria-controls="panel-build"
+        :tabindex="tab === 'build' ? 0 : -1"
+        @click="select('build')"
+      >
+        Build
+      </button>
     </div>
 
     <div class="body">
       <section
-        v-if="tab === 'prd'"
-        id="panel-prd"
+        v-if="tab === 'brief'"
+        id="panel-brief"
         role="tabpanel"
-        aria-labelledby="tab-prd"
+        aria-labelledby="tab-brief"
         tabindex="0"
       >
         <PrdView :prd="plan.prd" :editing="editing" />
       </section>
 
       <section
-        v-else
+        v-else-if="tab === 'flow'"
         id="panel-flow"
         role="tabpanel"
         aria-labelledby="tab-flow"
@@ -191,9 +219,35 @@ function onTabKey(event: KeyboardEvent): void {
         <FlowDiagram v-model="plan.flow" :editing="editing" />
       </section>
 
+      <section
+        v-else
+        id="panel-build"
+        role="tabpanel"
+        aria-labelledby="tab-build"
+        tabindex="0"
+      >
+        <BuildView :build="plan.build" :reality-check="plan.realityCheck" :read-only="readOnly" />
+        <div v-if="!readOnly" class="followups">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Follow up</p>
+              <h3>Ask Cairn to sharpen this plan</h3>
+            </div>
+            <span v-if="refining" class="badge badge--accent">Working…</span>
+          </div>
+          <div class="quick-actions">
+            <button type="button" class="btn btn--secondary btn--sm" :disabled="refining" @click="emit('refine', 'cut_mvp_scope')">Cut MVP scope</button>
+            <button type="button" class="btn btn--secondary btn--sm" :disabled="refining" @click="emit('refine', 'break_into_tasks')">Break into tasks</button>
+            <button type="button" class="btn btn--secondary btn--sm" :disabled="refining" @click="emit('refine', 'find_missing_risks')">Find missing risks</button>
+            <button type="button" class="btn btn--secondary btn--sm" :disabled="refining" @click="emit('refine', 'improve_acceptance_tests')">Improve acceptance tests</button>
+          </div>
+          <button type="button" class="btn btn--ghost btn--block" :disabled="refining" @click="emit('refine', 'custom')">Ask a custom question</button>
+        </div>
+      </section>
+
       <div class="actions">
-        <button type="button" class="btn btn--secondary btn--sm" @click="copy(tab)">
-          {{ tab === 'prd' ? 'Copy PRD' : 'Copy flow' }}
+        <button type="button" class="btn btn--secondary btn--sm" @click="copy(tab === 'brief' ? 'prd' : tab)">
+          {{ tab === 'brief' ? 'Copy brief' : tab === 'flow' ? 'Copy flow' : 'Copy builder pack' }}
         </button>
         <button type="button" class="btn btn--secondary btn--sm" @click="copy('markdown')">
           Copy Markdown
@@ -386,4 +440,19 @@ function onTabKey(event: KeyboardEvent): void {
   display: flex;
   gap: var(--s2);
 }
+
+.followups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding: var(--s4);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--accent-subtle);
+}
+
+.followups h3 { font-size: var(--text-md); }
+.eyebrow { margin: 0 0 var(--s1); color: var(--accent); font-size: var(--text-xs); font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.quick-actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.quick-actions .btn { flex: 1 1 9rem; }
 </style>

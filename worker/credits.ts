@@ -42,6 +42,8 @@ const FREE_WALLETS_PER_IP = 3
 const REQUESTS_PER_MINUTE = 5
 /** Shares one address may mint gift-bearing links for in a day. */
 const GIFTS_PER_DAY = 5
+/** A second cap protects the gift pool when callers rotate fake addresses. */
+const GIFTS_PER_IP = 10
 
 const DAY = 86_400
 const KEEP_COUNTERS = 2 * DAY
@@ -211,20 +213,26 @@ export async function claimGift(
  * token to a wallet it also controls. Sharing itself is never blocked — only the
  * gift attached to it. Returns whether a gift may be minted.
  */
-export async function allowGift(env: Env, address: string): Promise<boolean> {
+export async function allowGift(env: Env, address: string, ip = 'unknown'): Promise<boolean> {
   const key = `giftday:${today()}:${address}`
   const used = (await env.CAIRN.get<number>(key, 'json')) ?? 0
   if (used >= GIFTS_PER_DAY) return false
+
+  const ipKey = `giftip:${today()}:${ip}`
+  const ipUsed = (await env.CAIRN.get<number>(ipKey, 'json')) ?? 0
+  if (ipUsed >= GIFTS_PER_IP) return false
+
   await env.CAIRN.put(key, JSON.stringify(used + 1), { expirationTtl: KEEP_COUNTERS })
+  await env.CAIRN.put(ipKey, JSON.stringify(ipUsed + 1), { expirationTtl: KEEP_COUNTERS })
   return true
 }
 
 // -- limits -----------------------------------------------------------------
 
 /** True when this address is asking faster than any person would. */
-export async function tooFast(env: Env, address: string): Promise<boolean> {
+export async function tooFast(env: Env, address: string, scope = 'address'): Promise<boolean> {
   const minute = Math.floor(Date.now() / 60_000)
-  const key = `rl:${address}:${minute}`
+  const key = `rl:${scope}:${address}:${minute}`
   const used = (await env.CAIRN.get<number>(key, 'json')) ?? 0
   if (used >= REQUESTS_PER_MINUTE) return true
   await env.CAIRN.put(key, JSON.stringify(used + 1), { expirationTtl: 120 })

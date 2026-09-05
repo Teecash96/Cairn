@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
+    "test": "node --experimental-strip-types --experimental-loader ./tests/resolve-loader.mjs --test 'tests/**/*.test.ts'",
     "typecheck": "vue-tsc -b && tsc -p tsconfig.worker.json",
     "worker:dev": "wrangler dev",
     "worker:deploy": "npm run build && wrangler deploy",

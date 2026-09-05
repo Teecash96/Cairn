@@ -7,7 +7,15 @@
  * it, or leave it unset and the caller falls back to the offline stub generator
  * in `lib/stub.ts`.
  */
-import type { FlowStep, Plan, PlanInput, Prd } from './plan'
+import type {
+  BuildPlanDraft,
+  FlowStep,
+  Plan,
+  PlanChanges,
+  PlanInput,
+  Prd,
+  RealityCheckItem,
+} from './plan'
 
 /** How many generations this wallet has left. */
 export interface CreditState {
@@ -29,6 +37,8 @@ export interface PriceQuote {
 export interface GenerateResult {
   prd: Prd
   flow: FlowStep[]
+  build: BuildPlanDraft
+  realityCheck: RealityCheckItem[]
   credits: CreditState
 }
 
@@ -53,6 +63,30 @@ export interface SharedPlanResult {
   plan: Plan
   /** Present when this link still carries an unclaimed free generation. */
   gift?: string
+}
+
+export type RefineAction =
+  | 'cut_mvp_scope'
+  | 'break_into_tasks'
+  | 'find_missing_risks'
+  | 'improve_acceptance_tests'
+  | 'custom'
+
+export interface RefineRequest {
+  address: string
+  plan: Plan
+  action: RefineAction
+  question?: string
+  deviceId?: string | null
+}
+
+export interface RefineResult {
+  /** Direct answer for a custom question, when requested. */
+  answer?: string
+  /** Short explanation of the proposed targeted changes. */
+  explanation: string
+  changes: PlanChanges
+  credits: CreditState
 }
 
 /**
@@ -242,4 +276,13 @@ export function sharePlan(address: string, plan: Plan): Promise<ShareResult> {
 
 export function getSharedPlan(shareId: string): Promise<SharedPlanResult> {
   return request<SharedPlanResult>(`/share/${encodeURIComponent(shareId)}`)
+}
+
+/** Spend one credit on a targeted planner action. */
+export function refinePlan(body: RefineRequest): Promise<RefineResult> {
+  return request<RefineResult>('/refine', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    timeoutMs: TIMEOUT_MS.generate,
+  })
 }

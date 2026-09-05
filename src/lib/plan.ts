@@ -1,9 +1,10 @@
 /**
  * Cairn's data model and on-device library.
  *
- * A "plan" is one idea turned into two artifacts: a PRD and a user flow. Both
- * are generated server-side and then owned by the client — the user can edit
- * every field, so nothing here treats generated text as immutable.
+ * A "plan" is one idea turned into a builder pack: a PRD, a user flow, a
+ * milestone plan, and a reality check. The server writes the draft. The client
+ * owns task identity and completion state, so the AI can never claim work is
+ * complete.
  *
  * Plans live in localStorage. There is no account and no sync: the library is
  * per-device by design, and `shareId` is the only thing that ever leaves it.
@@ -64,6 +65,70 @@ export interface FlowStep {
   branches?: [FlowBranch, FlowBranch]
 }
 
+export interface Task {
+  /** Client-authored stable identity. Never supplied by the model. */
+  id: string
+  text: string
+  /** Local progress. Never supplied or changed by the model. */
+  done: boolean
+}
+
+export interface Milestone {
+  /** Client-authored stable identity. */
+  id: string
+  title: string
+  outcome: string
+  tasks: Task[]
+}
+
+export interface BuildPlan {
+  mvpScope: string[]
+  milestones: Milestone[]
+  risks: string[]
+  acceptanceTests: string[]
+  nextAction: string
+}
+
+/** Server-authored build shape. It deliberately has no ids or progress. */
+export interface BuildMilestoneDraft {
+  title: string
+  outcome: string
+  tasks: string[]
+}
+
+export interface BuildPlanDraft {
+  mvpScope: string[]
+  milestones: BuildMilestoneDraft[]
+  risks: string[]
+  acceptanceTests: string[]
+  nextAction: string
+}
+
+export type RealityPriority = 'high' | 'medium' | 'low'
+
+export interface RealityCheckItem {
+  priority: RealityPriority
+  concern: string
+  why: string
+  fix: string
+}
+
+export interface BuildPlanChanges {
+  mvpScope?: string[]
+  milestones?: BuildMilestoneDraft[]
+  risks?: string[]
+  acceptanceTests?: string[]
+  nextAction?: string
+}
+
+/** A targeted refinement. Missing fields must remain untouched. */
+export interface PlanChanges {
+  prd?: Partial<Prd>
+  flow?: FlowStep[]
+  build?: BuildPlanChanges
+  realityCheck?: RealityCheckItem[]
+}
+
 export interface Plan {
   id: string
   /** Display name. May be empty — use `titleOf()` rather than reading this raw. */
@@ -78,6 +143,8 @@ export interface Plan {
   input: PlanInput
   prd: Prd
   flow: FlowStep[]
+  build: BuildPlan
+  realityCheck: RealityCheckItem[]
   /** Set once the plan has been shared. Absent means it has never left the device. */
   shareId?: string
 }
@@ -87,6 +154,13 @@ export const FLOW_MIN_STEPS = 5
 export const FLOW_MAX_STEPS = 8
 /** Applies to coreFeatures, userStories and successCriteria. */
 export const PRD_LIST_MAX = 5
+export const BUILD_SCOPE_MIN = 3
+export const BUILD_SCOPE_MAX = 5
+export const BUILD_MILESTONE_COUNT = 3
+export const BUILD_TASK_MIN = 8
+export const BUILD_TASK_MAX = 12
+export const BUILD_LIST_MAX = 5
+export const REALITY_CHECK_COUNT = 3
 
 // -- identity ---------------------------------------------------------------
 
@@ -113,6 +187,85 @@ export function newId(): string {
   }
 
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+}
+
+export function emptyBuildPlan(): BuildPlan {
+  return {
+    mvpScope: [],
+    milestones: [],
+    risks: [],
+    acceptanceTests: [],
+    nextAction: '',
+  }
+}
+
+function normalizeMatch(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase()
+}
+
+/**
+ * Turn a server draft into client-owned work state.
+ *
+ * Matching happens across the whole prior plan, not only inside the same
+ * milestone. A useful refinement may move a task without erasing its progress.
+ */
+export function materializeBuildPlan(
+  draft: BuildPlanDraft,
+  previous?: BuildPlan,
+): BuildPlan {
+  const oldTasks = new Map<string, Task[]>()
+  for (const milestone of previous?.milestones ?? []) {
+    for (const task of milestone.tasks) {
+      const key = normalizeMatch(task.text)
+      const bucket = oldTasks.get(key) ?? []
+      bucket.push(task)
+      oldTasks.set(key, bucket)
+    }
+  }
+
+  const oldMilestones = new Map<string, Milestone[]>()
+  for (const milestone of previous?.milestones ?? []) {
+    const key = normalizeMatch(milestone.title)
+    const bucket = oldMilestones.get(key) ?? []
+    bucket.push(milestone)
+    oldMilestones.set(key, bucket)
+  }
+
+  const usedTasks = new Set<string>()
+  const usedMilestones = new Set<string>()
+
+  return {
+    mvpScope: draft.mvpScope.map((item) => item.trim()).filter(Boolean),
+    milestones: draft.milestones.map((item) => {
+      const milestoneMatch = (oldMilestones.get(normalizeMatch(item.title)) ?? []).find(
+        (candidate) => !usedMilestones.has(candidate.id),
+      )
+      const id = milestoneMatch?.id ?? newId()
+      usedMilestones.add(id)
+
+      return {
+        id,
+        title: item.title.trim(),
+        outcome: item.outcome.trim(),
+        tasks: item.tasks
+          .map((text) => text.trim())
+          .filter(Boolean)
+          .map((text) => {
+            const match = (oldTasks.get(normalizeMatch(text)) ?? []).find(
+              (candidate) => !usedTasks.has(candidate.id),
+            )
+            if (match) {
+              usedTasks.add(match.id)
+              return { id: match.id, text, done: match.done }
+            }
+            return { id: newId(), text, done: false }
+          }),
+      }
+    }),
+    risks: draft.risks.map((item) => item.trim()).filter(Boolean),
+    acceptanceTests: draft.acceptanceTests.map((item) => item.trim()).filter(Boolean),
+    nextAction: draft.nextAction.trim(),
+  }
 }
 
 // -- derived display values -------------------------------------------------
@@ -183,32 +336,103 @@ export function relativeTime(timestamp: number, now = Date.now()): string {
 
 // -- the library ------------------------------------------------------------
 
-const STORAGE_KEY = 'cairn.library.v1'
+const STORAGE_KEY = 'cairn.library.v2'
+const LEGACY_STORAGE_KEY = 'cairn.library.v1'
 
 interface StoredLibrary {
-  version: 1
+  version: 2
   plans: Plan[]
 }
 
 /** `structuredClone` is missing in older WebViews; JSON covers this shape. */
 function clone<T>(value: T): T {
-  return typeof structuredClone === 'function'
-    ? structuredClone(value)
-    : (JSON.parse(JSON.stringify(value)) as T)
+  if (typeof structuredClone === 'function') {
+    try {
+      return structuredClone(value)
+    } catch {
+      // Vue reactive proxies and older embedded WebViews can reject cloning.
+      // Plans are JSON-shaped, so the fallback is safe for this storage layer.
+    }
+  }
+  return JSON.parse(JSON.stringify(value)) as T
 }
 
-function isPlan(value: unknown): value is Plan {
-  if (typeof value !== 'object' || value === null) return false
+function normalizeRealityCheck(value: unknown): RealityCheckItem[] {
+  if (!Array.isArray(value)) return []
+  const priorities: RealityPriority[] = ['high', 'medium', 'low']
+
+  return value.flatMap((item) => {
+    if (typeof item !== 'object' || item === null) return []
+    const raw = item as Partial<RealityCheckItem>
+    if (
+      typeof raw.concern !== 'string' ||
+      typeof raw.why !== 'string' ||
+      typeof raw.fix !== 'string'
+    ) return []
+    const priority = priorities.includes(raw.priority as RealityPriority)
+      ? (raw.priority as RealityPriority)
+      : 'medium'
+    return [{ priority, concern: raw.concern, why: raw.why, fix: raw.fix }]
+  })
+}
+
+function normalizeBuild(value: unknown): BuildPlan {
+  if (typeof value !== 'object' || value === null) return emptyBuildPlan()
+  const raw = value as Partial<BuildPlan>
+  if (!Array.isArray(raw.milestones)) return emptyBuildPlan()
+
+  const milestones = raw.milestones.flatMap((item) => {
+    if (typeof item !== 'object' || item === null || !Array.isArray(item.tasks)) return []
+    const tasks = item.tasks.flatMap((task) => {
+      if (typeof task !== 'object' || task === null || typeof task.text !== 'string') return []
+      return [{
+        id: typeof task.id === 'string' && task.id ? task.id : newId(),
+        text: task.text,
+        done: task.done === true,
+      }]
+    })
+    return [{
+      id: typeof item.id === 'string' && item.id ? item.id : newId(),
+      title: typeof item.title === 'string' ? item.title : '',
+      outcome: typeof item.outcome === 'string' ? item.outcome : '',
+      tasks,
+    }]
+  })
+
+  return {
+    mvpScope: Array.isArray(raw.mvpScope)
+      ? raw.mvpScope.filter((item): item is string => typeof item === 'string')
+      : [],
+    milestones,
+    risks: Array.isArray(raw.risks)
+      ? raw.risks.filter((item): item is string => typeof item === 'string')
+      : [],
+    acceptanceTests: Array.isArray(raw.acceptanceTests)
+      ? raw.acceptanceTests.filter((item): item is string => typeof item === 'string')
+      : [],
+    nextAction: typeof raw.nextAction === 'string' ? raw.nextAction : '',
+  }
+}
+
+function normalizePlan(value: unknown): Plan | null {
+  if (typeof value !== 'object' || value === null) return null
   const plan = value as Partial<Plan>
-  return (
+  if (!(
     typeof plan.id === 'string' &&
+    typeof plan.createdAt === 'number' &&
     typeof plan.updatedAt === 'number' &&
     typeof plan.input === 'object' &&
     plan.input !== null &&
     typeof plan.prd === 'object' &&
     plan.prd !== null &&
     Array.isArray(plan.flow)
-  )
+  )) return null
+
+  return {
+    ...(clone(value) as Omit<Plan, 'build' | 'realityCheck'>),
+    build: normalizeBuild(plan.build),
+    realityCheck: normalizeRealityCheck(plan.realityCheck),
+  }
 }
 
 /**
@@ -218,12 +442,21 @@ function isPlan(value: unknown): value is Plan {
  */
 function read(): Plan[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const current = localStorage.getItem(STORAGE_KEY)
+    const raw = current ?? localStorage.getItem(LEGACY_STORAGE_KEY)
     if (!raw) return []
     const parsed: unknown = JSON.parse(raw)
-    const plans = (parsed as Partial<StoredLibrary>)?.plans
+    const plans = (parsed as { plans?: unknown })?.plans
     if (!Array.isArray(plans)) return []
-    return plans.filter(isPlan)
+    const normalized = plans.flatMap((plan) => {
+      const valid = normalizePlan(plan)
+      return valid ? [valid] : []
+    })
+
+    // Migration is additive. Keep v1 until this v2 write succeeds, so a storage
+    // failure cannot destroy the only copy of the user's work.
+    if (!current && normalized.length) write(normalized)
+    return normalized
   } catch {
     return []
   }
@@ -232,7 +465,7 @@ function read(): Plan[] {
 /** Returns false when the write failed, so callers can warn instead of lying. */
 function write(plans: Plan[]): boolean {
   try {
-    const payload: StoredLibrary = { version: 1, plans }
+    const payload: StoredLibrary = { version: 2, plans }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
     return true
   } catch {
@@ -249,7 +482,19 @@ export function getPlan(id: string): Plan | null {
   return read().find((plan) => plan.id === id) ?? null
 }
 
-export function createPlan(input: PlanInput, prd: Prd, flow: FlowStep[]): Plan {
+export function createPlan(
+  input: PlanInput,
+  prd: Prd,
+  flow: FlowStep[],
+  buildDraft: BuildPlanDraft = {
+    mvpScope: [],
+    milestones: [],
+    risks: [],
+    acceptanceTests: [],
+    nextAction: '',
+  },
+  realityCheck: RealityCheckItem[] = [],
+): Plan {
   const now = Date.now()
   return {
     id: newId(),
@@ -259,6 +504,8 @@ export function createPlan(input: PlanInput, prd: Prd, flow: FlowStep[]): Plan {
     input: clone(input),
     prd: clone(prd),
     flow: clone(flow),
+    build: materializeBuildPlan(buildDraft),
+    realityCheck: clone(realityCheck),
   }
 }
 

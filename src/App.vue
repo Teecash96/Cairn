@@ -24,10 +24,11 @@ import CairnMark from './components/CairnMark.vue'
 import Library from './components/Library.vue'
 import NewPlan from './components/NewPlan.vue'
 import PaySheet from './components/PaySheet.vue'
+import RefineSheet from './components/RefineSheet.vue'
 import Toast from './components/Toast.vue'
 import Workspace from './components/Workspace.vue'
-import { ApiError, generatePlan, getSharedPlan, redeemPayment, sharePlan } from './lib/api'
-import type { CreditState, PriceQuote } from './lib/api'
+import { ApiError, generatePlan, getSharedPlan, redeemPayment, refinePlan, sharePlan } from './lib/api'
+import type { CreditState, PriceQuote, RefineAction } from './lib/api'
 import { copyText } from './lib/clipboard'
 import {
   createPlan,
@@ -35,13 +36,18 @@ import {
   getPlan,
   libraryIsPersistent,
   listPlans,
+  materializeBuildPlan,
   renamePlan,
   savePlan,
+  type BuildPlanDraft,
+  type PlanChanges,
+  type RealityCheckItem,
   type Plan,
   type PlanInput,
 } from './lib/plan'
 import { useSession } from './lib/session'
-import { stubGenerate } from './lib/stub'
+import { mergeRefinement } from './lib/refinement'
+import { stubGenerate, stubRefinement } from './lib/stub'
 
 type View = 'new' | 'workspace' | 'library'
 type Tone = 'info' | 'success' | 'error'
@@ -71,11 +77,22 @@ const payError = ref<string | null>(null)
 
 /** The request that was refused for want of credits, replayed after payment. */
 const pending = ref<{ input: PlanInput; replaceId?: string } | null>(null)
+const pendingRefinement = ref<{ action: RefineAction; question?: string } | null>(null)
+
+const refineOpen = ref(false)
+const refineAction = ref<RefineAction>('custom')
+const refineBusy = ref(false)
+const refineExplanation = ref('')
+const refineAnswer = ref('')
+const refineChanges = ref<PlanChanges | null>(null)
 
 /** A plan opened from someone else's share link. Read-only, never saved here. */
 const shared = ref<Plan | null>(null)
 /** Single-use token from a share link: a free plan, courtesy of whoever shared it. */
 const gift = ref<string | null>(null)
+
+/** `vite dev` without `VITE_API_BASE` has no Worker behind its `/api` paths. */
+const localPreview = import.meta.env.DEV && !import.meta.env.VITE_API_BASE
 
 // -- messages ---------------------------------------------------------------
 
@@ -218,6 +235,9 @@ function back(): void {
  */
 async function generate(input: PlanInput, replaceId?: string): Promise<void> {
   if (generating.value) return
+  // A new generation supersedes any unpaid refinement. Keeping both pending
+  // actions would let a later payment replay the wrong request.
+  pendingRefinement.value = null
   generating.value = true
   pending.value = { input, replaceId }
 
@@ -229,6 +249,13 @@ async function generate(input: PlanInput, replaceId?: string): Promise<void> {
     }
 
     const deviceId = await session.ensureDeviceId()
+    if (localPreview) {
+      const stub = stubGenerate(input)
+      pending.value = null
+      apply(input, stub.prd, stub.flow, stub.build, stub.realityCheck, replaceId)
+      notify('Local preview plan — connect the Worker for real AI', 'info')
+      return
+    }
     const result = await generatePlan({ address, input, deviceId, gift: gift.value })
 
     credits.value = result.credits
@@ -236,7 +263,7 @@ async function generate(input: PlanInput, replaceId?: string): Promise<void> {
     gift.value = null
     pending.value = null
 
-    apply(input, result.prd, result.flow, replaceId)
+    apply(input, result.prd, result.flow, result.build, result.realityCheck, replaceId)
   } catch (error) {
     onGenerateFailed(error, input, replaceId)
   } finally {
@@ -248,6 +275,8 @@ function apply(
   input: PlanInput,
   prd: Plan['prd'],
   flow: Plan['flow'],
+  build: BuildPlanDraft,
+  realityCheck: RealityCheckItem[],
   replaceId?: string,
 ): void {
   const existing = replaceId && current.value?.id === replaceId ? current.value : null
@@ -256,12 +285,14 @@ function apply(
     existing.input = input
     existing.prd = prd
     existing.flow = flow
+    existing.build = materializeBuildPlan(build, existing.build)
+    existing.realityCheck = realityCheck
     flush()
     notify('Regenerated', 'success')
     return
   }
 
-  const plan = createPlan(input, prd, flow)
+  const plan = createPlan(input, prd, flow, build, realityCheck)
   if (!savePlan(plan)) persistent.value = false
   plans.value = listPlans()
   // Read back the stored copy so the open plan and the saved one are the same.
@@ -287,13 +318,106 @@ function onGenerateFailed(error: unknown, input: PlanInput, replaceId?: string):
      */
     if (error.isOffline && import.meta.env.DEV) {
       const stub = stubGenerate(input)
-      apply(input, stub.prd, stub.flow, replaceId)
+      apply(input, stub.prd, stub.flow, stub.build, stub.realityCheck, replaceId)
       notify('No backend yet — placeholder plan', 'info')
       return
     }
   }
 
   notify(messageOf(error), 'error')
+}
+
+// -- planner follow ups ----------------------------------------------------
+
+function clearRefineResult(): void {
+  refineExplanation.value = ''
+  refineAnswer.value = ''
+  refineChanges.value = null
+}
+
+function openRefine(action: RefineAction): void {
+  if (!current.value || refineBusy.value) return
+  clearRefineResult()
+  refineAction.value = action
+  refineOpen.value = true
+  if (action !== 'custom') void runRefinement(action)
+}
+
+async function runRefinement(action: RefineAction, question?: string): Promise<void> {
+  const plan = current.value
+  if (!plan || refineBusy.value) return
+  // Refinements and generations are mutually exclusive pending actions. A
+  // refinement starts here, so an older unpaid generation must not be replayed.
+  pending.value = null
+  refineBusy.value = true
+
+  try {
+    const address = await session.connect()
+    if (!address) {
+      refineOpen.value = false
+      notify(session.lastError.value ?? 'Connect your wallet to refine this plan.', 'error')
+      return
+    }
+
+    const deviceId = await session.ensureDeviceId()
+    if (localPreview) {
+      const stub = stubRefinement(plan, action, question)
+      refineExplanation.value = stub.explanation
+      refineAnswer.value = stub.answer ?? ''
+      refineChanges.value = stub.changes
+      return
+    }
+    const result = await refinePlan({ address, plan, action, question, deviceId })
+    credits.value = result.credits
+    refineExplanation.value = result.explanation
+    refineAnswer.value = result.answer ?? ''
+    refineChanges.value = result.changes
+  } catch (error) {
+    if (error instanceof ApiError && error.needsPayment) {
+      pendingRefinement.value = { action, question }
+      if (error.price) price.value = error.price
+      if (error.credits) credits.value = error.credits
+      refineOpen.value = false
+      payError.value = null
+      payOpen.value = true
+    } else {
+      refineOpen.value = false
+      notify(messageOf(error), 'error')
+    }
+  } finally {
+    refineBusy.value = false
+  }
+}
+
+function submitRefinement(question: string): void {
+  void runRefinement('custom', question)
+}
+
+function applyRefinement(): void {
+  const plan = current.value
+  const changes = refineChanges.value
+  if (!plan || !changes) return
+
+  let updated: Plan
+  try {
+    updated = mergeRefinement(plan, changes)
+  } catch (error) {
+    notify(`Could not apply the changes: ${messageOf(error)}`, 'error')
+    return
+  }
+  current.value = updated
+  flush()
+  refineOpen.value = false
+  clearRefineResult()
+  notify('Plan updated', 'success')
+}
+
+function closeRefinement(apply = false): void {
+  if (apply) {
+    applyRefinement()
+    return
+  }
+  refineOpen.value = false
 }
 
 // -- sharing ----------------------------------------------------------------
@@ -356,8 +480,17 @@ async function pay(): Promise<void> {
     payOpen.value = false
     notify(`${result.granted} plans added`, 'success')
 
-    const replay = pending.value
-    if (replay) void generate(replay.input, replay.replaceId)
+    const replayRefinement = pendingRefinement.value
+    pendingRefinement.value = null
+    if (replayRefinement) {
+      refineOpen.value = true
+      refineAction.value = replayRefinement.action
+      clearRefineResult()
+      void runRefinement(replayRefinement.action, replayRefinement.question)
+    } else {
+      const replay = pending.value
+      if (replay) void generate(replay.input, replay.replaceId)
+    }
   } catch (error) {
     payError.value =
       error instanceof ApiError && error.code === 'payment_not_found'
@@ -437,9 +570,11 @@ function ownIt(): void {
       :plan="current"
       :sharing="sharing"
       :regenerating="generating"
+      :refining="refineBusy"
       @back="back"
       @share="share"
       @regenerate="current && generate(current.input, current.id)"
+      @refine="openRefine"
       @remove="current && remove(current.id)"
       @notify="notify"
     />
@@ -500,6 +635,17 @@ function ownIt(): void {
     :credits="credits"
     @pay="pay"
     @close="payOpen = false"
+  />
+
+  <RefineSheet
+    v-if="refineOpen"
+    :action="refineAction"
+    :explanation="refineExplanation"
+    :answer="refineAnswer"
+    :changes="refineChanges"
+    :busy="refineBusy"
+    @submit="submitRefinement"
+    @cancel="closeRefinement"
   />
 
   <Toast :message="toast" :tone="toastTone" />

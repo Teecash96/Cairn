@@ -78,6 +78,50 @@ export interface FlowStep {
   branches?: [FlowBranch, FlowBranch]
 }
 
+export interface BuildMilestoneDraft {
+  title: string
+  outcome: string
+  tasks: string[]
+}
+
+export interface BuildPlanDraft {
+  mvpScope: string[]
+  milestones: BuildMilestoneDraft[]
+  risks: string[]
+  acceptanceTests: string[]
+  nextAction: string
+}
+
+export interface Task {
+  id: string
+  text: string
+  done: boolean
+}
+
+export interface Milestone {
+  id: string
+  title: string
+  outcome: string
+  tasks: Task[]
+}
+
+export interface BuildPlan {
+  mvpScope: string[]
+  milestones: Milestone[]
+  risks: string[]
+  acceptanceTests: string[]
+  nextAction: string
+}
+
+export type RealityPriority = 'high' | 'medium' | 'low'
+
+export interface RealityCheckItem {
+  priority: RealityPriority
+  concern: string
+  why: string
+  fix: string
+}
+
 export interface Plan {
   id: string
   name: string
@@ -86,7 +130,23 @@ export interface Plan {
   input: PlanInput
   prd: Prd
   flow: FlowStep[]
+  build: BuildPlan
+  realityCheck: RealityCheckItem[]
   shareId?: string
+}
+
+export type RefineAction =
+  | 'cut_mvp_scope'
+  | 'break_into_tasks'
+  | 'find_missing_risks'
+  | 'improve_acceptance_tests'
+  | 'custom'
+
+export interface PlanChanges {
+  prd?: Partial<Prd>
+  flow?: FlowStep[]
+  build?: Partial<BuildPlanDraft>
+  realityCheck?: RealityCheckItem[]
 }
 
 // -- wire shapes (mirrors src/lib/api.ts) -----------------------------------

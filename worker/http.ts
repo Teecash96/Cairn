@@ -134,11 +134,15 @@ export function today(): string {
  * it cannot be spoofed by the client; the fallbacks are for `wrangler dev`.
  */
 export function clientIp(request: Request): string {
-  return (
+  const value = (
     request.headers.get('cf-connecting-ip') ??
     request.headers.get('x-real-ip') ??
     'unknown'
   )
+  // The Cloudflare header is authoritative in production. The fallback is
+  // client supplied during local development, so keep it bounded and printable
+  // before it becomes part of a KV key.
+  return value.replace(/[^0-9a-zA-Z:._-]/g, '').slice(0, 64) || 'unknown'
 }
 
 /**

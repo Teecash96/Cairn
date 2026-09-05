@@ -3,16 +3,20 @@
 **Describe an idea. Get a plan.**
 
 Cairn is a Nimiq Pay mini app that turns a few sentences about a product idea into
-two things a team can actually work from:
+a builder pack an indie builder can act on:
 
 - a **product requirements document** — summary, problem, target user, core
   features, user stories, success criteria, and an explicit list of what it
   assumed and what it left out
 - a **user-flow diagram** — five to eight connected steps from first open to
   finished task, including one real decision point with both outcomes
+- a **Build plan** — a small MVP scope, three milestones, local task checkboxes,
+  risks, acceptance tests, and the next action
+- a **Reality check** — three prioritized concerns with the smallest test or fix
 
-Every field is editable. Nothing needs an account. You pay per plan, in NIM, and
-the first few are free.
+Every field is editable. Nothing needs an account. Cairn uses practical MVP
+planning rather than Scrum process. You pay per AI action, in NIM, and the first
+few actions are free.
 
 A cairn is a stack of stones left to mark the route for whoever comes next. That
 is what a PRD is for.
@@ -33,9 +37,19 @@ Cairn is those twenty minutes, on a phone, for about the cost of the inference.
 1. Describe the idea in your own words. One field is required.
 2. Tap **Generate plan**. Nimiq Pay asks you to connect your wallet — this is the
    only time it asks, and it happens on the action you already chose to take.
-3. Claude writes the PRD and the flow. It takes about twenty seconds.
+3. Claude writes the full builder pack. It takes about twenty seconds.
 4. Edit anything. It autosaves to your device.
-5. Copy it out as Markdown, or share a link.
+5. Open the **Build** tab, check off local tasks, or ask Cairn to sharpen one
+   part of the plan.
+6. Copy it out as Markdown, or share a link.
+
+### Planner follow ups
+
+The Build tab has four quick actions: cut MVP scope, break work into smaller
+tasks, find missing risks, and improve acceptance tests. You can also ask a
+custom question. Cairn shows targeted changes in a preview before applying them.
+One AI action costs one credit. Completed task checkboxes stay completed when a
+refinement keeps that task.
 
 ### Pay it forward
 
@@ -117,6 +131,7 @@ this way rather than only on `localhost`.
 
 ```bash
 npm run build        # vue-tsc -b && vite build
+npm test              # Node's built-in test runner
 ```
 
 ## Layout
@@ -136,11 +151,16 @@ src/
     stub.ts        Offline placeholder generator, dev only
   components/
     NewPlan.vue      Screen one: the description
-    Workspace.vue    One plan: PRD and flow behind two tabs
+    Workspace.vue    One plan: Brief, Flow, and Build behind three tabs
     PrdView.vue      The PRD, readable and editable
     FlowDiagram.vue  The flow diagram
+    BuildView.vue    Milestones, tasks, risks, tests, and reality check
+    RefineSheet.vue  Preview and apply targeted planner follow ups
     Library.vue      Everything you have made
     PaySheet.vue     Top up, in NIM
+  tests/
+    client/          Migration, task progress, and targeted merge tests
+    worker/          Shape, credit, payment, and share tests
 ```
 
 ## Stack

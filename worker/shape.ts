@@ -14,12 +14,31 @@
  * Nothing here throws for bad *content* — it trims, drops and demotes, so a
  * mediocre generation still renders. Only a bad *request* is rejected.
  */
-import type { FlowBranch, FlowStep, FlowStepKind, Plan, PlanInput, Prd } from './types'
+import type {
+  BuildMilestoneDraft,
+  BuildPlan,
+  BuildPlanDraft,
+  FlowBranch,
+  FlowStep,
+  FlowStepKind,
+  Plan,
+  PlanInput,
+  Prd,
+  PlanChanges,
+  RealityCheckItem,
+  RealityPriority,
+} from './types'
 
 /** Matches `FLOW_MIN_STEPS`/`FLOW_MAX_STEPS`/`PRD_LIST_MAX` in src/lib/plan.ts. */
 export const FLOW_MIN_STEPS = 5
 export const FLOW_MAX_STEPS = 8
 export const PRD_LIST_MAX = 5
+export const BUILD_SCOPE_MAX = 5
+export const BUILD_MILESTONE_COUNT = 3
+export const BUILD_TASK_MIN = 8
+export const BUILD_TASK_MAX = 12
+export const BUILD_LIST_MAX = 5
+export const REALITY_CHECK_COUNT = 3
 
 /** Enough for a real description; short enough not to be a free LLM endpoint. */
 export const IDEA_MIN = 24
@@ -30,6 +49,7 @@ const NAME_MAX = 80
 const PROSE_MAX = 900
 const ITEM_MAX = 260
 const TITLE_MAX = 90
+const BUILD_TITLE_MAX = 100
 
 // -- primitives -------------------------------------------------------------
 
@@ -166,6 +186,166 @@ export function clampFlow(value: unknown): FlowStep[] {
   return steps
 }
 
+export function requireFlow(value: unknown): FlowStep[] {
+  const flow = clampFlow(value)
+  const decisions = flow.filter((step) => step.kind === 'decision')
+  if (flow.length < FLOW_MIN_STEPS || flow.length > FLOW_MAX_STEPS || decisions.length !== 1) {
+    throw new Error('The model returned an incomplete user flow.')
+  }
+  return flow
+}
+
+// -- builder pack ----------------------------------------------------------
+
+function readTaskText(value: unknown): string {
+  if (typeof value === 'string') return str(value, ITEM_MAX)
+  if (typeof value !== 'object' || value === null) return ''
+  return str((value as { text?: unknown }).text, ITEM_MAX)
+}
+
+/** Loose clamp used for stored share snapshots and client edits. */
+export function clampBuild(value: unknown): BuildPlanDraft {
+  if (typeof value !== 'object' || value === null) {
+    return { mvpScope: [], milestones: [], risks: [], acceptanceTests: [], nextAction: '' }
+  }
+  const raw = value as Record<string, unknown>
+  const rawMilestones = Array.isArray(raw.milestones) ? raw.milestones : []
+  let taskCount = 0
+  const milestones: BuildMilestoneDraft[] = []
+
+  for (const item of rawMilestones.slice(0, BUILD_MILESTONE_COUNT)) {
+    if (typeof item !== 'object' || item === null) continue
+    const record = item as Record<string, unknown>
+    const rawTasks = Array.isArray(record.tasks) ? record.tasks : []
+    const tasks: string[] = []
+    for (const task of rawTasks) {
+      if (taskCount >= BUILD_TASK_MAX) break
+      const text = readTaskText(task)
+      if (!text) continue
+      tasks.push(text)
+      taskCount += 1
+    }
+    milestones.push({
+      title: str(record.title, BUILD_TITLE_MAX),
+      outcome: str(record.outcome, ITEM_MAX),
+      tasks,
+    })
+  }
+
+  return {
+    mvpScope: list(raw.mvpScope, BUILD_SCOPE_MAX),
+    milestones,
+    risks: list(raw.risks, BUILD_LIST_MAX),
+    acceptanceTests: list(raw.acceptanceTests, BUILD_LIST_MAX),
+    nextAction: str(raw.nextAction, ITEM_MAX),
+  }
+}
+
+function validBuild(value: unknown): value is BuildPlanDraft {
+  const build = clampBuild(value)
+  const taskCount = build.milestones.reduce((sum, milestone) => sum + milestone.tasks.length, 0)
+  return (
+    build.mvpScope.length >= 3 &&
+    build.mvpScope.length <= BUILD_SCOPE_MAX &&
+    build.milestones.length === BUILD_MILESTONE_COUNT &&
+    build.milestones.every((milestone) => Boolean(milestone.title && milestone.outcome)) &&
+    taskCount >= BUILD_TASK_MIN &&
+    taskCount <= BUILD_TASK_MAX &&
+    build.risks.length <= BUILD_LIST_MAX &&
+    build.acceptanceTests.length <= BUILD_LIST_MAX &&
+    Boolean(build.nextAction)
+  )
+}
+
+export function requireBuild(value: unknown): BuildPlanDraft {
+  const build = clampBuild(value)
+  if (!validBuild(build)) throw new Error('The model returned an incomplete builder pack.')
+  return build
+}
+
+function clampRealityItem(value: unknown): RealityCheckItem | null {
+  if (typeof value !== 'object' || value === null) return null
+  const raw = value as Record<string, unknown>
+  const priorities: RealityPriority[] = ['high', 'medium', 'low']
+  const priority = priorities.includes(raw.priority as RealityPriority)
+    ? (raw.priority as RealityPriority)
+    : 'medium'
+  const concern = str(raw.concern, ITEM_MAX)
+  const why = str(raw.why, ITEM_MAX)
+  const fix = str(raw.fix, ITEM_MAX)
+  return concern && why && fix ? { priority, concern, why, fix } : null
+}
+
+export function clampRealityCheck(value: unknown): RealityCheckItem[] {
+  if (!Array.isArray(value)) return []
+  return value.slice(0, REALITY_CHECK_COUNT).flatMap((item) => {
+    const checked = clampRealityItem(item)
+    return checked ? [checked] : []
+  })
+}
+
+export function requireRealityCheck(value: unknown): RealityCheckItem[] {
+  const realityCheck = clampRealityCheck(value)
+  if (realityCheck.length !== REALITY_CHECK_COUNT) {
+    throw new Error('The model returned an incomplete reality check.')
+  }
+  return realityCheck
+}
+
+function partialPrd(value: unknown): Partial<Prd> | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const raw = value as Record<string, unknown>
+  const patch: Partial<Prd> = {}
+  for (const field of ['summary', 'problem', 'targetUser', 'userGoal'] as const) {
+    if (field in raw) patch[field] = str(raw[field], PROSE_MAX)
+  }
+  for (const field of ['coreFeatures', 'userStories', 'successCriteria', 'assumptions', 'outOfScope'] as const) {
+    if (field in raw) patch[field] = list(raw[field], PRD_LIST_MAX)
+  }
+  return Object.keys(patch).length ? patch : undefined
+}
+
+function partialBuild(value: unknown): Partial<BuildPlanDraft> | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const raw = value as Record<string, unknown>
+  const patch: Partial<BuildPlanDraft> = {}
+  if ('mvpScope' in raw) patch.mvpScope = list(raw.mvpScope, BUILD_SCOPE_MAX)
+  if ('milestones' in raw) {
+    const clamped = clampBuild({ milestones: raw.milestones }).milestones
+    if (clamped.length) patch.milestones = clamped
+  }
+  if ('risks' in raw) patch.risks = list(raw.risks, BUILD_LIST_MAX)
+  if ('acceptanceTests' in raw) patch.acceptanceTests = list(raw.acceptanceTests, BUILD_LIST_MAX)
+  if ('nextAction' in raw) patch.nextAction = str(raw.nextAction, ITEM_MAX)
+  return Object.keys(patch).length ? patch : undefined
+}
+
+/** Clamp targeted changes without allowing arbitrary data into a response. */
+export function clampChanges(value: unknown): PlanChanges {
+  if (typeof value !== 'object' || value === null) return {}
+  const raw = value as Record<string, unknown>
+  const changes: PlanChanges = {}
+  const prd = partialPrd(raw.prd)
+  if (prd) changes.prd = prd
+  if ('flow' in raw) {
+    // A targeted edit must still satisfy the same diagram contract as a new
+    // plan. Otherwise one malformed refinement can make the workspace
+    // impossible to render or share.
+    try {
+      changes.flow = requireFlow(raw.flow)
+    } catch {
+      // Ignore an invalid flow patch and keep the other safe changes.
+    }
+  }
+  const build = partialBuild(raw.build)
+  if (build) changes.build = build
+  if ('realityCheck' in raw) {
+    const realityCheck = clampRealityCheck(raw.realityCheck)
+    if (realityCheck.length) changes.realityCheck = realityCheck
+  }
+  return changes
+}
+
 // -- a whole plan, on its way into KV ---------------------------------------
 
 /**
@@ -185,8 +365,27 @@ export function clampPlan(value: unknown, id: string, now: number): Plan | Inval
 
   const flow = clampFlow(raw.flow)
   const prd = clampPrd(raw.prd)
-  if (!prd.summary && flow.length === 0) {
+  const build = clampBuild(raw.build)
+  const realityCheck = clampRealityCheck(raw.realityCheck)
+  if (!prd.summary && flow.length === 0 && !build.nextAction) {
     return { message: 'That plan is empty.' }
+  }
+
+  const clientBuild: BuildPlan = {
+    mvpScope: build.mvpScope,
+    milestones: build.milestones.map((milestone, milestoneIndex) => ({
+      id: `${id}-m${milestoneIndex + 1}`,
+      title: milestone.title,
+      outcome: milestone.outcome,
+      tasks: milestone.tasks.map((text, taskIndex) => ({
+        id: `${id}-m${milestoneIndex + 1}-t${taskIndex + 1}`,
+        text,
+        done: false,
+      })),
+    })),
+    risks: build.risks,
+    acceptanceTests: build.acceptanceTests,
+    nextAction: build.nextAction,
   }
 
   return {
@@ -197,6 +396,8 @@ export function clampPlan(value: unknown, id: string, now: number): Plan | Inval
     input,
     prd,
     flow,
+    build: clientBuild,
+    realityCheck,
     shareId: id,
   }
 }

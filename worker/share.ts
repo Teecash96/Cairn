@@ -12,12 +12,13 @@ export async function createShare(
   address: string,
   rawPlan: unknown,
   requestUrl: URL,
+  ip = 'unknown',
 ): Promise<{ shareId: string; url: string }> {
   const shareId = token(12)
   const plan = clampPlan(rawPlan, shareId, Date.now())
   if ('message' in plan) throw new Error(plan.message)
 
-  const gift = (await allowGift(env, address)) ? token(18) : ''
+  const gift = (await allowGift(env, address, ip)) ? token(18) : ''
   const record: ShareRecord = { plan, by: address, createdAt: Date.now(), gift }
   await env.CAIRN.put(`share:${shareId}`, JSON.stringify(record), { expirationTtl: SHARE_TTL })
 
@@ -40,4 +41,3 @@ export async function readShare(env: Env, shareId: string): Promise<ShareRecord 
 export function publicPlan(record: ShareRecord): Plan {
   return { ...record.plan, shareId: record.plan.id }
 }
-
