@@ -6,9 +6,9 @@
  *
  * A Nimiq wallet costs nothing to create. A free tier keyed only to an address is
  * therefore a free tier keyed to nothing: mint a wallet, take three plans, mint
- * another. So the *primary* cap is the device — `requestDeviceIdentifier()` gives
- * a pseudonymous, per-origin identifier that survives a new wallet — with the
- * client IP as a cheap second layer for anyone who declines that prompt.
+ * another. The device identifier improves the user experience across wallets, but
+ * it is client supplied and is not a security boundary. The server observed client
+ * IP is the hard second boundary, including when a caller submits fake device ids.
  *
  * Declining the device prompt must not block anything. It only means the IP cap
  * is the one doing the work.
@@ -108,7 +108,11 @@ async function claimFreeAllowance(
   ip: string,
 ): Promise<boolean> {
   if (deviceId) {
-    const key = `device:${deviceId}`
+    // Device identifiers come from the client. Hash them before using them as KV
+    // key material so the opaque value is never stored or exposed in a key name.
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(deviceId))
+    const deviceHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+    const key = `device:${deviceHash}`
     const record = (await env.CAIRN.get<DeviceRecord>(key, 'json')) ?? {
       addresses: [],
       granted: 0,
@@ -116,6 +120,9 @@ async function claimFreeAllowance(
     if (record.addresses.includes(address)) return true
     if (record.addresses.length >= FREE_WALLETS_PER_DEVICE) return false
 
+    // The device id is only an additional cap. Every new address must also pass
+    // the server observed IP cap, so random ids cannot mint unlimited free wallets.
+    if (!(await claimIpAllowance(env, address, ip))) return false
     record.addresses.push(address)
     record.granted += 1
     await env.CAIRN.put(key, JSON.stringify(record))
@@ -125,6 +132,11 @@ async function claimFreeAllowance(
   // No device identifier — the prompt was declined, or we are on a browser that
   // has none. Fall back to the IP, which is coarser and shared behind NAT, hence
   // the slightly higher allowance.
+  return claimIpAllowance(env, address, ip)
+}
+
+/** Claim one of the hard server observed IP allowances. */
+async function claimIpAllowance(env: Env, address: string, ip: string): Promise<boolean> {
   const key = `ipfree:${today()}:${ip}`
   const record = (await env.CAIRN.get<DeviceRecord>(key, 'json')) ?? { addresses: [], granted: 0 }
   if (record.addresses.includes(address)) return true
@@ -231,10 +243,20 @@ export async function allowGift(env: Env, address: string, ip = 'unknown'): Prom
 
 /** True when this address is asking faster than any person would. */
 export async function tooFast(env: Env, address: string, scope = 'address'): Promise<boolean> {
+  return tooFastByKey(env, address, scope)
+}
+
+/** Generic per-minute limiter for both wallet routes and unauthenticated auth endpoints. */
+export async function tooFastByKey(
+  env: Env,
+  keyPart: string,
+  scope = 'address',
+  limit = REQUESTS_PER_MINUTE,
+): Promise<boolean> {
   const minute = Math.floor(Date.now() / 60_000)
-  const key = `rl:${scope}:${address}:${minute}`
+  const key = `rl:${scope}:${keyPart}:${minute}`
   const used = (await env.CAIRN.get<number>(key, 'json')) ?? 0
-  if (used >= REQUESTS_PER_MINUTE) return true
+  if (used >= limit) return true
   await env.CAIRN.put(key, JSON.stringify(used + 1), { expirationTtl: 120 })
   return false
 }

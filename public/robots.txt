@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://cairn.cairn-planner.workers.dev/sitemap.xml

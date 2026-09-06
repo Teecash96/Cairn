@@ -52,7 +52,7 @@ export function stubPrd(input: PlanInput): Prd {
   return {
     summary:
       `${thing} — a placeholder plan generated offline, so the layout can be reviewed ` +
-      `before the AI backend is connected. Real output is written by Claude from your ` +
+      `before the AI backend is connected. Real output is written by Gemini from your ` +
       `own description and reads nothing like this.`,
     problem: `Today, ${pain(input)}. That cost is absorbed quietly and repeatedly.`,
     targetUser: who.charAt(0).toUpperCase() + who.slice(1),
@@ -209,7 +209,7 @@ export interface StubRefinement {
  * The real Worker owns the AI key. When `vite dev` runs without a Worker there
  * is no honest network result to show, so these small, clearly labelled changes
  * keep the follow-up interaction reviewable without pretending they came from
- * Claude.
+ * Gemini.
  */
 export function stubRefinement(plan: Plan, action: RefineAction, question?: string): StubRefinement {
   if (action === 'cut_mvp_scope') {

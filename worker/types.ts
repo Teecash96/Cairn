@@ -20,8 +20,8 @@ export interface Env {
   ASSETS: Fetcher
 
   /** Encrypted secret binding. Never in the repo. */
-  ANTHROPIC_API_KEY: string
-  ANTHROPIC_MODEL?: string
+  GEMINI_API_KEY: string
+  GEMINI_MODEL?: string
 
   PAY_TO: string
   /** Numbers arrive as strings; `intVar()` in index.ts parses them. */
@@ -163,6 +163,20 @@ export interface PriceQuote {
   payTo: string
 }
 
+export interface AuthChallengeRecord {
+  address: string
+  message: string
+  expiresAt: number
+  ip: string
+  used?: boolean
+}
+
+export interface SessionRecord {
+  address: string
+  createdAt: number
+  expiresAt: number
+}
+
 export type ApiErrorCode =
   | 'payment_required'
   | 'payment_not_found'
@@ -172,6 +186,7 @@ export type ApiErrorCode =
   | 'not_found'
   | 'generation_failed'
   | 'network'
+  | 'auth_required'
   | 'server'
 
 // -- stored records ---------------------------------------------------------

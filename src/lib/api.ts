@@ -65,6 +65,18 @@ export interface SharedPlanResult {
   gift?: string
 }
 
+export interface AuthChallenge {
+  challenge: string
+  message: string
+  expiresAt: number
+}
+
+export interface AuthResult {
+  token: string
+  address: string
+  expiresAt: number
+}
+
 export type RefineAction =
   | 'cut_mvp_scope'
   | 'break_into_tasks'
@@ -102,6 +114,7 @@ export type ApiErrorCode =
   | 'not_found'
   | 'generation_failed'
   | 'network'
+  | 'auth_required'
   | 'server'
 
 export class ApiError extends Error {
@@ -138,6 +151,26 @@ export class ApiError extends Error {
 
 const BASE: string = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/+$/, '') ?? ''
 
+// Sessions are deliberately memory-only. A short-lived bearer token is safer
+// here than a persistent cookie because the mini app has no account system and
+// must not leave wallet authority in localStorage.
+let authToken: string | null = null
+let authAddress: string | null = null
+
+export function setAuthToken(token: string, address: string): void {
+  authToken = token
+  authAddress = address
+}
+
+export function clearAuthToken(): void {
+  authToken = null
+  authAddress = null
+}
+
+export function hasAuthToken(address: string): boolean {
+  return Boolean(authToken && authAddress === address)
+}
+
 /** Generation can take a while; everything else should be quick. */
 const TIMEOUT_MS = { generate: 60_000, default: 15_000 }
 
@@ -160,6 +193,7 @@ function isErrorCode(value: unknown): value is ApiErrorCode {
       'not_found',
       'generation_failed',
       'network',
+      'auth_required',
       'server',
     ].includes(value)
   )
@@ -167,9 +201,11 @@ function isErrorCode(value: unknown): value is ApiErrorCode {
 
 async function request<T>(
   path: string,
-  init: RequestInit & { timeoutMs?: number } = {},
+  init: RequestInit & { timeoutMs?: number; auth?: boolean } = {},
 ): Promise<T> {
-  const { timeoutMs = TIMEOUT_MS.default, ...options } = init
+  const { timeoutMs = TIMEOUT_MS.default, auth = false, ...options } = init
+
+  if (auth && !authToken) throw new ApiError('auth_required', 'Sign in with your Nimiq wallet first.', 401)
 
   // AbortSignal.timeout is not in every WebView; fall back to a manual controller.
   const controller = new AbortController()
@@ -180,7 +216,11 @@ async function request<T>(
     response = await fetch(`${BASE}/api${path}`, {
       ...options,
       signal: controller.signal,
-      headers: { 'content-type': 'application/json', ...options.headers },
+      headers: {
+        'content-type': 'application/json',
+        ...(authToken && auth ? { authorization: `Bearer ${authToken}` } : {}),
+        ...options.headers,
+      },
     })
   } catch (error) {
     // Network failure, CORS, or our own abort — indistinguishable and all offline.
@@ -215,6 +255,8 @@ async function request<T>(
           ? 'rate_limited'
           : 'server'
 
+  if (code === 'auth_required') clearAuthToken()
+
   throw new ApiError(code, body.message ?? 'Something went wrong.', response.status, {
     price: body.price,
     credits: body.credits,
@@ -237,6 +279,7 @@ export function generatePlan(body: GenerateRequest): Promise<GenerateResult> {
     method: 'POST',
     body: JSON.stringify(body),
     timeoutMs: TIMEOUT_MS.generate,
+    auth: true,
   })
 }
 
@@ -244,7 +287,24 @@ export function generatePlan(body: GenerateRequest): Promise<GenerateResult> {
 export function getCredits(address: string, deviceId?: string | null): Promise<CreditsResult> {
   const params = new URLSearchParams({ address })
   if (deviceId) params.set('deviceId', deviceId)
-  return request<CreditsResult>(`/credits?${params.toString()}`)
+  return request<CreditsResult>(`/credits?${params.toString()}`, { auth: true })
+}
+
+export function getAuthChallenge(address: string): Promise<AuthChallenge> {
+  const params = new URLSearchParams({ address })
+  return request<AuthChallenge>(`/auth/challenge?${params.toString()}`)
+}
+
+export function verifyAuth(body: {
+  address: string
+  challenge: string
+  publicKey: string
+  signature: string
+}): Promise<AuthResult> {
+  return request<AuthResult>('/auth/verify', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
 }
 
 /**
@@ -263,6 +323,7 @@ export function redeemPayment(
   return request<RedeemResult>('/redeem', {
     method: 'POST',
     body: JSON.stringify({ address, receipt, deviceId }),
+    auth: true,
   })
 }
 
@@ -271,6 +332,7 @@ export function sharePlan(address: string, plan: Plan): Promise<ShareResult> {
   return request<ShareResult>('/share', {
     method: 'POST',
     body: JSON.stringify({ address, plan }),
+    auth: true,
   })
 }
 
@@ -284,5 +346,6 @@ export function refinePlan(body: RefineRequest): Promise<RefineResult> {
     method: 'POST',
     body: JSON.stringify(body),
     timeoutMs: TIMEOUT_MS.generate,
+    auth: true,
   })
 }

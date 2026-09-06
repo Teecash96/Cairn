@@ -19,7 +19,7 @@ class MemoryKV {
 }
 
 const config: Config = {
-  model: 'claude-sonnet-5',
+  model: 'gemini-3.1-flash-lite',
   priceLuna: 1_000_000,
   plansPerPayment: 10,
   freePlans: 3,

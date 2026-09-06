@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { allowGift, claimGift, grantPaid, spendOne, stateOf, tooFast } from '../../worker/credits.ts'
+import { allowGift, claimGift, ensureCredits, grantPaid, spendOne, stateOf, tooFast } from '../../worker/credits.ts'
+import type { Config } from '../../worker/config.ts'
 import type { CreditRecord, Env, GiftRecord } from '../../worker/types.ts'
 
 class MemoryKV {
@@ -19,6 +20,18 @@ class MemoryKV {
 
 function env(kv: MemoryKV): Env {
   return { CAIRN: kv as unknown as KVNamespace } as Env
+}
+
+const config: Config = {
+  model: 'gemini-3.1-flash-lite',
+  priceLuna: 1_000_000,
+  plansPerPayment: 10,
+  freePlans: 3,
+  dailyBudget: 400,
+  rpcUrl: '',
+  payTo: null,
+  appUrl: '',
+  trustPaymentsInDev: false,
 }
 
 test('spends free credits before paid credits', async () => {
@@ -66,4 +79,17 @@ test('rate-limit scopes do not collide across expensive routes', async () => {
   const kv = new MemoryKV()
   assert.equal(await tooFast(env(kv), 'wallet-a', 'redeem'), false)
   assert.equal(await tooFast(env(kv), 'wallet-a', 'share'), false)
+})
+
+test('fake device identifiers cannot bypass the server observed IP free cap', async () => {
+  const kv = new MemoryKV()
+  const ip = '198.51.100.20'
+
+  for (let index = 0; index < 3; index += 1) {
+    const record = await ensureCredits(env(kv), config, `wallet-${index}`, `fake-device-${index}`, ip)
+    assert.equal(record.free, 3)
+  }
+
+  const fourth = await ensureCredits(env(kv), config, 'wallet-3', 'another-fake-device', ip)
+  assert.equal(fourth.free, 0)
 })

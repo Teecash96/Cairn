@@ -11,8 +11,149 @@ import type {
 } from './types'
 import { clampChanges, clampPrd, requireBuild, requireFlow, requireRealityCheck } from './shape'
 
-interface AnthropicResponse {
-  content?: Array<{ type?: string; text?: string }>
+interface GeminiResponse {
+  candidates?: Array<{
+    content?: { parts?: Array<{ text?: string }> }
+  }>
+  error?: { message?: string }
+}
+
+type JsonSchema = Record<string, unknown>
+
+const GEMINI_TIMEOUT_MS = 45_000
+const GEMINI_MAX_RESPONSE_BYTES = 512 * 1024
+
+const TEXT_SCHEMA: JsonSchema = { type: 'string' }
+
+function listSchema(maxItems?: number): JsonSchema {
+  const schema: JsonSchema = { type: 'array', items: TEXT_SCHEMA }
+  if (maxItems !== undefined) schema.maxItems = maxItems
+  return schema
+}
+
+const PRD_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    summary: TEXT_SCHEMA,
+    problem: TEXT_SCHEMA,
+    targetUser: TEXT_SCHEMA,
+    userGoal: TEXT_SCHEMA,
+    coreFeatures: listSchema(5),
+    userStories: listSchema(5),
+    successCriteria: listSchema(5),
+    assumptions: listSchema(5),
+    outOfScope: listSchema(5),
+  },
+  required: ['summary', 'problem', 'targetUser', 'userGoal', 'coreFeatures', 'userStories', 'successCriteria', 'assumptions', 'outOfScope'],
+  additionalProperties: false,
+}
+
+const FLOW_BRANCH_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: { label: TEXT_SCHEMA, result: TEXT_SCHEMA },
+  required: ['label', 'result'],
+  additionalProperties: false,
+}
+
+const FLOW_STEP_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    kind: { type: 'string', enum: ['entry', 'action', 'decision', 'success', 'exit'] },
+    title: TEXT_SCHEMA,
+    action: TEXT_SCHEMA,
+    result: TEXT_SCHEMA,
+    branches: { type: 'array', items: FLOW_BRANCH_SCHEMA, minItems: 2, maxItems: 2 },
+  },
+  required: ['kind', 'title', 'action', 'result'],
+  additionalProperties: false,
+}
+
+const BUILD_MILESTONE_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: { title: TEXT_SCHEMA, outcome: TEXT_SCHEMA, tasks: listSchema(6) },
+  required: ['title', 'outcome', 'tasks'],
+  additionalProperties: false,
+}
+
+const BUILD_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    mvpScope: listSchema(5),
+    milestones: { type: 'array', items: BUILD_MILESTONE_SCHEMA, minItems: 3, maxItems: 3 },
+    risks: listSchema(5),
+    acceptanceTests: listSchema(5),
+    nextAction: TEXT_SCHEMA,
+  },
+  required: ['mvpScope', 'milestones', 'risks', 'acceptanceTests', 'nextAction'],
+  additionalProperties: false,
+}
+
+const REALITY_ITEM_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    priority: { type: 'string', enum: ['high', 'medium', 'low'] },
+    concern: TEXT_SCHEMA,
+    why: TEXT_SCHEMA,
+    fix: TEXT_SCHEMA,
+  },
+  required: ['priority', 'concern', 'why', 'fix'],
+  additionalProperties: false,
+}
+
+const PLAN_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    prd: PRD_SCHEMA,
+    flow: { type: 'array', items: FLOW_STEP_SCHEMA, minItems: 5, maxItems: 8 },
+    build: BUILD_SCHEMA,
+    realityCheck: { type: 'array', items: REALITY_ITEM_SCHEMA, minItems: 3, maxItems: 3 },
+  },
+  required: ['prd', 'flow', 'build', 'realityCheck'],
+  additionalProperties: false,
+}
+
+const REFINEMENT_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    answer: TEXT_SCHEMA,
+    explanation: TEXT_SCHEMA,
+    changes: {
+      type: 'object',
+      properties: {
+        prd: {
+          type: 'object',
+          properties: {
+            summary: TEXT_SCHEMA,
+            problem: TEXT_SCHEMA,
+            targetUser: TEXT_SCHEMA,
+            userGoal: TEXT_SCHEMA,
+            coreFeatures: listSchema(5),
+            userStories: listSchema(5),
+            successCriteria: listSchema(5),
+            assumptions: listSchema(5),
+            outOfScope: listSchema(5),
+          },
+          additionalProperties: false,
+        },
+        flow: { type: 'array', items: FLOW_STEP_SCHEMA, minItems: 5, maxItems: 8 },
+        build: {
+          type: 'object',
+          properties: {
+            mvpScope: listSchema(5),
+            milestones: { type: 'array', items: BUILD_MILESTONE_SCHEMA, minItems: 3, maxItems: 3 },
+            risks: listSchema(5),
+            acceptanceTests: listSchema(5),
+            nextAction: TEXT_SCHEMA,
+          },
+          additionalProperties: false,
+        },
+        realityCheck: { type: 'array', items: REALITY_ITEM_SCHEMA, minItems: 1, maxItems: 3 },
+      },
+      additionalProperties: false,
+    },
+  },
+  required: ['explanation', 'changes'],
+  additionalProperties: false,
 }
 
 export interface GeneratedPlan {
@@ -143,36 +284,66 @@ function parseJson(value: string): unknown {
   return JSON.parse(cleaned)
 }
 
-async function askAnthropic(config: Config, key: string, content: string, maxTokens: number): Promise<unknown> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: config.model,
-      max_tokens: maxTokens,
-      temperature: 0.2,
-      system: 'You produce practical product documents. Be concise and honest.',
-      messages: [{ role: 'user', content }],
-    }),
-  })
+async function askGemini(
+  config: Config,
+  key: string,
+  content: string,
+  maxTokens: number,
+  schema: JsonSchema,
+): Promise<unknown> {
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS)
+  let response: Response
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-goog-api-key': key,
+      },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: content }] }],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: maxTokens,
+          responseMimeType: 'application/json',
+          responseSchema: schema,
+        },
+      }),
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timer)
+  }
 
-  if (!response.ok) throw new Error(`Anthropic returned ${response.status}.`)
-  const body = (await response.json()) as AnthropicResponse
-  const output = body.content?.find((item) => item.type === 'text')?.text
+  const declared = Number(response.headers.get('content-length') ?? '0')
+  if (Number.isFinite(declared) && declared > GEMINI_MAX_RESPONSE_BYTES) {
+    throw new Error('The model response was too large.')
+  }
+  const bodyText = await response.text()
+  if (new TextEncoder().encode(bodyText).byteLength > GEMINI_MAX_RESPONSE_BYTES) {
+    throw new Error('The model response was too large.')
+  }
+  const body = JSON.parse(bodyText) as GeminiResponse
+  if (!response.ok) {
+    const detail = body.error?.message ? `: ${body.error.message}` : ''
+    throw new Error(`Gemini returned ${response.status}${detail}`)
+  }
+  const output = body.candidates
+    ?.flatMap((candidate) => candidate.content?.parts ?? [])
+    .map((part) => part.text ?? '')
+    .find(Boolean)
   if (!output) throw new Error('The model returned no plan.')
   return parseJson(output)
 }
 
-export async function generateWithAnthropic(
+export async function generateWithGemini(
   config: Config,
   key: string,
   input: PlanInput,
 ): Promise<GeneratedPlan> {
-  const parsed = await askAnthropic(config, key, prompt(input), 5000)
+  const parsed = await askGemini(config, key, prompt(input), 5000, PLAN_SCHEMA)
   if (typeof parsed !== 'object' || parsed === null) throw new Error('The model returned an invalid plan.')
   const raw = parsed as Record<string, unknown>
   return {
@@ -183,14 +354,14 @@ export async function generateWithAnthropic(
   }
 }
 
-export async function refineWithAnthropic(
+export async function refineWithGemini(
   config: Config,
   key: string,
   plan: Plan,
   action: RefineAction,
   question?: string,
 ): Promise<GeneratedRefinement> {
-  const parsed = await askAnthropic(config, key, refinementPrompt(plan, action, question), 3200)
+  const parsed = await askGemini(config, key, refinementPrompt(plan, action, question), 3200, REFINEMENT_SCHEMA)
   if (typeof parsed !== 'object' || parsed === null) throw new Error('The model returned an invalid refinement.')
   const raw = parsed as Record<string, unknown>
   const explanation = text(raw.explanation, 500)

@@ -1,7 +1,8 @@
 import { budgetLeft, chargeBudget, claimGift, ensureCredits, isSpent, markSpent, readCredits, spendOne, grantPaid, tooFast, stateOf } from './credits'
+import { createChallenge, requireSession, verifyChallenge, type AuthSession } from './auth'
 import { readConfig, quote } from './config'
-import { fail, clientIp, corsHeaders, isLocalHost, json, normalizeAddress, readJson } from './http'
-import { generateWithAnthropic, refineWithAnthropic } from './generate'
+import { fail, clientIp, corsHeaders, isLocalHost, json, normalizeAddress, readJson, securityHeaders } from './http'
+import { generateWithGemini, refineWithGemini } from './generate'
 import { verifyPayment } from './payments'
 import { clampPlan, isInvalid, readPlanInput } from './shape'
 import { createShare, publicPlan, readShare } from './share'
@@ -54,8 +55,36 @@ async function addressAndCredits(env: Env, request: Request, addressValue: unkno
   return { address, config, record }
 }
 
-async function handleCredits(env: Env, request: Request, url: URL, cors: Record<string, string>): Promise<Response> {
-  const context = await addressAndCredits(env, request, url.searchParams.get('address'), url.searchParams.get('deviceId'))
+function authenticatedAddress(raw: Record<string, unknown>, session: AuthSession): string | null {
+  if (raw.address === undefined) return session.address
+  const supplied = addressFrom(raw.address)
+  return supplied === session.address ? session.address : null
+}
+
+function authRequired(cors: Record<string, string>): Response {
+  return fail('auth_required', 'Sign in with your Nimiq wallet first.', 401, cors)
+}
+
+async function handleAuthChallenge(env: Env, request: Request, url: URL, cors: Record<string, string>): Promise<Response> {
+  const address = addressFrom(url.searchParams.get('address'))
+  if (!address) return fail('invalid_request', 'Connect a valid Nimiq wallet.', 400, cors)
+  const challenge = await createChallenge(env, request, address)
+  if (!challenge) return fail('rate_limited', 'Please wait before requesting another sign in challenge.', 429, cors)
+  return json(challenge, 200, cors)
+}
+
+async function handleAuthVerify(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
+  const raw = await readJson(request, 8 * 1024)
+  if (!bodyRecord(raw)) return fail('invalid_request', 'The sign in request is invalid.', 400, cors)
+  const result = await verifyChallenge(env, request, raw)
+  if (!result) return authRequired(cors)
+  return json(result, 200, cors)
+}
+
+async function handleCredits(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  const context = await addressAndCredits(env, request, session.address, null)
   if (!context) return fail('invalid_request', 'Connect a valid Nimiq wallet.', 400, cors)
   return json({ credits: stateOf(context.record), price: context.config.payTo ? quote(context.config, context.config.payTo) : null }, 200, cors)
 }
@@ -63,7 +92,9 @@ async function handleCredits(env: Env, request: Request, url: URL, cors: Record<
 async function handleGenerate(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
   const raw = bodyRecord(await readJson(request))
   if (!raw) return fail('invalid_request', 'The request body is invalid.', 400, cors)
-  const context = await addressAndCredits(env, request, raw.address, raw.deviceId)
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  const context = await addressAndCredits(env, request, authenticatedAddress(raw, session), raw.deviceId)
   if (!context) return fail('invalid_request', 'Connect a valid Nimiq wallet.', 400, cors)
   const input = readPlanInput(raw.input)
   if (isInvalid(input)) return fail('invalid_request', input.message, 400, cors)
@@ -78,11 +109,11 @@ async function handleGenerate(env: Env, request: Request, cors: Record<string, s
   }
   if (await tooFast(env, context.address)) return fail('rate_limited', 'Please wait a moment before generating again.', 429, cors)
   if (await budgetLeft(env, context.config) < 1) return fail('budget_exhausted', 'Today’s generation limit has been reached. Try again tomorrow.', 429, cors)
-  if (!env.ANTHROPIC_API_KEY) return fail('server', 'Cairn is not configured with an AI key yet.', 503, cors)
+  if (!env.GEMINI_API_KEY) return fail('server', 'Cairn is not configured with an AI key yet.', 503, cors)
 
   await chargeBudget(env)
   try {
-    const result = await generateWithAnthropic(context.config, env.ANTHROPIC_API_KEY, input as PlanInput)
+    const result = await generateWithGemini(context.config, env.GEMINI_API_KEY, input as PlanInput)
     const credits = await spendOne(env, context.address, refreshed)
     return json({ ...result, credits }, 200, cors)
   } catch {
@@ -93,7 +124,9 @@ async function handleGenerate(env: Env, request: Request, cors: Record<string, s
 async function handleRefine(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
   const raw = bodyRecord(await readJson(request))
   if (!raw) return fail('invalid_request', 'The request body is invalid.', 400, cors)
-  const context = await addressAndCredits(env, request, raw.address, raw.deviceId)
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  const context = await addressAndCredits(env, request, authenticatedAddress(raw, session), raw.deviceId)
   if (!context) return fail('invalid_request', 'Connect a valid Nimiq wallet.', 400, cors)
 
   const action = refineAction(raw.action)
@@ -122,11 +155,11 @@ async function handleRefine(env: Env, request: Request, cors: Record<string, str
   }
   if (await tooFast(env, context.address)) return fail('rate_limited', 'Please wait a moment before asking again.', 429, cors)
   if (await budgetLeft(env, context.config) < 1) return fail('budget_exhausted', 'Today’s generation limit has been reached. Try again tomorrow.', 429, cors)
-  if (!env.ANTHROPIC_API_KEY) return fail('server', 'Cairn is not configured with an AI key yet.', 503, cors)
+  if (!env.GEMINI_API_KEY) return fail('server', 'Cairn is not configured with an AI key yet.', 503, cors)
 
   await chargeBudget(env)
   try {
-    const result = await refineWithAnthropic(context.config, env.ANTHROPIC_API_KEY, plan, action, question)
+    const result = await refineWithGemini(context.config, env.GEMINI_API_KEY, plan, action, question)
     const credits = await spendOne(env, context.address, refreshed)
     return json({ ...result, credits }, 200, cors)
   } catch {
@@ -137,7 +170,9 @@ async function handleRefine(env: Env, request: Request, cors: Record<string, str
 async function handleRedeem(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
   const raw = bodyRecord(await readJson(request))
   if (!raw) return fail('invalid_request', 'The request body is invalid.', 400, cors)
-  const context = await addressAndCredits(env, request, raw.address, raw.deviceId)
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  const context = await addressAndCredits(env, request, authenticatedAddress(raw, session), raw.deviceId)
   if (!context || typeof raw.receipt !== 'string' || raw.receipt.length > 4096) return fail('invalid_request', 'Payment details are invalid.', 400, cors)
   if (await tooFast(env, context.address, 'redeem')) return fail('rate_limited', 'Please wait a moment before checking that payment again.', 429, cors)
   const receipt = raw.receipt.trim()
@@ -158,7 +193,9 @@ async function handleRedeem(env: Env, request: Request, cors: Record<string, str
 async function handleShare(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
   const raw = bodyRecord(await readJson(request))
   if (!raw) return fail('invalid_request', 'The request body is invalid.', 400, cors)
-  const address = addressFrom(raw.address)
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  const address = authenticatedAddress(raw, session)
   if (!address) return fail('invalid_request', 'Connect a valid Nimiq wallet.', 400, cors)
   if (await tooFast(env, address, 'share')) return fail('rate_limited', 'Please wait a moment before sharing again.', 429, cors)
   try {
@@ -170,10 +207,20 @@ async function handleShare(env: Env, request: Request, cors: Record<string, stri
 }
 
 async function route(env: Env, request: Request): Promise<Response> {
-  const cors = corsHeaders(request)
-  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors })
   const url = new URL(request.url)
-  if (url.pathname === '/api/credits' && request.method === 'GET') return handleCredits(env, request, url, cors)
+  if (url.protocol === 'http:' && !isLocalHost(url.hostname)) {
+    const target = new URL(request.url)
+    target.protocol = 'https:'
+    return new Response(null, {
+      status: 301,
+      headers: securityHeaders({ location: target.toString() }, false),
+    })
+  }
+  const cors = corsHeaders(request)
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: securityHeaders(cors, url.protocol === 'https:') })
+  if (url.pathname === '/api/auth/challenge' && request.method === 'GET') return handleAuthChallenge(env, request, url, cors)
+  if (url.pathname === '/api/auth/verify' && request.method === 'POST') return handleAuthVerify(env, request, cors)
+  if (url.pathname === '/api/credits' && request.method === 'GET') return handleCredits(env, request, cors)
   if (url.pathname === '/api/generate' && request.method === 'POST') return handleGenerate(env, request, cors)
   if (url.pathname === '/api/refine' && request.method === 'POST') return handleRefine(env, request, cors)
   if (url.pathname === '/api/redeem' && request.method === 'POST') return handleRedeem(env, request, cors)
@@ -184,7 +231,25 @@ async function route(env: Env, request: Request): Promise<Response> {
     if (!record) return fail('not_found', 'That share link has expired.', 404, cors)
     return json({ plan: publicPlan(record), gift: record.gift || undefined }, 200, cors)
   }
-  return env.ASSETS.fetch(request)
+  const asset = await env.ASSETS.fetch(request)
+  if (asset.status !== 404 || url.pathname === '/404.html') {
+    return new Response(asset.body, { status: asset.status, statusText: asset.statusText, headers: securityHeaders(asset.headers, url.protocol === 'https:') })
+  }
+
+  // Cloudflare's asset binding returns its own plain 404 by default. Serve the
+  // branded page while preserving the 404 status, so browsers and crawlers do
+  // not mistake a missing route for a valid page.
+  const notFoundUrl = new URL('/404.html', request.url)
+  const notFoundRequest = new Request(notFoundUrl, {
+    method: 'GET',
+    headers: request.headers,
+  })
+  const notFound = await env.ASSETS.fetch(notFoundRequest)
+  return new Response(notFound.body, {
+    status: 404,
+    statusText: 'Not Found',
+    headers: securityHeaders(notFound.headers, url.protocol === 'https:'),
+  })
 }
 
 export default { fetch(request: Request, env: Env): Promise<Response> { return route(env, request) } }

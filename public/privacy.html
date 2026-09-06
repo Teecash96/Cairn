@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="index, follow" />
+    <meta
+      name="description"
+      content="Cairn privacy policy. Learn what stays on your device, what is sent for generation, and what sharing does."
+    />
+    <link rel="canonical" href="https://cairn.cairn-planner.workers.dev/privacy" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Cairn" />
+    <meta property="og:url" content="https://cairn.cairn-planner.workers.dev/privacy" />
+    <meta property="og:title" content="Cairn privacy policy" />
+    <meta property="og:description" content="What Cairn stores, sends, and shares." />
+    <meta property="og:image" content="https://cairn.cairn-planner.workers.dev/social-card.svg" />
+    <meta property="og:image:alt" content="Cairn turns a rough idea into a product plan." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Cairn privacy policy" />
+    <meta name="twitter:description" content="What Cairn stores, sends, and shares." />
+    <meta name="twitter:image" content="https://cairn.cairn-planner.workers.dev/social-card.svg" />
+    <title>Cairn privacy policy</title>
+    <link rel="stylesheet" href="/site.css" />
+  </head>
+  <body>
+    <div class="site">
+      <header class="site-header">
+        <a class="brand" href="/">
+          <img src="/icon.svg" alt="Cairn logo" width="28" height="28" />
+          <span>Cairn</span>
+        </a>
+        <nav class="site-nav" aria-label="Primary">
+          <a href="/case-studies">Examples</a>
+          <a href="/faq">FAQ</a>
+          <a href="/privacy" aria-current="page">Privacy</a>
+        </nav>
+      </header>
+
+      <nav class="breadcrumbs" aria-label="Breadcrumb">
+        <a href="/">Cairn</a>
+        <span aria-hidden="true">›</span>
+        <span aria-current="page">Privacy</span>
+      </nav>
+
+      <main>
+        <p class="eyebrow">Plain language</p>
+        <h1>Cairn privacy policy</h1>
+        <p class="lede">This page explains what the mini app sends, stores, and shares. Last updated 6 September 2026.</p>
+
+        <section class="card">
+          <h2>What stays on your device</h2>
+          <p>Your saved plans are stored in your browser's local storage. Cairn does not require an account, sign in, team space, or contact list.</p>
+        </section>
+
+        <section class="card">
+          <h2>What is sent for generation</h2>
+          <p>When you generate or refine a plan, the text you submit is sent to Cairn's Cloudflare Worker. The Worker sends the request to Google Gemini to produce the response. Cairn does not put an API key in the app.</p>
+        </section>
+
+        <section class="card">
+          <h2>Wallet and device information</h2>
+          <p>Cairn receives the connected Nimiq wallet address to manage planner credits and verify NIM payments. Your wallet signs a short lived login challenge. Cairn does not receive or store your private key. If you allow it, the Nimiq mini app SDK also provides a pseudonymous device identifier. It is used to limit free plan abuse. Declining it does not block the app.</p>
+        </section>
+
+        <section class="card">
+          <h2>Refinement and network limits</h2>
+          <p>A planner follow up sends the current plan and your selected question to Cairn's Worker and Google Gemini for that one response. Cairn also uses a short lived, sanitized network address in abuse rate counters. It is not used for analytics or advertising.</p>
+        </section>
+
+        <section class="card">
+          <h2>Sharing</h2>
+          <p>Nothing is shared until you tap Share. A shared plan is uploaded to the Worker so another person can open its read only link. Do not share confidential material.</p>
+        </section>
+
+        <section class="card">
+          <h2>Tracking and analytics</h2>
+          <p>Cairn has no Google Analytics, advertising pixels, or third party tracking script. This keeps the mini app small and matches its privacy promise.</p>
+        </section>
+
+        <section class="card">
+          <h2>Security and retention</h2>
+          <p>Cloudflare manages encryption at rest for server records. Wallet sessions expire after twelve hours and login challenges expire after five minutes. Shared plans are bearer links and remain available for up to one year, unless the storage provider removes them sooner. Do not put confidential material in a shared plan.</p>
+        </section>
+
+        <section class="card">
+          <h2>Questions</h2>
+          <p>For a privacy question or a correction request, open an issue in the public <a href="https://github.com/Teecash96/Cairn/issues">Cairn repository</a>. Do not include private wallet keys or confidential product documents.</p>
+        </section>
+
+        <div class="cta-row">
+          <a class="cta" href="/">Open Cairn</a>
+          <a class="cta cta--quiet" href="/faq">Read the FAQ</a>
+        </div>
+      </main>
+
+      <footer class="site-footer">
+        <span>© 2026 Cairn</span>
+        <a href="/case-studies">Examples</a>
+        <a href="https://github.com/Teecash96/Cairn">Source code</a>
+      </footer>
+    </div>
+  </body>
+</html>

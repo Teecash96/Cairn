@@ -112,9 +112,25 @@ function submit(): void {
         Describe what you have in mind. Cairn turns the messy first thought into a clear product
         brief and a flow your team can follow.
       </p>
+      <p class="response-promise">Most plans are ready in under 30 seconds.</p>
     </header>
 
-    <form class="form" @submit.prevent="submit">
+    <form id="new-plan-form" class="form" aria-label="Create a product plan" @submit.prevent="submit">
+      <div class="field">
+        <label class="field__label" for="name">
+          Project name
+          <span class="field__optional">Optional</span>
+        </label>
+        <input
+          id="name"
+          v-model="name"
+          class="input"
+          :disabled="busy"
+          placeholder="Untitled"
+          autocapitalize="words"
+        />
+      </div>
+
       <div class="idea-field">
         <div class="idea-field__heading">
           <label class="field__label" for="idea">Your starting point</label>
@@ -129,6 +145,8 @@ function submit(): void {
           autocapitalize="sentences"
           autocorrect="on"
           spellcheck="true"
+          required
+          aria-required="true"
         />
 
         <div v-if="!idea.trim()" class="examples">
@@ -146,19 +164,21 @@ function submit(): void {
         </div>
       </div>
 
-      <div class="field">
-        <label class="field__label" for="name">
-          Project name
-          <span class="field__optional">Optional</span>
-        </label>
-        <input
-          id="name"
-          v-model="name"
-          class="input"
-          :disabled="busy"
-          placeholder="Untitled"
-          autocapitalize="words"
-        />
+      <div class="submit">
+        <button type="submit" class="btn btn--primary btn--block" :disabled="!ready || busy">
+          <span v-if="busy" class="dot" aria-hidden="true"></span>
+          {{ busy ? PHASES[phase] + '…' : 'Generate plan' }}
+        </button>
+
+        <p v-if="busy" class="foot faint" aria-live="polite">
+          Most plans are ready in under 30 seconds.
+        </p>
+        <p v-else-if="!ready && idea.trim()" class="foot faint">
+          A little more detail and it will have something to work with.
+        </p>
+        <p v-else-if="freeLeft !== null && freeLeft > 0" class="foot muted">
+          {{ freeLeft }} free {{ freeLeft === 1 ? 'plan' : 'plans' }} left. No card, no account.
+        </p>
       </div>
 
       <button
@@ -206,29 +226,18 @@ function submit(): void {
           />
         </div>
       </template>
-
-      <div class="submit">
-        <button type="submit" class="btn btn--primary btn--block" :disabled="!ready || busy">
-          <span v-if="busy" class="dot" aria-hidden="true"></span>
-          {{ busy ? PHASES[phase] + '…' : 'Generate plan' }}
-        </button>
-
-        <p v-if="busy" class="foot faint" aria-live="polite">
-          Usually about twenty seconds.
-        </p>
-        <p v-else-if="!ready && idea.trim()" class="foot faint">
-          A little more detail and it will have something to work with.
-        </p>
-        <p v-else-if="freeLeft !== null && freeLeft > 0" class="foot muted">
-          {{ freeLeft }} free {{ freeLeft === 1 ? 'plan' : 'plans' }} left — no card, no account.
-        </p>
-      </div>
     </form>
 
     <p v-if="showDisclosure" class="disclosure faint">
-      What leaves your phone: the description above, sent to Anthropic's Claude to write the plan.
+      What leaves your phone: the description above, sent to Google's Gemini to write the plan.
       The finished plan is stored on this device only — nothing is uploaded unless you tap Share.
     </p>
+
+    <footer class="site-footer" aria-label="Cairn information">
+      <a href="/case-studies">Examples</a>
+      <a href="/faq">FAQ</a>
+      <a href="/privacy">Privacy</a>
+    </footer>
   </div>
 </template>
 
@@ -242,6 +251,13 @@ function submit(): void {
 .hero {
   font-size: var(--text-2xl);
   letter-spacing: -0.024em;
+}
+
+.response-promise {
+  margin-top: var(--s3);
+  color: var(--accent);
+  font-size: var(--text-sm);
+  font-weight: 650;
 }
 
 .form {
@@ -339,5 +355,32 @@ function submit(): void {
   line-height: var(--leading);
   padding-top: var(--s4);
   border-top: 1px solid var(--line);
+}
+
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s4);
+  padding-top: var(--s2);
+  font-size: var(--text-xs);
+}
+
+.site-footer a {
+  color: var(--text-muted);
+}
+
+.site-footer a:hover {
+  color: var(--accent);
+}
+
+@media (max-width: 720px) {
+  .submit {
+    position: sticky;
+    bottom: calc(var(--nav-h) + var(--safe-bottom) + var(--s2));
+    z-index: 5;
+    padding: var(--s3) 0;
+    background: var(--bg);
+    border-top: 1px solid var(--line);
+  }
 }
 </style>

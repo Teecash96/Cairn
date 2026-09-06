@@ -13,6 +13,7 @@
  * inside the first minute, attached to an action the user already wanted to take.
  */
 import { computed, readonly, ref } from 'vue'
+import { clearAuthToken, getAuthChallenge, hasAuthToken, setAuthToken, verifyAuth } from './api'
 import {
   ProviderError,
   connectWallet,
@@ -21,6 +22,7 @@ import {
   getDeviceId,
   getProvider,
   sendPayment,
+  signMessage,
   type NimiqProvider,
 } from './nimiq'
 
@@ -114,6 +116,40 @@ export function useSession() {
     return deviceId
   }
 
+  /** Establish a short lived server session by signing a one time challenge. */
+  async function authenticate(): Promise<boolean> {
+    const wallet = await connect()
+    if (!wallet) return false
+    if (mode.value === 'preview') return true
+    if (!provider) return false
+    if (hasAuthToken(wallet)) return true
+
+    lastError.value = null
+    try {
+      const challenge = await getAuthChallenge(wallet)
+      const signed = await signMessage(provider, challenge.message)
+      const result = await verifyAuth({
+        address: wallet,
+        challenge: challenge.challenge,
+        publicKey: signed.publicKey,
+        signature: signed.signature,
+      })
+      const compact = (value: string): string => value.replace(/\s+/g, '').toUpperCase()
+      if (compact(result.address) !== compact(wallet)) throw new Error('The wallet session did not match the connected wallet.')
+      setAuthToken(result.token, result.address)
+      return true
+    } catch (error) {
+      clearAuthToken()
+      lastError.value =
+        error instanceof ProviderError && error.isDenied
+          ? 'Sign the Cairn message to continue.'
+          : error instanceof Error
+            ? error.message
+            : 'Could not verify your wallet.'
+      return false
+    }
+  }
+
   /**
    * Pay Cairn's receiving address for a bundle of generations.
    * Resolves with an opaque receipt, or null if the user declined the prompt.
@@ -150,6 +186,7 @@ export function useSession() {
     isPreview: computed(() => mode.value === 'preview'),
     boot,
     connect,
+    authenticate,
     ensureDeviceId,
     pay,
     refreshChain,

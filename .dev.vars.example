@@ -1,5 +1,5 @@
 # Copy this file to .dev.vars for local Worker development.
 # Never commit .dev.vars. It is ignored by .gitignore.
-ANTHROPIC_API_KEY="replace-with-a-local-key"
-ANTHROPIC_MODEL="claude-sonnet-5"
+GEMINI_API_KEY="replace-with-a-local-key"
+GEMINI_MODEL="gemini-3.1-flash-lite"
 DEV_TRUST_PAYMENTS="1"

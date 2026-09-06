@@ -110,6 +110,13 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong.'
 }
 
+async function requireAuth(): Promise<boolean> {
+  if (localPreview) return true
+  const ok = await session.authenticate()
+  if (!ok) notify(session.lastError.value ?? 'Sign in with your Nimiq wallet to continue.', 'error')
+  return ok
+}
+
 // -- boot -------------------------------------------------------------------
 
 onMounted(() => {
@@ -248,6 +255,8 @@ async function generate(input: PlanInput, replaceId?: string): Promise<void> {
       return
     }
 
+    if (!(await requireAuth())) return
+
     const deviceId = await session.ensureDeviceId()
     if (localPreview) {
       const stub = stubGenerate(input)
@@ -359,6 +368,11 @@ async function runRefinement(action: RefineAction, question?: string): Promise<v
       return
     }
 
+    if (!(await requireAuth())) {
+      refineOpen.value = false
+      return
+    }
+
     const deviceId = await session.ensureDeviceId()
     if (localPreview) {
       const stub = stubRefinement(plan, action, question)
@@ -425,6 +439,10 @@ function closeRefinement(apply = false): void {
 async function share(): Promise<void> {
   const plan = current.value
   if (!plan || sharing.value) return
+  if (localPreview) {
+    notify('Sharing starts when the Cairn Worker is connected.', 'info')
+    return
+  }
   sharing.value = true
 
   try {
@@ -433,6 +451,8 @@ async function share(): Promise<void> {
       notify(session.lastError.value ?? 'Connect your wallet to share.', 'error')
       return
     }
+
+    if (!(await requireAuth())) return
 
     const result = await sharePlan(address, plan)
     plan.shareId = result.shareId
@@ -463,6 +483,11 @@ async function pay(): Promise<void> {
     const address = await session.connect()
     if (!address) {
       payError.value = session.lastError.value ?? 'Connect your wallet first.'
+      return
+    }
+
+    if (!(await requireAuth())) {
+      payError.value = session.lastError.value ?? 'Sign in with your wallet first.'
       return
     }
 

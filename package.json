@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "test": "node --experimental-strip-types --experimental-loader ./tests/resolve-loader.mjs --test 'tests/**/*.test.ts'",
+    "security:deps": "npm audit --omit=dev",
+    "security:secrets": "node scripts/secret-scan.mjs",
     "typecheck": "vue-tsc -b && tsc -p tsconfig.worker.json",
     "worker:dev": "wrangler dev",
     "worker:deploy": "npm run build && wrangler deploy",
@@ -14,6 +16,8 @@
   },
   "dependencies": {
     "@nimiq/mini-app-sdk": "^0.1.0",
+    "@noble/ed25519": "^3.2.0",
+    "@noble/hashes": "^2.4.0",
     "vue": "^3.5.41"
   },
   "devDependencies": {

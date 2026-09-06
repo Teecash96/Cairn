@@ -3,16 +3,18 @@
 # One Worker serves both the built app and `/api/*`, so the client is same-origin
 # and needs no base URL or CORS in production.
 #
-# Nothing secret lives in this file. The Anthropic key is set with
-# `wrangler secret put ANTHROPIC_API_KEY` (encrypted binding), and locally in
+# Nothing secret lives in this file. The Gemini key is set with
+# `wrangler secret put GEMINI_API_KEY` (encrypted binding), and locally in
 # `.dev.vars`, which is gitignored.
 
 name = "cairn"
 main = "worker/index.ts"
 compatibility_date = "2026-08-01"
 
-# Static assets. Requests that match a built file are served from the edge
-# without invoking the Worker at all, which is what keeps first paint fast.
+# Static assets. Route them through the Worker so the response security headers
+# apply to the app, not only to API responses. The asset binding still serves the
+# file from Cloudflare's edge; `run_worker_first` only keeps the header policy in
+# one place.
 #
 # `not_found_handling = "none"` deliberately: Cairn has no client-side router.
 # Share links are query parameters (`/?s=<id>&g=<token>`) precisely so that no
@@ -22,6 +24,7 @@ compatibility_date = "2026-08-01"
 directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "none"
+run_worker_first = true
 
 # Credits, share snapshots, gift tokens, spent receipts, budget counters.
 # Create with: wrangler kv namespace create CAIRN
@@ -32,29 +35,29 @@ id = "d8f3f5427e3a405aa8c81da1941a1c38"
 preview_id = "e9d8888ac4344658be9fa668ab85bd0d"
 
 [vars]
-# Current Anthropic Messages API model. Keep this explicit so a local and a
+# Current Gemini Generate Content API model. Keep this explicit so a local and a
 # deployed Worker cannot silently drift to different model behavior.
-ANTHROPIC_MODEL = "claude-sonnet-5"
+GEMINI_MODEL = "gemini-3.1-flash-lite"
 
 # Where payments go. Public information — this is the app's receiving address,
 # and the client is told it in the price quote.
-PAY_TO = "REPLACE_WITH_NIMIQ_ADDRESS"
+PAY_TO = "NQ19 E39Q Y9EQ 937E YQYC 13D2 4LCC UPTN 3VPS"
 
 # --- Pricing -----------------------------------------------------------------
 # Amounts are LUNA. 1 NIM = 100,000 Luna.
 #
-# TODO(price): 1,000,000 Luna = 10 NIM is a PLACEHOLDER. NIM's spot price has not
-# been checked. The rule the number has to satisfy: a bundle should cost roughly
-# what the inference actually costs, because the app's claim — "you're paying for
-# the AI, not a subscription" — is meant literally. Set this before deploying.
-PRICE_LUNA = "1000000"
+# Initial price: 100,000,000 Luna = 1,000 NIM for 10 plans. This is intentionally
+# easy to try, but it is close to the estimated inference cost, so review it after
+# the first real requests. The app's claim — "you're paying for the AI, not a
+# subscription" — must remain true.
+PRICE_LUNA = "100000000"
 PLANS_PER_PAYMENT = "10"
 
 # Free generations granted to a new wallet, capped per device (see credits.ts).
 FREE_PLANS = "3"
 
 # Hard ceiling on generations per UTC day, across all users. This is the backstop
-# that makes it impossible for anyone to run up an unbounded Anthropic bill.
+# that makes it impossible for anyone to run up an unbounded Gemini bill.
 DAILY_BUDGET = "400"
 
 # Read the receiving address's incoming transactions to verify a payment.
@@ -66,4 +69,4 @@ NIMIQ_RPC_URL = "https://rpc.nimiqwatch.com"
 # Absolute base for share links. Leave empty to derive it from the request, which
 # is correct in production; set it when the app and the Worker are on different
 # hosts, i.e. `vite dev` on :5173 talking to `wrangler dev` on :8787.
-APP_URL = ""
+APP_URL = "https://cairn.cairn-planner.workers.dev"

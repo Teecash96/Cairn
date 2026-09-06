@@ -18,7 +18,7 @@ dist-ssr
 !.env.example
 
 # `wrangler dev` reads secrets from .dev.vars, and it is NOT matched by .env*.
-# The Anthropic key lives here locally and in an encrypted Cloudflare secret
+# The Gemini key lives here locally and in an encrypted Cloudflare secret
 # binding in production — never in the repo.
 .dev.vars
 .dev.vars.*

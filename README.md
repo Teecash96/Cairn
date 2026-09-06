@@ -35,9 +35,10 @@ Cairn is those twenty minutes, on a phone, for about the cost of the inference.
 ## How it works
 
 1. Describe the idea in your own words. One field is required.
-2. Tap **Generate plan**. Nimiq Pay asks you to connect your wallet — this is the
-   only time it asks, and it happens on the action you already chose to take.
-3. Claude writes the full builder pack. It takes about twenty seconds.
+2. Tap **Generate plan**. Nimiq Pay asks you to connect your wallet, then Cairn
+   asks the wallet to sign a short login challenge. This creates a short lived
+   server session. Both prompts happen on the action you already chose to take.
+3. Gemini writes the full builder pack. It takes about twenty seconds.
 4. Edit anything. It autosaves to your device.
 5. Open the **Build** tab, check off local tasks, or ask Cairn to sharpen one
    part of the plan.
@@ -60,6 +61,21 @@ costing you a credit.
 This is the part we like most. NIM moves because someone chose to pass something
 on, not because a paywall demanded it.
 
+## Public pages
+
+The deployed Worker serves a small information layer beside the mini app:
+
+1. `/case-studies` contains illustrative examples. They are not customer
+   claims.
+2. `/faq` answers product, timing, payment, sharing, and privacy questions.
+3. `/privacy` explains data handling in plain language.
+4. `/thank-you` is a simple completion page for links and demos.
+5. Unknown routes show a branded 404 page.
+
+The app has a clear response promise: most plans are ready in under 30 seconds.
+The public pages use canonical URLs, Open Graph metadata, a social card,
+`robots.txt`, `sitemap.xml`, and `llms.txt`.
+
 ## Paying
 
 The first few plans are free. After that, one payment buys a **bundle** of plans
@@ -81,14 +97,17 @@ Stated plainly, because it matters:
 
 | Data | Where it goes |
 | --- | --- |
-| The idea you type | Anthropic's Claude API, via Cairn's server, to write the plan |
-| The finished plan | Your device's local storage. **Nothing else.** |
+| The idea you type | Google's Gemini API, via Cairn's server, to write the plan |
+| The finished plan | Your device's local storage. **Nothing else**, unless you use a paid planner follow up or tap Share |
+| A plan you refine | Cairn's server and Google's Gemini API for that one follow up. The current plan is sent so the change can be targeted |
 | A plan you tap **Share** on | Cairn's server, so the link can be opened. Explicit, per plan, never automatic |
-| Your wallet address | Cairn's server, as the key your credit balance is held against |
+| Your wallet address | Cairn's server, as the key your credit balance is held against and the identity bound to your wallet session |
 | A pseudonymous device identifier | Cairn's server, so free plans can't be farmed with fresh wallets. It identifies the device, not you, and declining it does not block anything |
+| A request network address | A short lived abuse counter in Cairn's server. It is not used for analytics |
 
 There is no analytics, no tracking, and no third-party script. The app loads no
-external fonts and makes no requests other than to its own API.
+external fonts. The browser talks only to Cairn's API. Cairn's Worker sends
+generation requests to Gemini on the server side.
 
 Plans are stored per device by design. Clearing the app's storage deletes them,
 and there is no copy on a server to restore from — so copy anything you need to
@@ -101,7 +120,7 @@ npm install
 npm run dev          # http://localhost:5173
 ```
 
-To run the full local Worker, copy `.dev.vars.example` to `.dev.vars` and add a local Anthropic
+To run the full local Worker, copy `.dev.vars.example` to `.dev.vars` and add a local Gemini
 key. Then run `npm run build` and `npm run worker:dev`. The Worker uses its local KV store. The
 `DEV_TRUST_PAYMENTS=1` setting is available only for local testing and is refused on public
 requests. Never commit `.dev.vars`.
@@ -169,7 +188,12 @@ Vue 3 + TypeScript + Vite on the front, a Cloudflare Worker with KV behind it.
 No component library, no CSS framework, no webfont, no analytics. Type checking
 is strict, including `erasableSyntaxOnly` and `verbatimModuleSyntax`.
 
-No API key, secret, or credential is committed to this repository. The Anthropic
+Google Analytics is intentionally not included. Cairn is a privacy first mini
+app, and adding third party tracking would contradict the disclosure shown
+before generation. Local business schema, maps, and directions are also not
+included because Cairn has no physical business location.
+
+No API key, secret, or credential is committed to this repository. The Gemini
 key lives only in an encrypted Cloudflare secret binding.
 
 ## Licence

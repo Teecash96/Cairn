@@ -14,6 +14,10 @@ interface RpcEnvelope<T> {
   error?: unknown
 }
 
+const RPC_TIMEOUT_MS = 5_000
+const RPC_MAX_RESPONSE_BYTES = 256 * 1024
+const MAX_HISTORY = 50
+
 function compact(value: string): string {
   return value.replace(/\s+/g, '').toUpperCase()
 }
@@ -40,15 +44,22 @@ function isTransaction(value: unknown): value is ChainTransaction {
 }
 
 async function rpcCall<T>(base: string, method: string, params: unknown[]): Promise<T | null> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), RPC_TIMEOUT_MS)
   try {
     const response = await fetch(base, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      signal: controller.signal,
     })
     if (!response.ok) return null
 
-    const body = (await response.json()) as RpcEnvelope<T>
+    const declared = Number(response.headers.get('content-length') ?? '0')
+    if (Number.isFinite(declared) && declared > RPC_MAX_RESPONSE_BYTES) return null
+    const text = await response.text()
+    if (new TextEncoder().encode(text).byteLength > RPC_MAX_RESPONSE_BYTES) return null
+    const body = JSON.parse(text) as RpcEnvelope<T>
     if (!body.result || body.error) return null
 
     const result: unknown = body.result
@@ -58,6 +69,8 @@ async function rpcCall<T>(base: string, method: string, params: unknown[]): Prom
     return result as T
   } catch {
     return null
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -68,10 +81,10 @@ async function loadTransactions(rpcUrl: string, address: string): Promise<ChainT
   // Albatross RPC exposes address history as hashes. Fetch the transaction
   // records only after the hash list succeeds, so the verifier can inspect the
   // sender, recipient, amount, and confirmation count.
-  const hashes = await rpcCall<string[]>(base, 'getTransactionHashesByAddress', [address, 100, null])
+  const hashes = await rpcCall<string[]>(base, 'getTransactionHashesByAddress', [address, MAX_HISTORY, null])
   if (hashes?.length) {
     const transactions: ChainTransaction[] = []
-    for (const hash of hashes) {
+    for (const hash of hashes.slice(0, MAX_HISTORY)) {
       const transaction = await rpcCall<ChainTransaction>(base, 'getTransactionByHash', [hash])
       if (transaction) transactions.push(transaction)
     }

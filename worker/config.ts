@@ -10,7 +10,7 @@ import { normalizeAddress } from './http'
 import type { Env, PriceQuote } from './types'
 
 export interface Config {
-  /** Anthropic model name. Kept configurable for safe upgrades. */
+  /** Gemini model name. Kept configurable for safe upgrades. */
   model: string
   /** Bundle price in Luna. 1 NIM = 100,000 Luna. */
   priceLuna: number
@@ -36,7 +36,7 @@ function int(value: string | undefined, fallback: number, min: number): number {
 
 export function readConfig(env: Env): Config {
   return {
-    model: (env.ANTHROPIC_MODEL ?? 'claude-sonnet-5').trim(),
+    model: (env.GEMINI_MODEL ?? 'gemini-3.1-flash-lite').trim(),
     priceLuna: int(env.PRICE_LUNA, 1_000_000, 1),
     plansPerPayment: int(env.PLANS_PER_PAYMENT, 10, 1),
     freePlans: int(env.FREE_PLANS, 3, 0),

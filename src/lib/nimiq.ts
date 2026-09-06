@@ -123,6 +123,16 @@ export async function connectWallet(provider: NimiqProvider): Promise<string> {
   return accounts[0]
 }
 
+export interface SignedMessage {
+  publicKey: string
+  signature: string
+}
+
+/** Sign a server challenge without exposing a private key to the mini app. */
+export async function signMessage(provider: NimiqProvider, message: string): Promise<SignedMessage> {
+  return unwrap(await provider.sign({ message }))
+}
+
 export interface ChainStatus {
   consensus: boolean
   blockHeight: number

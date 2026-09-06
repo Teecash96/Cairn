@@ -6,8 +6,13 @@
  * each to a distinct UI state rather than showing raw server text.
  */
 import type { ApiErrorCode, CreditState, PriceQuote } from './types'
+import { blake2b } from '@noble/hashes/blake2.js'
 
 export type Cors = Record<string, string>
+
+const MAX_JSON_RESPONSE_BYTES = 256 * 1024
+const NIMIQ_ALPHABET = '0123456789ABCDEFGHJKLMNPQRSTUVXY'
+const NIMIQ_PREFIX_NUMERIC = '2326'
 
 /**
  * In production the app and the API are the same origin, so no CORS headers are
@@ -25,7 +30,7 @@ export function corsHeaders(request: Request): Cors {
   return {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': 'GET, POST, OPTIONS',
-    'access-control-allow-headers': 'content-type',
+    'access-control-allow-headers': 'content-type, authorization',
     'access-control-max-age': '86400',
     vary: 'origin',
   }
@@ -57,15 +62,36 @@ export function isLocalHost(host: string): boolean {
 }
 
 export function json(data: unknown, status: number, cors: Cors): Response {
-  return new Response(JSON.stringify(data), {
+  const body = JSON.stringify(data)
+  if (new TextEncoder().encode(body).byteLength > MAX_JSON_RESPONSE_BYTES) {
+    return new Response(JSON.stringify({ error: 'server', message: 'Response too large.' }), {
+      status: 500,
+      headers: securityHeaders({ 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...cors }),
+    })
+  }
+  return new Response(body, {
     status,
-    headers: {
+    headers: securityHeaders({
       'content-type': 'application/json; charset=utf-8',
       // Every one of these responses is per-wallet. None of it is cacheable.
       'cache-control': 'no-store',
       ...cors,
-    },
+    }),
   })
+}
+
+/** Security headers shared by API responses and the static app. */
+export function securityHeaders(existing: HeadersInit = {}, https = true): Headers {
+  const headers = new Headers(existing)
+  headers.set('x-content-type-options', 'nosniff')
+  headers.set('referrer-policy', 'no-referrer')
+  headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=()')
+  headers.set('content-security-policy', "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; form-action 'self'")
+  headers.set('cross-origin-opener-policy', 'same-origin')
+  headers.set('cross-origin-resource-policy', 'same-origin')
+  headers.set('x-frame-options', 'DENY')
+  if (https) headers.set('strict-transport-security', 'max-age=31536000; includeSubDomains')
+  return headers
 }
 
 export function fail(
@@ -85,6 +111,8 @@ export function fail(
  * malformed body is the same 400.
  */
 export async function readJson(request: Request, maxBytes = 64 * 1024): Promise<unknown> {
+  const contentType = request.headers.get('content-type')
+  if (contentType && !/^application\/json(?:\s*;|$)/i.test(contentType)) return null
   const declared = Number(request.headers.get('content-length') ?? '0')
   if (Number.isFinite(declared) && declared > maxBytes) return null
 
@@ -94,7 +122,7 @@ export async function readJson(request: Request, maxBytes = 64 * 1024): Promise<
   } catch {
     return null
   }
-  if (text.length > maxBytes) return null
+  if (new TextEncoder().encode(text).byteLength > maxBytes) return null
 
   try {
     return JSON.parse(text) as unknown
@@ -111,6 +139,79 @@ export async function readJson(request: Request, maxBytes = 64 * 1024): Promise<
  */
 const ADDRESS = /^NQ[0-9]{2}[0-9A-HJ-NP-VXY]{32}$/
 
+function mod97(value: string): number {
+  let remainder = 0
+  for (const character of value) {
+    const expanded = /[A-Z]/.test(character) ? String(character.charCodeAt(0) - 55) : character
+    for (const digit of expanded) remainder = (remainder * 10 + Number(digit)) % 97
+  }
+  return remainder
+}
+
+function decodePayload(payload: string): Uint8Array | null {
+  const output = new Uint8Array(20)
+  let accumulator = 0
+  let bits = 0
+  let offset = 0
+  for (const character of payload) {
+    const value = NIMIQ_ALPHABET.indexOf(character)
+    if (value < 0) return null
+    accumulator = (accumulator << 5) | value
+    bits += 5
+    while (bits >= 8) {
+      bits -= 8
+      if (offset >= output.length) return null
+      output[offset] = (accumulator >> bits) & 0xff
+      offset += 1
+    }
+  }
+  return offset === output.length ? output : null
+}
+
+function encodePayload(bytes: Uint8Array): string {
+  let output = ''
+  let accumulator = 0
+  let bits = 0
+  for (const byte of bytes) {
+    accumulator = (accumulator << 8) | byte
+    bits += 8
+    while (bits >= 5) {
+      bits -= 5
+      output += NIMIQ_ALPHABET[(accumulator >> bits) & 31]
+    }
+  }
+  return output
+}
+
+function checksum(payload: string): string {
+  const value = 98 - mod97(`${payload}${NIMIQ_PREFIX_NUMERIC}00`)
+  return String(value).padStart(2, '0')
+}
+
+function isValidChecksum(compact: string): boolean {
+  const payload = compact.slice(4)
+  const checkDigits = compact.slice(2, 4)
+  return mod97(`${payload}${NIMIQ_PREFIX_NUMERIC}${checkDigits}`) === 1
+}
+
+/** Decode and validate a compact Nimiq user-friendly address. */
+export function addressBytes(value: unknown): Uint8Array | null {
+  if (typeof value !== 'string') return null
+  const compact = value.replace(/\s+/g, '').toUpperCase()
+  if (!ADDRESS.test(compact) || !isValidChecksum(compact)) return null
+  return decodePayload(compact.slice(4))
+}
+
+/** Derive a Nimiq address from an Ed25519 public key returned by `sign()`. */
+export function addressFromPublicKey(publicKeyHex: string): string | null {
+  if (!/^[0-9a-f]{64}$/i.test(publicKeyHex)) return null
+  const publicKey = new Uint8Array(publicKeyHex.match(/../gi)?.map((part) => Number.parseInt(part, 16)) ?? [])
+  if (publicKey.length !== 32) return null
+  const payload = encodePayload(blake2b(publicKey, { dkLen: 32 }).slice(0, 20))
+  if (payload.length !== 32) return null
+  return `NQ${checksum(payload)}${payload}`
+}
+
 /**
  * Strip the display spaces and upper-case, so that one wallet is one KV key.
  *
@@ -121,7 +222,7 @@ const ADDRESS = /^NQ[0-9]{2}[0-9A-HJ-NP-VXY]{32}$/
 export function normalizeAddress(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const compact = value.replace(/\s+/g, '').toUpperCase()
-  return ADDRESS.test(compact) ? compact : null
+  return addressBytes(compact) ? compact : null
 }
 
 /** UTC day, for the daily counters. Never local time — the Worker has no locale. */
