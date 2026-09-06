@@ -37,7 +37,7 @@ const consensus = ref(false)
 const lastError = ref<string | null>(null)
 
 let provider: NimiqProvider | null = null
-let booted = false
+let bootPromise: Promise<void> | null = null
 let deviceId: string | null = null
 let deviceIdAsked = false
 
@@ -46,18 +46,20 @@ const PREVIEW_ADDRESS = 'NQ07 0000 0000 0000 0000 0000 0000 0000 PRVW'
 
 export function useSession() {
   async function boot(): Promise<void> {
-    if (booted) return
-    booted = true
-    language.value = detectLanguage()
+    if (bootPromise) return bootPromise
+    bootPromise = (async () => {
+      language.value = detectLanguage()
 
-    try {
-      provider = await getProvider()
-      mode.value = 'nimiq'
-      void refreshChain()
-    } catch {
-      // `init()` times out outside Nimiq Pay. Expected on desktop.
-      mode.value = 'preview'
-    }
+      try {
+        provider = await getProvider()
+        mode.value = 'nimiq'
+        void refreshChain()
+      } catch {
+        // `init()` times out outside Nimiq Pay. Expected on desktop.
+        mode.value = 'preview'
+      }
+    })()
+    return bootPromise
   }
 
   async function refreshChain(): Promise<void> {

@@ -95,7 +95,12 @@ export interface BuildPlanDraft {
 export interface Task {
   id: string
   text: string
-  done: boolean
+  status: 'todo' | 'in_progress' | 'done'
+  priority: 'low' | 'medium' | 'high'
+  labels: string[]
+  notes: string
+  dueDate?: string
+  dependsOn: string[]
 }
 
 export interface Milestone {
@@ -103,6 +108,9 @@ export interface Milestone {
   title: string
   outcome: string
   tasks: Task[]
+  startDate?: string
+  dueDate?: string
+  blocked: boolean
 }
 
 export interface BuildPlan {
@@ -112,6 +120,35 @@ export interface BuildPlan {
   acceptanceTests: string[]
   nextAction: string
 }
+
+/** Fields intentionally exposed by a shared snapshot. */
+export interface PublicTask {
+  id: string
+  text: string
+  status: 'todo' | 'in_progress' | 'done'
+  labels: string[]
+  dueDate?: string
+}
+
+export interface PublicMilestone {
+  id: string
+  title: string
+  outcome: string
+  tasks: PublicTask[]
+  startDate?: string
+  dueDate?: string
+  blocked: boolean
+}
+
+export interface PublicBuildPlan {
+  mvpScope: string[]
+  milestones: PublicMilestone[]
+  risks: string[]
+  acceptanceTests: string[]
+  nextAction: string
+}
+
+export type PublicPlan = Omit<Plan, 'build'> & { build: PublicBuildPlan }
 
 export type RealityPriority = 'high' | 'medium' | 'low'
 
@@ -187,6 +224,8 @@ export type ApiErrorCode =
   | 'generation_failed'
   | 'network'
   | 'auth_required'
+  | 'forbidden'
+  | 'conflict'
   | 'server'
 
 // -- stored records ---------------------------------------------------------
@@ -208,7 +247,7 @@ export interface DeviceRecord {
 
 /** `share:<shareId>` */
 export interface ShareRecord {
-  plan: Plan
+  plan: PublicPlan
   /** Normalized address of whoever shared it. */
   by: string
   createdAt: number
@@ -224,4 +263,27 @@ export interface GiftRecord {
   from: string
   shareId: string
   claimedBy?: string
+}
+
+// -- protected teams --------------------------------------------------------
+
+export type TeamRole = 'viewer' | 'editor'
+
+export interface TeamMember {
+  address: string
+  role: TeamRole
+  createdAt: number
+}
+
+/** `team:<teamId>` — only the public Track projection is stored here. */
+export interface TeamRecord {
+  id: string
+  planId: string
+  name: string
+  owner: string
+  members: TeamMember[]
+  build: PublicBuildPlan
+  revision: number
+  createdAt: number
+  updatedAt: number
 }

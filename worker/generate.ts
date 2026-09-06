@@ -5,6 +5,7 @@ import type {
   Plan,
   PlanChanges,
   PlanInput,
+  PublicPlan,
   Prd,
   RefineAction,
   RealityCheckItem,
@@ -225,13 +226,28 @@ Main problem: ${input.problem || '(not provided)'}
 Primary goal: ${input.goal || '(not provided)'}`
 }
 
-function planJson(plan: Plan): string {
+function planJson(plan: Plan | PublicPlan): string {
+  // Tracker state belongs to the builder's device. Refinement receives the
+  // builder pack text only, so private notes, dates, labels, priorities,
+  // dependencies, and completion state cannot leak to Gemini or influence a
+  // later AI rewrite.
+  const build = {
+    mvpScope: plan.build.mvpScope,
+    milestones: plan.build.milestones.map((milestone) => ({
+      title: milestone.title,
+      outcome: milestone.outcome,
+      tasks: milestone.tasks.map((task) => task.text),
+    })),
+    risks: plan.build.risks,
+    acceptanceTests: plan.build.acceptanceTests,
+    nextAction: plan.build.nextAction,
+  }
   return JSON.stringify({
     name: plan.name,
     input: plan.input,
     prd: plan.prd,
     flow: plan.flow,
-    build: plan.build,
+    build,
     realityCheck: plan.realityCheck,
   })
 }
@@ -244,7 +260,7 @@ function actionInstruction(action: RefineAction, question?: string): string {
   return `Answer this question directly for the builder. If a change would materially help, include only that targeted change in changes. Question: ${question ?? ''}`
 }
 
-function refinementPrompt(plan: Plan, action: RefineAction, question?: string): string {
+function refinementPrompt(plan: Plan | PublicPlan, action: RefineAction, question?: string): string {
   return `You are Cairn, a direct product mentor for an indie builder. Review the current plan below and propose a targeted follow up.
 
 Rules:
@@ -357,7 +373,7 @@ export async function generateWithGemini(
 export async function refineWithGemini(
   config: Config,
   key: string,
-  plan: Plan,
+  plan: Plan | PublicPlan,
   action: RefineAction,
   question?: string,
 ): Promise<GeneratedRefinement> {

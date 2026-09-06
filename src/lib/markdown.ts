@@ -9,7 +9,8 @@
  * so the clipboard is the primary channel rather than a convenience. See
  * `lib/clipboard.ts`.
  */
-import { titleOf, type FlowStep, type FlowStepKind, type Plan } from './plan'
+import { titleOf, type FlowStep, type FlowStepKind, type Plan, type Task } from './plan'
+import { milestoneStatus, MILESTONE_STATUS_LABEL, taskIsBlocked, taskMap, TASK_STATUS_LABEL } from './tracker'
 
 const KIND_LABEL: Record<FlowStepKind, string> = {
   entry: 'Entry point',
@@ -90,12 +91,15 @@ export function prdToText(plan: Plan): string {
 
 export function buildToText(plan: Plan): string {
   const { build } = plan
+  const taskLookup = taskMap(build)
   const milestones = build.milestones
     .map((milestone, index) => {
-      const tasks = milestone.tasks
-        .map((task) => `  ${task.done ? '[x]' : '[ ]'} ${task.text}`)
+      const taskLines = milestone.tasks
+        .map((task) => taskText(task, taskLookup))
         .join('\n')
-      return `${index + 1}. ${clean(milestone.title)}\n   Outcome: ${clean(milestone.outcome)}${tasks ? `\n${tasks}` : ''}`
+      const dates = [milestone.startDate, milestone.dueDate].filter(Boolean).join(' to ')
+      const blocked = milestone.blocked ? ' [blocked]' : ''
+      return `${index + 1}. ${clean(milestone.title)}${blocked}\n   Outcome: ${clean(milestone.outcome)}${dates ? `\n   Dates: ${dates}` : ''}${taskLines ? `\n${taskLines}` : ''}`
     })
     .join('\n\n')
 
@@ -117,16 +121,60 @@ export function buildToText(plan: Plan): string {
   ])
 }
 
+/** The safe, Track-only export used by protected team workspaces. */
+export function trackToText(build: Plan['build']): string {
+  const tasksById = taskMap(build)
+  const milestones = build.milestones
+    .map((milestone, index) => {
+      const dates = [milestone.startDate, milestone.dueDate].filter(Boolean).join(' to ')
+      const tasks = milestone.tasks
+        .map((task) => {
+          const labels = task.labels.length ? ` [${task.labels.join(', ')}]` : ''
+          const due = task.dueDate ? ` · due ${task.dueDate}` : ''
+          const blocked = taskIsBlocked(task, tasksById) ? ' · blocked' : ''
+          return `   [${TASK_STATUS_LABEL[task.status]}] ${task.text}${labels}${due}${blocked}`
+        })
+        .join('\n')
+      return join([
+        `${index + 1}. ${clean(milestone.title)} [${MILESTONE_STATUS_LABEL[milestoneStatus(milestone)]}]`,
+        clean(milestone.outcome) ? `   Outcome: ${clean(milestone.outcome)}` : '',
+        dates ? `   Dates: ${dates}` : '',
+        tasks,
+      ])
+    })
+    .join('\n\n')
+
+  return join(['Track', milestones || 'No milestones yet.'])
+}
+
+function taskText(task: Task, tasks: Map<string, Task>): string {
+  const labels = task.labels.length ? ` [${task.labels.join(', ')}]` : ''
+  const due = task.dueDate ? ` · due ${task.dueDate}` : ''
+  const blocked = taskIsBlocked(task, tasks) ? ' · blocked' : ''
+  const note = task.notes.trim() ? `\n     Note: ${task.notes.trim()}` : ''
+  return `  [${TASK_STATUS_LABEL[task.status]}] ${task.text}${labels}${due}${blocked}${note}`
+}
+
 function buildToMarkdown(plan: Plan): string {
   const { build } = plan
+  const tasksById = taskMap(build)
   const milestones = build.milestones
     .map((milestone) => {
       const tasks = milestone.tasks
-        .map((task) => `- [${task.done ? 'x' : ' '}] ${task.text}`)
+        .map((task) => {
+          const labels = task.labels.length ? ` _[${task.labels.join(', ')}]_` : ''
+          const due = task.dueDate ? ` _(due ${task.dueDate})_` : ''
+          const blocked = taskIsBlocked(task, tasksById) ? ' **blocked**' : ''
+          const note = task.notes.trim() ? `\n  > Note: ${task.notes.trim()}` : ''
+          return `- **${TASK_STATUS_LABEL[task.status]}:** ${task.text}${labels}${due}${blocked}${note}`
+        })
         .join('\n')
+      const dates = [milestone.startDate, milestone.dueDate].filter(Boolean).join(' to ')
       return join([
         `### ${clean(milestone.title)}`,
         clean(milestone.outcome) ? `**Outcome:** ${clean(milestone.outcome)}` : '',
+        dates ? `**Dates:** ${dates}` : '',
+        milestone.blocked ? '**Status:** Blocked' : '',
         tasks,
       ])
     })

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * Cairn's shell: three screens, one bottom nav, and the whole generate → pay →
- * share loop.
+ * Cairn's shell: the new plan screen, library, workspace, and protected team
+ * route, plus the whole generate → pay → share loop.
  *
  * State lives here rather than in a store. There are three screens and one open
  * plan; a store would be indirection for its own sake, and keeping the sequence
@@ -19,7 +19,7 @@
  * Editing autosaves. There is no save button, and the deep watcher that does it
  * is guarded so that stamping `updatedAt` cannot retrigger itself.
  */
-import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import CairnMark from './components/CairnMark.vue'
 import Library from './components/Library.vue'
 import NewPlan from './components/NewPlan.vue'
@@ -27,8 +27,21 @@ import PaySheet from './components/PaySheet.vue'
 import RefineSheet from './components/RefineSheet.vue'
 import Toast from './components/Toast.vue'
 import Workspace from './components/Workspace.vue'
-import { ApiError, generatePlan, getSharedPlan, redeemPayment, refinePlan, sharePlan } from './lib/api'
-import type { CreditState, PriceQuote, RefineAction } from './lib/api'
+import {
+  addTeamMember,
+  ApiError,
+  createTeam,
+  generatePlan,
+  getSharedPlan,
+  getTeam,
+  redeemPayment,
+  refinePlan,
+  removeTeamMember,
+  sharePlan,
+  updateTeamMember,
+  updateTeamTracker,
+} from './lib/api'
+import type { CreditState, PriceQuote, RefineAction, TeamResult, TeamRole } from './lib/api'
 import { copyText } from './lib/clipboard'
 import {
   createPlan,
@@ -37,14 +50,19 @@ import {
   libraryIsPersistent,
   listPlans,
   materializeBuildPlan,
+  hydratePublicBuild,
+  normalizeSharedPlan,
   renamePlan,
   savePlan,
+  publicTrackOf,
+  titleOf,
   type BuildPlanDraft,
   type PlanChanges,
   type RealityCheckItem,
   type Plan,
   type PlanInput,
 } from './lib/plan'
+import type { TeamPanelState } from './components/Workspace.vue'
 import { useSession } from './lib/session'
 import { mergeRefinement } from './lib/refinement'
 import { stubGenerate, stubRefinement } from './lib/stub'
@@ -90,6 +108,14 @@ const refineChanges = ref<PlanChanges | null>(null)
 const shared = ref<Plan | null>(null)
 /** Single-use token from a share link: a free plan, courtesy of whoever shared it. */
 const gift = ref<string | null>(null)
+
+/** Protected team state. Unlike a public share, this requires wallet auth. */
+const teamResult = ref<TeamResult | null>(null)
+const teamPlan = ref<Plan | null>(null)
+const teamLoading = ref(false)
+const teamError = ref<string | null>(null)
+const teamSyncing = ref(false)
+let teamSyncTimer: ReturnType<typeof setTimeout> | undefined
 
 /** `vite dev` without `VITE_API_BASE` has no Worker behind its `/api` paths. */
 const localPreview = import.meta.env.DEV && !import.meta.env.VITE_API_BASE
@@ -142,6 +168,12 @@ function readLink(): void {
   const token = params.get('g')
   if (token) gift.value = token
 
+  const teamId = params.get('t')
+  if (teamId) {
+    void loadTeamLink(teamId)
+    return
+  }
+
   const id = params.get('s')
   if (id) void loadShared(id)
 }
@@ -149,7 +181,9 @@ function readLink(): void {
 async function loadShared(shareId: string): Promise<void> {
   try {
     const result = await getSharedPlan(shareId)
-    shared.value = result.plan
+    const normalized = normalizeSharedPlan(result.plan)
+    if (!normalized) throw new Error('That shared plan is incomplete.')
+    shared.value = normalized
     if (result.gift) gift.value = result.gift
   } catch (error) {
     notify(
@@ -158,6 +192,62 @@ async function loadShared(shareId: string): Promise<void> {
         : "Couldn't open that shared plan.",
       'error',
     )
+  }
+}
+
+function teamPlanFrom(result: TeamResult): Plan {
+  const now = Date.now()
+  return {
+    id: `team-${result.teamId}`,
+    name: result.name,
+    createdAt: now,
+    updatedAt: now,
+    input: { name: result.name, idea: 'Protected team tracker' },
+    prd: {
+      summary: '',
+      problem: '',
+      targetUser: '',
+      userGoal: '',
+      coreFeatures: [],
+      userStories: [],
+      successCriteria: [],
+      assumptions: [],
+      outOfScope: [],
+    },
+    flow: [],
+    build: hydratePublicBuild(result.build),
+    realityCheck: [],
+    teamId: result.teamId,
+  }
+}
+
+async function loadTeamLink(teamId: string): Promise<void> {
+  if (localPreview) {
+    notify('Protected teams start when the Cairn Worker is connected.', 'info')
+    return
+  }
+  teamLoading.value = true
+  teamError.value = null
+  try {
+    await session.boot()
+    const address = await session.connect()
+    if (!address) {
+      teamError.value = session.lastError.value ?? 'Connect your Nimiq wallet to open this team.'
+      notify(teamError.value, 'error')
+      return
+    }
+    if (!(await requireAuth())) return
+    const result = await getTeam(teamId)
+    teamResult.value = result
+    teamPlan.value = teamPlanFrom(result)
+    window.scrollTo(0, 0)
+  } catch (error) {
+    teamError.value = error instanceof ApiError && error.code === 'forbidden'
+      ? 'This wallet is not a member of that team.'
+      : messageOf(error)
+    notify(teamError.value, 'error')
+  } finally {
+    teamLoading.value = false
   }
 }
 
@@ -194,6 +284,7 @@ watch(
 onUnmounted(() => {
   if (saveTimer !== undefined) clearTimeout(saveTimer)
   if (toastTimer !== undefined) clearTimeout(toastTimer)
+  if (teamSyncTimer !== undefined) clearTimeout(teamSyncTimer)
 })
 
 // -- navigation -------------------------------------------------------------
@@ -203,12 +294,16 @@ function goNew(input?: PlanInput): void {
   formInitial.value = input
   formKey.value += 1
   shared.value = null
+  teamPlan.value = null
+  teamResult.value = null
   view.value = 'new'
 }
 
 function goLibrary(): void {
   flush()
   shared.value = null
+  teamPlan.value = null
+  teamResult.value = null
   plans.value = listPlans()
   view.value = 'library'
 }
@@ -223,6 +318,8 @@ function open(id: string): void {
   }
   current.value = plan
   shared.value = null
+  teamPlan.value = null
+  teamResult.value = null
   view.value = 'workspace'
   window.scrollTo(0, 0)
 }
@@ -231,6 +328,178 @@ function back(): void {
   flush()
   // The plan you were just in is saved, so the library is never empty here.
   view.value = plans.value.length ? 'library' : 'new'
+}
+
+const ownerTeamPanel = computed<TeamPanelState | undefined>(() => {
+  const plan = current.value
+  if (!plan) return undefined
+  const loaded = teamResult.value && teamResult.value.teamId === plan.teamId ? teamResult.value : null
+  return {
+    teamId: plan.teamId ?? null,
+    owner: loaded?.owner ?? session.address.value ?? '',
+    role: 'owner',
+    members: loaded?.members ?? [],
+    inviteUrl: loaded?.inviteUrl ?? '',
+    loading: teamLoading.value,
+    error: teamError.value,
+  }
+})
+
+async function openTeamPanel(): Promise<void> {
+  const plan = current.value
+  if (!plan?.teamId || teamLoading.value) return
+  if (localPreview) {
+    notify('Protected teams start when the Cairn Worker is connected.', 'info')
+    return
+  }
+  if (teamResult.value?.teamId === plan.teamId) return
+
+  teamLoading.value = true
+  teamError.value = null
+  try {
+    const address = await session.connect()
+    if (!address) {
+      teamError.value = session.lastError.value ?? 'Connect your wallet to manage the team.'
+      return
+    }
+    if (!(await requireAuth())) return
+    teamResult.value = await getTeam(plan.teamId)
+  } catch (error) {
+    teamError.value = messageOf(error)
+    notify(teamError.value, 'error')
+  } finally {
+    teamLoading.value = false
+  }
+}
+
+async function createOwnerTeam(): Promise<void> {
+  const plan = current.value
+  if (!plan || plan.teamId || teamLoading.value) return
+  if (localPreview) {
+    notify('Protected teams start when the Cairn Worker is connected.', 'info')
+    return
+  }
+  teamLoading.value = true
+  teamError.value = null
+  try {
+    const address = await session.connect()
+    if (!address) {
+      teamError.value = session.lastError.value ?? 'Connect your wallet to create a team.'
+      return
+    }
+    if (!(await requireAuth())) return
+    const result = await createTeam({
+      planId: plan.id,
+      name: titleOf(plan),
+      build: publicTrackOf(plan.build),
+    })
+    plan.teamId = result.teamId
+    teamResult.value = result
+    flush()
+    notify('Team workspace created', 'success')
+  } catch (error) {
+    teamError.value = messageOf(error)
+    notify(teamError.value, 'error')
+  } finally {
+    teamLoading.value = false
+  }
+}
+
+function activeOwnerTeamId(): string | null {
+  const id = current.value?.teamId
+  return id && teamResult.value?.teamId === id ? id : null
+}
+
+async function addOwnerMember(address: string, role: TeamRole): Promise<void> {
+  const teamId = activeOwnerTeamId()
+  if (!teamId || teamLoading.value) return
+  teamLoading.value = true
+  teamError.value = null
+  try {
+    teamResult.value = await addTeamMember(teamId, address, role)
+    notify('Member added', 'success')
+  } catch (error) {
+    teamError.value = messageOf(error)
+    notify(teamError.value, 'error')
+  } finally {
+    teamLoading.value = false
+  }
+}
+
+async function updateOwnerMember(address: string, role: TeamRole): Promise<void> {
+  const teamId = activeOwnerTeamId()
+  if (!teamId || teamLoading.value) return
+  teamLoading.value = true
+  teamError.value = null
+  try {
+    teamResult.value = await updateTeamMember(teamId, address, role)
+    notify('Permission updated', 'success')
+  } catch (error) {
+    teamError.value = messageOf(error)
+    notify(teamError.value, 'error')
+  } finally {
+    teamLoading.value = false
+  }
+}
+
+async function removeOwnerMember(address: string): Promise<void> {
+  const teamId = activeOwnerTeamId()
+  if (!teamId || teamLoading.value) return
+  teamLoading.value = true
+  teamError.value = null
+  try {
+    teamResult.value = await removeTeamMember(teamId, address)
+    notify('Member removed', 'success')
+  } catch (error) {
+    teamError.value = messageOf(error)
+    notify(teamError.value, 'error')
+  } finally {
+    teamLoading.value = false
+  }
+}
+
+async function copyTeamInvite(url: string): Promise<void> {
+  if (await copyText(url)) notify('Invite link copied', 'success')
+  else notify("This browser would not let us copy the invite link", 'error')
+}
+
+function leaveTeam(): void {
+  teamPlan.value = null
+  teamResult.value = null
+  teamError.value = null
+  goNew()
+}
+
+function onTrackChange(build: Plan['build']): void {
+  if (teamSyncing.value || !teamResult.value) return
+  const teamId = teamPlan.value?.teamId ?? current.value?.teamId
+  if (!teamId || teamResult.value.teamId !== teamId) return
+  if (teamSyncTimer !== undefined) clearTimeout(teamSyncTimer)
+  teamSyncTimer = setTimeout(() => {
+    teamSyncTimer = undefined
+    void pushTeamBuild(teamId, build)
+  }, 700)
+}
+
+async function pushTeamBuild(teamId: string, build: Plan['build']): Promise<void> {
+  const state = teamResult.value
+  if (!state || state.teamId !== teamId || teamSyncing.value) return
+  teamSyncing.value = true
+  try {
+    const result = await updateTeamTracker(teamId, publicTrackOf(build), state.revision)
+    teamResult.value = result
+    if (teamPlan.value?.teamId === teamId) {
+      teamPlan.value.build = hydratePublicBuild(result.build)
+      teamPlan.value.updatedAt = Date.now()
+    }
+  } catch (error) {
+    teamError.value = error instanceof ApiError && error.code === 'conflict'
+      ? 'Someone changed the tracker. Open the team link again to refresh it.'
+      : messageOf(error)
+    notify(teamError.value, 'error')
+  } finally {
+    teamSyncing.value = false
+  }
 }
 
 // -- generation -------------------------------------------------------------
@@ -580,6 +849,29 @@ function ownIt(): void {
     </template>
   </Workspace>
 
+  <Workspace
+    v-else-if="teamPlan"
+    :plan="teamPlan"
+    :team-only="true"
+    :team-syncing="teamSyncing"
+    :read-only="teamResult?.role === 'viewer'"
+    @back="leaveTeam"
+    @track-change="onTrackChange"
+    @notify="notify"
+  >
+    <template #banner>
+      <div class="team-banner">
+        <p class="team-banner__title">
+          <CairnMark :size="18" />
+          Protected team tracker
+        </p>
+        <p class="team-banner__body">
+          You are a {{ teamResult?.role === 'editor' ? 'Track editor' : 'Track viewer' }}. The private brief belongs to the owner.
+        </p>
+      </div>
+    </template>
+  </Workspace>
+
   <template v-else>
     <NewPlan
       v-if="view === 'new'"
@@ -596,11 +888,20 @@ function ownIt(): void {
       :sharing="sharing"
       :regenerating="generating"
       :refining="refineBusy"
+      :team-panel="ownerTeamPanel"
+      :team-syncing="teamSyncing"
       @back="back"
       @share="share"
       @regenerate="current && generate(current.input, current.id)"
       @refine="openRefine"
       @remove="current && remove(current.id)"
+      @team-open="openTeamPanel"
+      @team-create="createOwnerTeam"
+      @team-add="addOwnerMember"
+      @team-update="updateOwnerMember"
+      @team-remove="removeOwnerMember"
+      @team-copy="copyTeamInvite"
+      @track-change="onTrackChange"
       @notify="notify"
     />
 
@@ -749,5 +1050,31 @@ function ownIt(): void {
   font-size: var(--text-sm);
   line-height: var(--leading);
   color: var(--text-muted);
+}
+
+.team-banner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin: var(--s4) var(--s4) 0;
+  padding: var(--s4);
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+}
+
+.team-banner__title {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--accent);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.team-banner__body {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading);
 }
 </style>

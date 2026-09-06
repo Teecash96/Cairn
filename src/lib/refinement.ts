@@ -2,8 +2,8 @@
  * Client side application of a targeted planner refinement.
  *
  * The Worker returns only the fields it proposes to change. This module applies
- * those fields and leaves the rest of the plan alone. Task ids and completion
- * flags are rebuilt on the client so the AI cannot mark work complete.
+ * those fields and leaves the rest of the plan alone. Task ids and tracker
+ * state are rebuilt on the client so the AI cannot mark work complete.
  */
 import {
   materializeBuildPlan,

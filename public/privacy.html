@@ -51,7 +51,7 @@
 
         <section class="card">
           <h2>What stays on your device</h2>
-          <p>Your saved plans are stored in your browser's local storage. Cairn does not require an account, sign in, team space, or contact list.</p>
+          <p>Your saved plans and private Track data are stored in your browser's local storage. Cairn does not require an email account, password, or contact list. A protected team workspace is optional and uses a short lived signed Nimiq wallet session.</p>
         </section>
 
         <section class="card">
@@ -66,12 +66,17 @@
 
         <section class="card">
           <h2>Refinement and network limits</h2>
-          <p>A planner follow up sends the current plan and your selected question to Cairn's Worker and Google Gemini for that one response. Cairn also uses a short lived, sanitized network address in abuse rate counters. It is not used for analytics or advertising.</p>
+          <p>A planner follow up sends the PRD, flow, and text only builder pack to Cairn's Worker and Google Gemini for that one response. Private tracker notes, labels, dates, priorities, status, and dependencies stay on your device. Cairn also uses a short lived, sanitized network address in abuse rate counters. It is not used for analytics or advertising.</p>
         </section>
 
         <section class="card">
           <h2>Sharing</h2>
-          <p>Nothing is shared until you tap Share. A shared plan is uploaded to the Worker so another person can open its read only link. Do not share confidential material.</p>
+          <p>Nothing is shared until you tap Share. A public shared plan is uploaded to the Worker so another person can open its read only link. The snapshot includes progress, milestone dates, task due dates, and labels. It excludes notes, priorities, and dependency details. Do not share confidential material.</p>
+        </section>
+
+        <section class="card">
+          <h2>Protected team workspaces</h2>
+          <p>The owner can create an optional protected workspace for Track and add named Nimiq wallet addresses as Viewers or Editors. Members must sign in with the wallet that the owner added. The Worker checks the wallet session and role on every request. The team snapshot includes milestone and task text, progress, labels, dates, and the owner's milestone blocker flag. It excludes the PRD, user flow, Build summary, private notes, priorities, and dependency details. Team records remain available for up to one year unless removed sooner.</p>
         </section>
 
         <section class="card">
@@ -81,7 +86,7 @@
 
         <section class="card">
           <h2>Security and retention</h2>
-          <p>Cloudflare manages encryption at rest for server records. Wallet sessions expire after twelve hours and login challenges expire after five minutes. Shared plans are bearer links and remain available for up to one year, unless the storage provider removes them sooner. Do not put confidential material in a shared plan.</p>
+          <p>Cloudflare manages encryption at rest for server records. Wallet sessions expire after twelve hours and login challenges expire after five minutes. Public shared plans and protected team records remain available for up to one year, unless the storage provider removes them sooner. Do not put confidential material in a shared plan or team tracker.</p>
         </section>
 
         <section class="card">

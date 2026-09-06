@@ -1,29 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { BuildPlan, RealityCheckItem, Task } from '../lib/plan'
+import type { BuildPlan, RealityCheckItem } from '../lib/plan'
+import { projectStats, TASK_STATUS_LABEL } from '../lib/tracker'
 
-const { build, realityCheck, readOnly = false } = defineProps<{
+const { build, realityCheck } = defineProps<{
   build: BuildPlan
   realityCheck: RealityCheckItem[]
-  readOnly?: boolean
 }>()
 
-const totalTasks = computed(() =>
-  build.milestones.reduce((total, milestone) => total + milestone.tasks.length, 0),
-)
-const completedTasks = computed(() =>
-  build.milestones.reduce(
-    (total, milestone) => total + milestone.tasks.filter((task) => task.done).length,
-    0,
-  ),
-)
-const progress = computed(() =>
-  totalTasks.value ? Math.round((completedTasks.value / totalTasks.value) * 100) : 0,
-)
-
-function toggle(task: Task): void {
-  if (!readOnly) task.done = !task.done
-}
+const stats = computed(() => projectStats(build))
 
 function visible(items: string[]): string[] {
   return items.filter((item) => item.trim())
@@ -41,8 +26,8 @@ function visible(items: string[]): string[] {
         </p>
       </div>
       <div class="progress" aria-label="Task progress">
-        <strong>{{ completedTasks }}/{{ totalTasks }}</strong>
-        <span>done</span>
+        <strong>{{ stats.progress }}%</strong>
+        <span>{{ stats.completedTasks }}/{{ stats.totalTasks }} done</span>
       </div>
     </section>
 
@@ -59,10 +44,10 @@ function visible(items: string[]): string[] {
     <section class="build-block" aria-labelledby="milestones-heading">
       <div class="section-heading">
         <h4 id="milestones-heading">Milestones</h4>
-        <span class="muted">{{ progress }}%</span>
+        <span class="muted">{{ stats.progress }}%</span>
       </div>
-      <div class="progress-track" role="progressbar" :aria-valuenow="progress" aria-valuemin="0" aria-valuemax="100">
-        <span class="progress-track__fill" :style="{ width: `${progress}%` }" />
+      <div class="progress-track" role="progressbar" :aria-valuenow="stats.progress" aria-valuemin="0" aria-valuemax="100">
+        <span class="progress-track__fill" :style="{ width: `${stats.progress}%` }" />
       </div>
 
       <div v-if="!build.milestones.length" class="empty-pack muted">
@@ -78,20 +63,9 @@ function visible(items: string[]): string[] {
         </div>
         <ul class="task-list">
           <li v-for="task in milestone.tasks" :key="task.id" class="task">
-            <button
-              type="button"
-              class="task__check"
-              :class="{ 'task__check--done': task.done }"
-              :aria-pressed="task.done"
-              :aria-label="`${task.done ? 'Uncheck' : 'Complete'} ${task.text}`"
-              :disabled="readOnly"
-              @click="toggle(task)"
-            >
-              <svg v-if="task.done" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-                <path d="m3 8 3 3 7-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-            </button>
-            <span :class="{ 'task__text--done': task.done }">{{ task.text }}</span>
+            <span class="task__status" :class="`task__status--${task.status}`" aria-hidden="true" />
+            <span :class="{ 'task__text--done': task.status === 'done' }">{{ task.text }}</span>
+            <span class="badge">{{ TASK_STATUS_LABEL[task.status] }}</span>
           </li>
         </ul>
       </article>
@@ -170,10 +144,12 @@ function visible(items: string[]): string[] {
 .milestone p { margin-top: var(--s1); font-size: var(--text-sm); line-height: var(--leading); }
 .task-list { display: flex; flex-direction: column; gap: var(--s2); margin: 0; padding: 0 0 0 calc(26px + var(--s3)); list-style: none; }
 .task { display: flex; align-items: flex-start; gap: var(--s2); color: var(--text-muted); font-size: var(--text-sm); line-height: var(--leading); }
-.task__check { display: grid; flex: 0 0 22px; place-items: center; width: 22px; height: 22px; margin-top: 1px; border: 1px solid var(--line-strong); border-radius: 5px; color: var(--accent-on); background: var(--surface-sunken); }
-.task__check:not(:disabled) { cursor: pointer; }
-.task__check--done { border-color: var(--accent); background: var(--accent); }
+.task > span:nth-child(2) { flex: 1; }
+.task__status { flex: 0 0 9px; width: 9px; height: 9px; margin-top: .42em; border-radius: 50%; background: var(--line-strong); }
+.task__status--in_progress { background: var(--accent); }
+.task__status--done { background: var(--success); }
 .task__text--done { color: var(--text-faint); text-decoration: line-through; }
+.task .badge { flex: 0 0 auto; margin-top: 1px; }
 .next-action { padding: var(--s4); border: 1px solid var(--accent-line); border-radius: var(--r-md); background: var(--accent-subtle); }
 .next-action h4 { font-size: var(--text-md); line-height: var(--leading); }
 .reality { display: flex; flex-direction: column; gap: var(--s3); padding: var(--s4); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-sunken); }

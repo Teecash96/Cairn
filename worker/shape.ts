@@ -16,13 +16,14 @@
  */
 import type {
   BuildMilestoneDraft,
-  BuildPlan,
   BuildPlanDraft,
   FlowBranch,
   FlowStep,
   FlowStepKind,
-  Plan,
   PlanInput,
+  PublicBuildPlan,
+  PublicMilestone,
+  PublicTask,
   Prd,
   PlanChanges,
   RealityCheckItem,
@@ -50,6 +51,11 @@ const PROSE_MAX = 900
 const ITEM_MAX = 260
 const TITLE_MAX = 90
 const BUILD_TITLE_MAX = 100
+const TRACKER_LABEL_MAX = 3
+const TRACKER_LABEL_LENGTH = 24
+const TRACKER_DATE = /^\d{4}-\d{2}-\d{2}$/
+const TRACKER_MILESTONE_MAX = 12
+const TRACKER_TASK_MAX = 12
 
 // -- primitives -------------------------------------------------------------
 
@@ -263,6 +269,102 @@ export function requireBuild(value: unknown): BuildPlanDraft {
   return build
 }
 
+function validDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !TRACKER_DATE.test(value)) return false
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return false
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+}
+
+function sharedLabels(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const result: string[] = []
+  for (const item of value) {
+    const label = str(item, TRACKER_LABEL_LENGTH)
+    if (!label || result.includes(label)) continue
+    result.push(label)
+    if (result.length >= TRACKER_LABEL_MAX) break
+  }
+  return result
+}
+
+/** Public tracker fields only. Private notes, priorities, and dependencies stay local. */
+/** Clamp the public Track projection and rebuild ids under the server prefix. */
+export function clampSharedBuild(value: unknown, id: string): PublicBuildPlan {
+  const raw = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {}
+  const rawMilestones = Array.isArray(raw.milestones) ? raw.milestones : []
+  const milestones: PublicMilestone[] = []
+  let taskCount = 0
+
+  for (const item of rawMilestones.slice(0, TRACKER_MILESTONE_MAX)) {
+    if (typeof item !== 'object' || item === null) continue
+    const record = item as Record<string, unknown>
+    const startDate = validDate(record.startDate) ? record.startDate : undefined
+    const dueDate = validDate(record.dueDate) ? record.dueDate : undefined
+    const safeStart = startDate && dueDate && startDate > dueDate ? undefined : startDate
+    const safeDue = startDate && dueDate && startDate > dueDate ? undefined : dueDate
+    const rawTasks = Array.isArray(record.tasks) ? record.tasks : []
+    const tasks: PublicTask[] = []
+    for (const rawTask of rawTasks) {
+      if (taskCount >= TRACKER_TASK_MAX) break
+      if (typeof rawTask !== 'object' || rawTask === null) continue
+      const task = rawTask as Record<string, unknown>
+      const text = readTaskText(task)
+      if (!text) continue
+      const status = task.status === 'done' || task.status === 'in_progress'
+        ? task.status
+        : task.done === true
+          ? 'done'
+          : 'todo'
+      const dueDate = validDate(task.dueDate) ? task.dueDate : undefined
+      tasks.push({
+        id: `${id}-m${milestones.length + 1}-t${tasks.length + 1}`,
+        text,
+        status,
+        labels: sharedLabels(task.labels),
+        ...(dueDate ? { dueDate } : {}),
+      })
+      taskCount += 1
+    }
+    milestones.push({
+      id: `${id}-m${milestones.length + 1}`,
+      title: str(record.title, BUILD_TITLE_MAX),
+      outcome: str(record.outcome, ITEM_MAX),
+      blocked: record.blocked === true,
+      ...(safeStart ? { startDate: safeStart } : {}),
+      ...(safeDue ? { dueDate: safeDue } : {}),
+      tasks,
+    })
+  }
+
+  return {
+    mvpScope: list(raw.mvpScope, BUILD_SCOPE_MAX),
+    milestones,
+    risks: list(raw.risks, BUILD_LIST_MAX),
+    acceptanceTests: list(raw.acceptanceTests, BUILD_LIST_MAX),
+    nextAction: str(raw.nextAction, ITEM_MAX),
+  }
+}
+
+/**
+ * Clamp the Track-only projection used by protected teams.
+ *
+ * Keep this separate from public shares. Public shares intentionally include
+ * the builder pack summary. A team link is a narrower permission boundary and
+ * must never expose that summary by accident.
+ */
+export function clampTeamBuild(value: unknown, id: string): PublicBuildPlan {
+  const projection = clampSharedBuild(value, id)
+  return {
+    ...projection,
+    mvpScope: [],
+    risks: [],
+    acceptanceTests: [],
+    nextAction: '',
+  }
+}
+
 function clampRealityItem(value: unknown): RealityCheckItem | null {
   if (typeof value !== 'object' || value === null) return null
   const raw = value as Record<string, unknown>
@@ -356,7 +458,7 @@ export function clampChanges(value: unknown): PlanChanges {
  * treatment as a generation. `id` and timestamps are replaced rather than trusted:
  * the stored copy is a new object with no link to the sharer's library.
  */
-export function clampPlan(value: unknown, id: string, now: number): Plan | Invalid {
+export function clampPlan(value: unknown, id: string, now: number): import('./types').PublicPlan | Invalid {
   if (typeof value !== 'object' || value === null) return { message: 'No plan was sent.' }
   const raw = value as Record<string, unknown>
 
@@ -365,27 +467,10 @@ export function clampPlan(value: unknown, id: string, now: number): Plan | Inval
 
   const flow = clampFlow(raw.flow)
   const prd = clampPrd(raw.prd)
-  const build = clampBuild(raw.build)
+  const build = clampSharedBuild(raw.build, id)
   const realityCheck = clampRealityCheck(raw.realityCheck)
   if (!prd.summary && flow.length === 0 && !build.nextAction) {
     return { message: 'That plan is empty.' }
-  }
-
-  const clientBuild: BuildPlan = {
-    mvpScope: build.mvpScope,
-    milestones: build.milestones.map((milestone, milestoneIndex) => ({
-      id: `${id}-m${milestoneIndex + 1}`,
-      title: milestone.title,
-      outcome: milestone.outcome,
-      tasks: milestone.tasks.map((text, taskIndex) => ({
-        id: `${id}-m${milestoneIndex + 1}-t${taskIndex + 1}`,
-        text,
-        done: false,
-      })),
-    })),
-    risks: build.risks,
-    acceptanceTests: build.acceptanceTests,
-    nextAction: build.nextAction,
   }
 
   return {
@@ -396,7 +481,7 @@ export function clampPlan(value: unknown, id: string, now: number): Plan | Inval
     input,
     prd,
     flow,
-    build: clientBuild,
+    build,
     realityCheck,
     shareId: id,
   }

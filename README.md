@@ -8,15 +8,20 @@ a builder pack an indie builder can act on:
 - a **product requirements document** — summary, problem, target user, core
   features, user stories, success criteria, and an explicit list of what it
   assumed and what it left out
+- a **Visual PRD** — a one page canvas that shows the problem, user, promise,
+  first release, proof, and guardrails in one scan
 - a **user-flow diagram** — five to eight connected steps from first open to
   finished task, including one real decision point with both outcomes
-- a **Build plan** — a small MVP scope, three milestones, local task checkboxes,
-  risks, acceptance tests, and the next action
+  - a **Build plan** — a small MVP scope, three milestones, risks, acceptance
+    tests, and the next action
+  - a **Track workspace** — a local project board and timeline for milestones,
+    task status, due dates, labels, priorities, notes, and simple blockers
 - a **Reality check** — three prioritized concerns with the smallest test or fix
 
-Every field is editable. Nothing needs an account. Cairn uses practical MVP
+Every field is editable. Your plan is local by default. Cairn uses practical MVP
 planning rather than Scrum process. You pay per AI action, in NIM, and the first
-few actions are free.
+few actions are free. An optional protected team workspace lets the owner share
+only Track with named Nimiq wallets.
 
 A cairn is a stack of stones left to mark the route for whoever comes next. That
 is what a PRD is for.
@@ -40,17 +45,49 @@ Cairn is those twenty minutes, on a phone, for about the cost of the inference.
    server session. Both prompts happen on the action you already chose to take.
 3. Gemini writes the full builder pack. It takes about twenty seconds.
 4. Edit anything. It autosaves to your device.
-5. Open the **Build** tab, check off local tasks, or ask Cairn to sharpen one
-   part of the plan.
-6. Copy it out as Markdown, or share a link.
+5. Open **Visual PRD** for a one page view of the problem, user, promise, first
+   release, proof, and guardrails.
+6. Open **Track** to update task status, dates, labels, blockers, and private
+   notes. Changes save on this device.
+7. Open **Build** for the builder pack summary, or ask Cairn to sharpen one part
+   of the plan.
+8. Copy it out as Markdown, share a public read only link, or create a protected
+   team workspace for Track.
 
 ### Planner follow ups
 
 The Build tab has four quick actions: cut MVP scope, break work into smaller
 tasks, find missing risks, and improve acceptance tests. You can also ask a
 custom question. Cairn shows targeted changes in a preview before applying them.
-One AI action costs one credit. Completed task checkboxes stay completed when a
-refinement keeps that task.
+One AI action costs one credit. Task status, dates, labels, notes, and blockers
+stay on your device when a refinement keeps that task. Cairn sends only task text
+to Gemini during refinement.
+
+### Track the work
+
+The **Track** tab is a local owner workspace. Board view groups work into vertical
+milestone lanes. Timeline view shows milestone ranges and task due dates. Use the
+filters to see all, to do, in progress, done, or blocked work. A task becomes
+blocked when one of its selected dependencies is not done. A milestone is blocked
+only when you mark it blocked.
+
+The first click on a task opens its editor. Status can also change directly from
+the lane. Dates are never invented by AI. Notes, priorities, and dependency
+details remain private to this device.
+
+### Team workspaces
+
+The owner can create one protected team workspace for a plan. The owner adds
+Nimiq wallet addresses and chooses a **Viewer** or **Editor** role for each one.
+Members must open the protected link with the wallet that was added. The link is
+only a locator. The Worker checks the signed wallet session on every request.
+
+Team members see and, when allowed, edit Track only. The shared snapshot contains
+milestones, task text, status, labels, dates, and the owner's milestone blocker
+flag. It does not contain the PRD, user flow, Build summary, private notes,
+priorities, or dependency details. Owner changes to the team board sync through a
+revision check, so a stale editor cannot overwrite a newer update. Public Share
+links remain separate and read only.
 
 ### Pay it forward
 
@@ -88,8 +125,9 @@ between every idea and its result.
 - Payment goes **straight from your wallet to Cairn's receiving address**. Cairn
   never holds your funds and has no balance to withdraw.
 - Native NIM transfers inside Nimiq Pay carry no network fee.
-- Credits are held against your wallet address. There is no account, no email,
-  and no card.
+- Credits are held against your wallet address. There is no email account or
+  password. A short lived signed wallet session is required for AI, payments,
+  and protected team access.
 
 ## What leaves your phone
 
@@ -98,9 +136,10 @@ Stated plainly, because it matters:
 | Data | Where it goes |
 | --- | --- |
 | The idea you type | Google's Gemini API, via Cairn's server, to write the plan |
-| The finished plan | Your device's local storage. **Nothing else**, unless you use a paid planner follow up or tap Share |
-| A plan you refine | Cairn's server and Google's Gemini API for that one follow up. The current plan is sent so the change can be targeted |
-| A plan you tap **Share** on | Cairn's server, so the link can be opened. Explicit, per plan, never automatic |
+| The finished plan and private Track data | Your device's local storage. **Nothing else**, unless you use a paid planner follow up, public Share, or a protected team workspace |
+| A plan you refine | Cairn's server and Google's Gemini API for that one follow up. The PRD, flow, and text only builder pack are sent so the change can be targeted. Private tracker metadata is not sent |
+| A plan you tap **Share** on | Cairn's server, so the link can be opened. Progress, milestone dates, task due dates, and labels are shared. Notes, priorities, and dependencies are not shared |
+| A protected team workspace | Cairn's server, so named wallet members can use Track. Milestones, task text, status, labels, dates, and milestone blocker flags are shared. The PRD, flow, Build summary, notes, priorities, and dependencies are not shared |
 | Your wallet address | Cairn's server, as the key your credit balance is held against and the identity bound to your wallet session |
 | A pseudonymous device identifier | Cairn's server, so free plans can't be farmed with fresh wallets. It identifies the device, not you, and declining it does not block anything |
 | A request network address | A short lived abuse counter in Cairn's server. It is not used for analytics |
@@ -110,8 +149,9 @@ external fonts. The browser talks only to Cairn's API. Cairn's Worker sends
 generation requests to Gemini on the server side.
 
 Plans are stored per device by design. Clearing the app's storage deletes them,
-and there is no copy on a server to restore from — so copy anything you need to
-keep.
+and there is no private copy on a server to restore from. A protected team
+snapshot is a separate server record for the Track fields only. Copy anything
+you need to keep.
 
 ## Running it locally
 
@@ -163,23 +203,28 @@ src/
                    through unwrap().
     session.ts     Which mode are we in, and whose wallet is this
     units.ts       Luna ⇄ NIM. 1 NIM = 100,000 Luna; Luna everywhere internally
-    plan.ts        The data model, and the on-device library
+    plan.ts        The data model, migration, and on-device library
+    tracker.ts     Progress, dates, blocker, and dependency calculations
     api.ts         Typed client for the server
     markdown.ts    Plan → Markdown / plain text
     clipboard.ts   Copy, with a non-secure-context fallback
     stub.ts        Offline placeholder generator, dev only
   components/
     NewPlan.vue      Screen one: the description
-    Workspace.vue    One plan: Brief, Flow, and Build behind three tabs
+    Workspace.vue    One plan: Brief, Visual PRD, Flow, Build, Track, and Team tabs
     PrdView.vue      The PRD, readable and editable
+    VisualPrd.vue    A visual, editable PRD canvas
     FlowDiagram.vue  The flow diagram
-    BuildView.vue    Milestones, tasks, risks, tests, and reality check
+    BuildView.vue    Read only builder pack summary
+    MilestoneTracker.vue  Owner board and timeline tracker
+    TrackerEditorSheet.vue  Task and milestone editor
+    TeamPanel.vue    Owner member and permission controls
     RefineSheet.vue  Preview and apply targeted planner follow ups
     Library.vue      Everything you have made
     PaySheet.vue     Top up, in NIM
   tests/
-    client/          Migration, task progress, and targeted merge tests
-    worker/          Shape, credit, payment, and share tests
+    client/          Migration, tracker calculations, and targeted merge tests
+    worker/          Shape, credit, payment, share, and team permission tests
 ```
 
 ## Stack

@@ -1,4 +1,4 @@
-import { budgetLeft, chargeBudget, claimGift, ensureCredits, isSpent, markSpent, readCredits, spendOne, grantPaid, tooFast, stateOf } from './credits'
+import { budgetLeft, chargeBudget, claimGift, ensureCredits, isSpent, markSpent, readCredits, spendOne, grantPaid, tooFast, tooFastByKey, stateOf } from './credits'
 import { createChallenge, requireSession, verifyChallenge, type AuthSession } from './auth'
 import { readConfig, quote } from './config'
 import { fail, clientIp, corsHeaders, isLocalHost, json, normalizeAddress, readJson, securityHeaders } from './http'
@@ -6,6 +6,7 @@ import { generateWithGemini, refineWithGemini } from './generate'
 import { verifyPayment } from './payments'
 import { clampPlan, isInvalid, readPlanInput } from './shape'
 import { createShare, publicPlan, readShare } from './share'
+import { addMember, createTeam, getTeam, removeMember, TeamError, updateMember, updateTracker } from './team'
 import type { Env, PlanInput, RefineAction } from './types'
 
 function bodyRecord(value: unknown): Record<string, unknown> | null {
@@ -206,6 +207,99 @@ async function handleShare(env: Env, request: Request, cors: Record<string, stri
   }
 }
 
+function teamBaseUrl(env: Env, request: Request): string {
+  return readConfig(env).appUrl || new URL(request.url).origin
+}
+
+function teamFailure(error: unknown, cors: Record<string, string>): Response {
+  if (error instanceof TeamError) return fail(error.code, error.message, error.status, cors)
+  return fail('server', 'The team service is temporarily unavailable.', 503, cors)
+}
+
+async function handleTeamCreate(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
+  const raw = bodyRecord(await readJson(request, 128 * 1024))
+  if (!raw) return fail('invalid_request', 'The team request is invalid.', 400, cors)
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  if (await tooFastByKey(env, session.address, 'team-create', 5)) return fail('rate_limited', 'Please wait before creating another team.', 429, cors)
+
+  try {
+    const result = await createTeam(env, session.address, {
+      planId: raw.planId as string,
+      name: raw.name as string,
+      build: raw.build,
+    }, teamBaseUrl(env, request))
+    return json(result, 200, cors)
+  } catch (error) {
+    return teamFailure(error, cors)
+  }
+}
+
+async function handleTeamRead(env: Env, request: Request, teamId: string, cors: Record<string, string>): Promise<Response> {
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  try {
+    const result = await getTeam(env, teamId, session.address, teamBaseUrl(env, request))
+    return json(result, 200, cors)
+  } catch (error) {
+    return teamFailure(error, cors)
+  }
+}
+
+async function handleTeamAddMember(env: Env, request: Request, teamId: string, cors: Record<string, string>): Promise<Response> {
+  const raw = bodyRecord(await readJson(request, 16 * 1024))
+  if (!raw) return fail('invalid_request', 'The member request is invalid.', 400, cors)
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  if (await tooFastByKey(env, session.address, 'team-member', 20)) return fail('rate_limited', 'Please wait before changing team members again.', 429, cors)
+  try {
+    const result = await addMember(env, teamId, session.address, raw.address, raw.role, teamBaseUrl(env, request))
+    return json(result, 200, cors)
+  } catch (error) {
+    return teamFailure(error, cors)
+  }
+}
+
+async function handleTeamUpdateMember(env: Env, request: Request, teamId: string, memberAddress: string, cors: Record<string, string>): Promise<Response> {
+  const raw = bodyRecord(await readJson(request, 8 * 1024))
+  if (!raw) return fail('invalid_request', 'The member request is invalid.', 400, cors)
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  if (await tooFastByKey(env, session.address, 'team-member', 20)) return fail('rate_limited', 'Please wait before changing team members again.', 429, cors)
+  try {
+    const result = await updateMember(env, teamId, session.address, memberAddress, raw.role, teamBaseUrl(env, request))
+    return json(result, 200, cors)
+  } catch (error) {
+    return teamFailure(error, cors)
+  }
+}
+
+async function handleTeamRemoveMember(env: Env, request: Request, teamId: string, memberAddress: string, cors: Record<string, string>): Promise<Response> {
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  if (await tooFastByKey(env, session.address, 'team-member', 20)) return fail('rate_limited', 'Please wait before changing team members again.', 429, cors)
+  try {
+    const result = await removeMember(env, teamId, session.address, memberAddress, teamBaseUrl(env, request))
+    return json(result, 200, cors)
+  } catch (error) {
+    return teamFailure(error, cors)
+  }
+}
+
+async function handleTeamTracker(env: Env, request: Request, teamId: string, cors: Record<string, string>): Promise<Response> {
+  const raw = bodyRecord(await readJson(request, 128 * 1024))
+  if (!raw) return fail('invalid_request', 'The tracker request is invalid.', 400, cors)
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  if (await tooFastByKey(env, session.address, 'team-tracker', 30)) return fail('rate_limited', 'Please wait before saving more tracker changes.', 429, cors)
+  try {
+    const result = await updateTracker(env, teamId, session.address, raw.build, raw.revision, teamBaseUrl(env, request))
+    return json(result, 200, cors)
+  } catch (error) {
+    return teamFailure(error, cors)
+  }
+}
+
 async function route(env: Env, request: Request): Promise<Response> {
   const url = new URL(request.url)
   if (url.protocol === 'http:' && !isLocalHost(url.hostname)) {
@@ -225,6 +319,16 @@ async function route(env: Env, request: Request): Promise<Response> {
   if (url.pathname === '/api/refine' && request.method === 'POST') return handleRefine(env, request, cors)
   if (url.pathname === '/api/redeem' && request.method === 'POST') return handleRedeem(env, request, cors)
   if (url.pathname === '/api/share' && request.method === 'POST') return handleShare(env, request, cors)
+  if (url.pathname === '/api/team' && request.method === 'POST') return handleTeamCreate(env, request, cors)
+  const teamMatch = /^\/api\/team\/([a-z2-9]{16,32})$/i.exec(url.pathname)
+  if (teamMatch?.[1] && request.method === 'GET') return handleTeamRead(env, request, teamMatch[1], cors)
+  const teamMembersMatch = /^\/api\/team\/([a-z2-9]{16,32})\/members$/i.exec(url.pathname)
+  if (teamMembersMatch?.[1] && request.method === 'POST') return handleTeamAddMember(env, request, teamMembersMatch[1], cors)
+  const teamMemberMatch = /^\/api\/team\/([a-z2-9]{16,32})\/members\/([^/]+)$/i.exec(url.pathname)
+  if (teamMemberMatch?.[1] && teamMemberMatch[2] && request.method === 'PATCH') return handleTeamUpdateMember(env, request, teamMemberMatch[1], teamMemberMatch[2], cors)
+  if (teamMemberMatch?.[1] && teamMemberMatch[2] && request.method === 'DELETE') return handleTeamRemoveMember(env, request, teamMemberMatch[1], teamMemberMatch[2], cors)
+  const teamTrackerMatch = /^\/api\/team\/([a-z2-9]{16,32})\/tracker$/i.exec(url.pathname)
+  if (teamTrackerMatch?.[1] && request.method === 'PUT') return handleTeamTracker(env, request, teamTrackerMatch[1], cors)
   if (url.pathname.startsWith('/api/share/') && request.method === 'GET') {
     const id = url.pathname.slice('/api/share/'.length).replace(/[^a-z0-9]/gi, '').slice(0, 32)
     const record = id ? await readShare(env, id) : null

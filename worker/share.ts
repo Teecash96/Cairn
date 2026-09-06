@@ -2,7 +2,7 @@ import { allowGift } from './credits'
 import { token } from './http'
 import { clampPlan } from './shape'
 import type { Config } from './config'
-import type { Env, GiftRecord, Plan, ShareRecord } from './types'
+import type { Env, GiftRecord, PublicPlan, ShareRecord } from './types'
 
 const SHARE_TTL = 60 * 60 * 24 * 365
 
@@ -38,6 +38,6 @@ export async function readShare(env: Env, shareId: string): Promise<ShareRecord 
   return await env.CAIRN.get<ShareRecord>(`share:${shareId}`, 'json')
 }
 
-export function publicPlan(record: ShareRecord): Plan {
+export function publicPlan(record: ShareRecord): PublicPlan {
   return { ...record.plan, shareId: record.plan.id }
 }

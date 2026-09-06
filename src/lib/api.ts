@@ -13,6 +13,7 @@ import type {
   Plan,
   PlanChanges,
   PlanInput,
+  PublicBuildPlan,
   Prd,
   RealityCheckItem,
 } from './plan'
@@ -77,6 +78,29 @@ export interface AuthResult {
   expiresAt: number
 }
 
+export type TeamRole = 'viewer' | 'editor'
+
+export interface TeamMember {
+  address: string
+  role: TeamRole
+  createdAt: number
+}
+
+export type TeamAccess = 'owner' | TeamRole
+
+/** Protected team state. Only the public Track projection is returned. */
+export interface TeamResult {
+  teamId: string
+  planId: string
+  name: string
+  owner: string
+  role: TeamAccess
+  members: TeamMember[]
+  build: PublicBuildPlan
+  revision: number
+  inviteUrl: string
+}
+
 export type RefineAction =
   | 'cut_mvp_scope'
   | 'break_into_tasks'
@@ -115,6 +139,8 @@ export type ApiErrorCode =
   | 'generation_failed'
   | 'network'
   | 'auth_required'
+  | 'forbidden'
+  | 'conflict'
   | 'server'
 
 export class ApiError extends Error {
@@ -157,9 +183,13 @@ const BASE: string = (import.meta.env.VITE_API_BASE as string | undefined)?.repl
 let authToken: string | null = null
 let authAddress: string | null = null
 
+function canonicalAddress(value: string): string {
+  return value.replace(/\s+/g, '').toUpperCase()
+}
+
 export function setAuthToken(token: string, address: string): void {
   authToken = token
-  authAddress = address
+  authAddress = canonicalAddress(address)
 }
 
 export function clearAuthToken(): void {
@@ -168,7 +198,7 @@ export function clearAuthToken(): void {
 }
 
 export function hasAuthToken(address: string): boolean {
-  return Boolean(authToken && authAddress === address)
+  return Boolean(authToken && authAddress === canonicalAddress(address))
 }
 
 /** Generation can take a while; everything else should be quick. */
@@ -194,6 +224,8 @@ function isErrorCode(value: unknown): value is ApiErrorCode {
       'generation_failed',
       'network',
       'auth_required',
+      'forbidden',
+      'conflict',
       'server',
     ].includes(value)
   )
@@ -346,6 +378,60 @@ export function refinePlan(body: RefineRequest): Promise<RefineResult> {
     method: 'POST',
     body: JSON.stringify(body),
     timeoutMs: TIMEOUT_MS.generate,
+    auth: true,
+  })
+}
+
+/** Create or recover the owner's protected team workspace for a plan. */
+export function createTeam(body: {
+  planId: string
+  name: string
+  build: PublicBuildPlan
+}): Promise<TeamResult> {
+  return request<TeamResult>('/team', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    auth: true,
+  })
+}
+
+/** Read a protected team. The wallet session determines access and role. */
+export function getTeam(teamId: string): Promise<TeamResult> {
+  return request<TeamResult>(`/team/${encodeURIComponent(teamId)}`, { auth: true })
+}
+
+export function addTeamMember(teamId: string, address: string, role: TeamRole): Promise<TeamResult> {
+  return request<TeamResult>(`/team/${encodeURIComponent(teamId)}/members`, {
+    method: 'POST',
+    body: JSON.stringify({ address, role }),
+    auth: true,
+  })
+}
+
+export function updateTeamMember(teamId: string, address: string, role: TeamRole): Promise<TeamResult> {
+  return request<TeamResult>(`/team/${encodeURIComponent(teamId)}/members/${encodeURIComponent(address)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ role }),
+    auth: true,
+  })
+}
+
+export function removeTeamMember(teamId: string, address: string): Promise<TeamResult> {
+  return request<TeamResult>(`/team/${encodeURIComponent(teamId)}/members/${encodeURIComponent(address)}`, {
+    method: 'DELETE',
+    auth: true,
+  })
+}
+
+/** Update only the public Track projection. `revision` prevents stale writes. */
+export function updateTeamTracker(
+  teamId: string,
+  build: PublicBuildPlan,
+  revision: number,
+): Promise<TeamResult> {
+  return request<TeamResult>(`/team/${encodeURIComponent(teamId)}/tracker`, {
+    method: 'PUT',
+    body: JSON.stringify({ build, revision }),
     auth: true,
   })
 }

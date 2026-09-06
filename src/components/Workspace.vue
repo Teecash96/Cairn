@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * One plan, open: the PRD and the flow, side by side behind two tabs.
+ * One plan, open: the brief, visual PRD, flow, builder pack, tracker, and
+ * optional team workspace across up to six tabs.
  *
  * The same component serves a plan you own and a plan someone shared with you —
  * `readOnly` removes every mutating affordance rather than a second, nearly
@@ -14,11 +15,24 @@
 import { computed, ref, watch } from 'vue'
 import BuildView from './BuildView.vue'
 import FlowDiagram from './FlowDiagram.vue'
+import MilestoneTracker from './MilestoneTracker.vue'
 import PrdView from './PrdView.vue'
+import TeamPanel from './TeamPanel.vue'
+import VisualPrd from './VisualPrd.vue'
 import { copyText, canDownload, downloadText } from '../lib/clipboard'
-import { buildToText, flowToText, planToMarkdown, prdToText } from '../lib/markdown'
-import type { RefineAction } from '../lib/api'
-import { relativeTime, slugOf, titleOf, type Plan } from '../lib/plan'
+import { buildToText, flowToText, planToMarkdown, prdToText, trackToText } from '../lib/markdown'
+import type { RefineAction, TeamMember, TeamRole } from '../lib/api'
+import { relativeTime, slugOf, titleOf, type BuildPlan, type Plan } from '../lib/plan'
+
+export interface TeamPanelState {
+  teamId: string | null
+  owner: string
+  role: 'owner' | TeamRole
+  members: TeamMember[]
+  inviteUrl: string
+  loading: boolean
+  error: string | null
+}
 
 const {
   plan,
@@ -26,6 +40,9 @@ const {
   sharing = false,
   regenerating = false,
   refining = false,
+  teamOnly = false,
+  teamPanel,
+  teamSyncing = false,
 } = defineProps<{
   plan: Plan
   /** A plan shared with you: readable, exportable, not editable. */
@@ -33,6 +50,11 @@ const {
   sharing?: boolean
   regenerating?: boolean
   refining?: boolean
+  /** A protected team link exposes Track only. */
+  teamOnly?: boolean
+  /** Owner team management state. Omit for public share workspaces. */
+  teamPanel?: TeamPanelState
+  teamSyncing?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -42,11 +64,18 @@ const emit = defineEmits<{
   refine: [action: RefineAction]
   remove: []
   notify: [message: string, tone?: 'info' | 'success' | 'error']
+  'team-open': []
+  'team-create': []
+  'team-add': [address: string, role: TeamRole]
+  'team-update': [address: string, role: TeamRole]
+  'team-remove': [address: string]
+  'team-copy': [url: string]
+  'track-change': [build: BuildPlan]
 }>()
 
-type Tab = 'brief' | 'flow' | 'build'
+type Tab = 'brief' | 'visual' | 'flow' | 'build' | 'track' | 'team'
 
-const tab = ref<Tab>('brief')
+const tab = ref<Tab>(teamOnly ? 'track' : 'brief')
 const editing = ref(false)
 const confirmingRemove = ref(false)
 
@@ -55,29 +84,47 @@ const downloadable = canDownload()
 
 const heading = computed(() => titleOf(plan))
 const edited = computed(() => relativeTime(plan.updatedAt))
+const metaLabel = computed(() => {
+  if (teamOnly) return `Track only · ${readOnly ? 'viewer' : 'editor'}`
+  return readOnly ? 'shared with you' : `edited ${edited.value}`
+})
+const availableTabs = computed<Tab[]>(() => {
+  if (teamOnly) return ['track']
+  return teamPanel ? ['brief', 'visual', 'flow', 'build', 'track', 'team'] : ['brief', 'visual', 'flow', 'build', 'track']
+})
 
 // Opening a different plan must not inherit the previous one's mode.
 watch(
   () => plan.id,
   () => {
-    tab.value = 'brief'
+    tab.value = teamOnly ? 'track' : 'brief'
     editing.value = false
     confirmingRemove.value = false
   },
 )
 
-async function copy(what: 'prd' | 'flow' | 'build' | 'markdown'): Promise<void> {
+async function copy(what: 'prd' | 'flow' | 'build' | 'track' | 'markdown'): Promise<void> {
   const text =
     what === 'prd'
       ? prdToText(plan)
       : what === 'flow'
         ? flowToText(plan.flow)
+        : what === 'track'
+          ? trackToText(plan.build)
         : what === 'build'
           ? buildToText(plan)
           : planToMarkdown(plan)
 
   const label =
-    what === 'markdown' ? 'Markdown' : what === 'prd' ? 'Brief' : what === 'flow' ? 'Flow' : 'Builder pack'
+    what === 'markdown'
+      ? 'Markdown'
+      : what === 'prd'
+        ? 'Brief'
+        : what === 'flow'
+          ? 'Flow'
+          : what === 'track'
+            ? 'Tracker'
+            : 'Builder pack'
 
   if (await copyText(text)) emit('notify', `${label} copied`, 'success')
   else emit('notify', "This browser wouldn't let us copy", 'error')
@@ -92,17 +139,28 @@ function save(): void {
 }
 
 function select(next: Tab): void {
+  if (!availableTabs.value.includes(next)) return
   tab.value = next
+  if (next === 'team') emit('team-open')
+}
+
+function teamAdd(address: string, role: TeamRole): void {
+  emit('team-add', address, role)
+}
+
+function teamUpdate(address: string, role: TeamRole): void {
+  emit('team-update', address, role)
 }
 
 /** Left/right arrows move between tabs, as the tab pattern requires. */
 function onTabKey(event: KeyboardEvent): void {
   if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
     event.preventDefault()
-    const tabs: Tab[] = ['brief', 'flow', 'build']
+    const tabs = availableTabs.value
     const currentIndex = tabs.indexOf(tab.value)
     const offset = event.key === 'ArrowRight' ? 1 : -1
-    tab.value = tabs[(currentIndex + offset + tabs.length) % tabs.length] ?? 'brief'
+    tab.value = tabs[(currentIndex + offset + tabs.length) % tabs.length] ?? tabs[0] ?? 'brief'
+    if (tab.value === 'team') emit('team-open')
   }
 }
 </script>
@@ -149,15 +207,18 @@ function onTabKey(event: KeyboardEvent): void {
       <h2 v-else class="screen__title">{{ heading }}</h2>
 
       <p class="meta faint">
-        <span>{{ plan.flow.length }} steps</span>
-        <span aria-hidden="true">·</span>
-        <span>{{ readOnly ? 'shared with you' : `edited ${edited}` }}</span>
+        <template v-if="!teamOnly">
+          <span>{{ plan.flow.length }} steps</span>
+          <span aria-hidden="true">·</span>
+        </template>
+        <span>{{ metaLabel }}</span>
         <span v-if="plan.shareId && !readOnly" class="badge">Shared</span>
       </p>
     </div>
 
     <div class="tabs" role="tablist" aria-label="Plan sections" @keydown="onTabKey">
       <button
+        v-if="!teamOnly"
         id="tab-brief"
         type="button"
         role="tab"
@@ -171,6 +232,21 @@ function onTabKey(event: KeyboardEvent): void {
         Brief
       </button>
       <button
+        v-if="!teamOnly"
+        id="tab-visual"
+        type="button"
+        role="tab"
+        class="tab"
+        :class="{ 'tab--on': tab === 'visual' }"
+        :aria-selected="tab === 'visual'"
+        aria-controls="panel-visual"
+        :tabindex="tab === 'visual' ? 0 : -1"
+        @click="select('visual')"
+      >
+        Visual PRD
+      </button>
+      <button
+        v-if="!teamOnly"
         id="tab-flow"
         type="button"
         role="tab"
@@ -184,6 +260,7 @@ function onTabKey(event: KeyboardEvent): void {
         User flow
       </button>
       <button
+        v-if="!teamOnly"
         id="tab-build"
         type="button"
         role="tab"
@@ -196,11 +273,38 @@ function onTabKey(event: KeyboardEvent): void {
       >
         Build
       </button>
+      <button
+        id="tab-track"
+        type="button"
+        role="tab"
+        class="tab"
+        :class="{ 'tab--on': tab === 'track' }"
+        :aria-selected="tab === 'track'"
+        aria-controls="panel-track"
+        :tabindex="tab === 'track' ? 0 : -1"
+        @click="select('track')"
+      >
+        Track
+      </button>
+      <button
+        v-if="!teamOnly && teamPanel"
+        id="tab-team"
+        type="button"
+        role="tab"
+        class="tab"
+        :class="{ 'tab--on': tab === 'team' }"
+        :aria-selected="tab === 'team'"
+        aria-controls="panel-team"
+        :tabindex="tab === 'team' ? 0 : -1"
+        @click="select('team')"
+      >
+        Team
+      </button>
     </div>
 
     <div class="body">
       <section
-        v-if="tab === 'brief'"
+        v-if="tab === 'brief' && !teamOnly"
         id="panel-brief"
         role="tabpanel"
         aria-labelledby="tab-brief"
@@ -210,7 +314,17 @@ function onTabKey(event: KeyboardEvent): void {
       </section>
 
       <section
-        v-else-if="tab === 'flow'"
+        v-else-if="tab === 'visual' && !teamOnly"
+        id="panel-visual"
+        role="tabpanel"
+        aria-labelledby="tab-visual"
+        tabindex="0"
+      >
+        <VisualPrd :prd="plan.prd" :editing="editing" />
+      </section>
+
+      <section
+        v-else-if="tab === 'flow' && !teamOnly"
         id="panel-flow"
         role="tabpanel"
         aria-labelledby="tab-flow"
@@ -220,13 +334,13 @@ function onTabKey(event: KeyboardEvent): void {
       </section>
 
       <section
-        v-else
+        v-else-if="tab === 'build' && !teamOnly"
         id="panel-build"
         role="tabpanel"
         aria-labelledby="tab-build"
         tabindex="0"
       >
-        <BuildView :build="plan.build" :reality-check="plan.realityCheck" :read-only="readOnly" />
+        <BuildView :build="plan.build" :reality-check="plan.realityCheck" />
         <div v-if="!readOnly" class="followups">
           <div class="section-heading">
             <div>
@@ -245,15 +359,55 @@ function onTabKey(event: KeyboardEvent): void {
         </div>
       </section>
 
+      <section
+        v-else-if="tab === 'track'"
+        id="panel-track"
+        role="tabpanel"
+        aria-labelledby="tab-track"
+        tabindex="0"
+      >
+        <MilestoneTracker
+          v-model="plan.build"
+          :read-only="readOnly"
+          :editing="editing"
+          :team-mode="teamOnly"
+          @update:model-value="emit('track-change', $event)"
+        />
+      </section>
+
+      <section
+        v-else-if="tab === 'team' && teamPanel"
+        id="panel-team"
+        role="tabpanel"
+        aria-labelledby="tab-team"
+        tabindex="0"
+      >
+        <TeamPanel
+          :team-id="teamPanel.teamId"
+          :owner="teamPanel.owner"
+          :role="teamPanel.role"
+          :members="teamPanel.members"
+          :invite-url="teamPanel.inviteUrl"
+          :loading="teamPanel.loading"
+          :error="teamPanel.error"
+          :syncing="teamSyncing"
+          @create="emit('team-create')"
+          @add="teamAdd"
+          @update="teamUpdate"
+          @remove="emit('team-remove', $event)"
+          @copy="emit('team-copy', $event)"
+        />
+      </section>
+
       <div class="actions">
-        <button type="button" class="btn btn--secondary btn--sm" @click="copy(tab === 'brief' ? 'prd' : tab)">
-          {{ tab === 'brief' ? 'Copy brief' : tab === 'flow' ? 'Copy flow' : 'Copy builder pack' }}
+        <button type="button" class="btn btn--secondary btn--sm" @click="copy(teamOnly ? 'track' : tab === 'brief' || tab === 'visual' ? 'prd' : tab === 'flow' ? 'flow' : 'build')">
+          {{ teamOnly ? 'Copy tracker' : tab === 'brief' || tab === 'visual' ? 'Copy brief' : tab === 'flow' ? 'Copy flow' : 'Copy builder pack' }}
         </button>
-        <button type="button" class="btn btn--secondary btn--sm" @click="copy('markdown')">
+        <button v-if="!teamOnly" type="button" class="btn btn--secondary btn--sm" @click="copy('markdown')">
           Copy Markdown
         </button>
         <button
-          v-if="!readOnly"
+          v-if="!readOnly && !teamOnly"
           type="button"
           class="btn btn--primary btn--sm"
           :disabled="sharing"
@@ -261,12 +415,12 @@ function onTabKey(event: KeyboardEvent): void {
         >
           {{ sharing ? 'Sharing…' : plan.shareId ? 'Copy link' : 'Share' }}
         </button>
-        <button v-if="downloadable" type="button" class="btn btn--ghost btn--sm" @click="save">
+        <button v-if="downloadable && !teamOnly" type="button" class="btn btn--ghost btn--sm" @click="save">
           Save .md
         </button>
       </div>
 
-      <template v-if="!readOnly">
+      <template v-if="!readOnly && !teamOnly">
         <hr class="divider" />
 
         <div class="footer">
@@ -358,6 +512,7 @@ function onTabKey(event: KeyboardEvent): void {
   z-index: 15;
   display: flex;
   gap: var(--s1);
+  overflow-x: auto;
   margin-top: var(--s5);
   padding: 0 var(--s4);
   background: var(--bg);
@@ -365,6 +520,7 @@ function onTabKey(event: KeyboardEvent): void {
 }
 
 .tab {
+  flex: 0 0 auto;
   padding: var(--s3) var(--s3);
   font-size: var(--text-sm);
   font-weight: 650;
