@@ -2,4 +2,3 @@
 # Never commit .dev.vars. It is ignored by .gitignore.
 GEMINI_API_KEY="replace-with-a-local-key"
 GEMINI_MODEL="gemini-3.1-flash-lite"
-DEV_TRUST_PAYMENTS="1"

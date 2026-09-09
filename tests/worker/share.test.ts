@@ -20,14 +20,8 @@ class MemoryKV {
 
 const config: Config = {
   model: 'gemini-3.1-flash-lite',
-  priceLuna: 1_000_000,
-  plansPerPayment: 10,
-  freePlans: 3,
   dailyBudget: 400,
-  rpcUrl: '',
-  payTo: null,
   appUrl: 'https://cairn.example',
-  trustPaymentsInDev: false,
 }
 
 const address = 'NQ01AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
@@ -43,16 +37,15 @@ const plan = {
   realityCheck: [],
 }
 
-test('stores a full read-only snapshot and returns a gift link', async () => {
+test('stores a full read-only snapshot and returns a clean share link', async () => {
   const kv = new MemoryKV()
   const result = await createShare({ CAIRN: kv as unknown as KVNamespace } as Env, config, address, plan, new URL('https://cairn.example/'))
   const shareId = new URL(result.url).searchParams.get('s')
-  const gift = new URL(result.url).searchParams.get('g')
   assert.ok(shareId)
-  assert.ok(gift)
+  assert.equal(new URL(result.url).searchParams.get('g'), null)
 
   const record = await readShare({ CAIRN: kv as unknown as KVNamespace } as Env, shareId ?? '')
   assert.ok(record)
   assert.equal(record?.plan.prd.summary, 'A summary')
-  assert.equal(publicPlan(record ?? { plan: plan as never, by: address, createdAt: 1, gift: '' }).shareId, shareId)
+  assert.equal(publicPlan(record ?? { plan: plan as never, by: address, createdAt: 1 }).shareId, shareId)
 })

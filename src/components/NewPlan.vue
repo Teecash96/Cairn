@@ -20,13 +20,10 @@ import type { PlanInput } from '../lib/plan'
 const {
   busy = false,
   initial,
-  freeLeft = null,
   showDisclosure = true,
 } = defineProps<{
   busy?: boolean
   initial?: PlanInput
-  /** Free generations remaining, once the server has told us. */
-  freeLeft?: number | null
   showDisclosure?: boolean
 }>()
 
@@ -47,8 +44,18 @@ const MIN_IDEA = 24
 const ready = computed(() => idea.value.trim().length >= MIN_IDEA)
 
 const EXAMPLES = [
-  'A tool that turns a voice note into a shopping list, grouped by aisle, for people who shop straight after work.',
-  'An app where cyclists report potholes and the council sees a ranked heat map of the worst streets.',
+  {
+    label: 'Daily',
+    text: 'A tool that turns a voice note into a shopping list, grouped by aisle, for people who shop straight after work.',
+  },
+  {
+    label: 'Civic',
+    text: 'An app where cyclists report potholes and the council sees a ranked heat map of the worst streets.',
+  },
+  {
+    label: 'Habit',
+    text: 'A habit tracker for remote workers that turns small routines into a simple weekly check-in.',
+  },
 ]
 
 function useExample(text: string): void {
@@ -99,24 +106,35 @@ function submit(): void {
 </script>
 
 <template>
-  <div class="screen">
-    <header class="new-hero">
+  <div class="screen screen--atlas-new">
+    <header class="atlas-hero">
       <div class="brandline">
-        <CairnMark :size="22" class="mark" label="Cairn" />
+        <span class="brandline__symbol">
+          <CairnMark :size="22" class="mark" label="Cairn" />
+        </span>
         <span class="brandline__name">Cairn</span>
-        <span class="brandline__tag">Product clarity</span>
+        <span class="brandline__tag">Product atlas</span>
       </div>
-      <p class="eyebrow">Start with the rough version</p>
-      <h1 class="hero">Make the idea easier to build.</h1>
-      <p class="screen__sub">
-        Describe what you have in mind. Cairn turns the messy first thought into a clear product
-        brief and a flow your team can follow.
+      <div class="atlas-meta mono">
+        <span>Route 01</span>
+        <span class="atlas-meta__free">Free to use</span>
+      </div>
+      <h1 class="hero">Map the idea before you build it.</h1>
+      <p class="hero-copy">
+        Describe the rough version. Cairn turns it into a clear product map, a route to release,
+        and the next useful move.
       </p>
-      <p class="response-promise">Most plans are ready in under 30 seconds.</p>
+
+      <ol class="route-preview" aria-label="Cairn maps an idea into a plan, flow, build path, and tracker">
+        <li class="route-preview__stop route-preview__stop--active"><span>01</span>Idea</li>
+        <li class="route-preview__stop"><span>02</span>Plan</li>
+        <li class="route-preview__stop"><span>03</span>Build</li>
+        <li class="route-preview__stop"><span>04</span>Track</li>
+      </ol>
     </header>
 
-    <form id="new-plan-form" class="form" aria-label="Create a product plan" @submit.prevent="submit">
-      <div class="field">
+    <form id="new-plan-form" class="form atlas-form" aria-label="Create a product plan" @submit.prevent="submit">
+      <div class="field project-field">
         <label class="field__label" for="name">
           Project name
           <span class="field__optional">Optional</span>
@@ -133,7 +151,7 @@ function submit(): void {
 
       <div class="idea-field">
         <div class="idea-field__heading">
-          <label class="field__label" for="idea">Your starting point</label>
+          <label class="field__label" for="idea">The rough idea</label>
           <span class="idea-field__count">{{ idea.length }}/1500</span>
         </div>
         <textarea
@@ -141,7 +159,7 @@ function submit(): void {
           v-model="idea"
           class="textarea"
           :disabled="busy"
-          placeholder="What is it, who is it for, and what should it let them do?"
+          placeholder="What are you trying to make real? Tell us what it is, who needs it, and what should change for them."
           autocapitalize="sentences"
           autocorrect="on"
           spellcheck="true"
@@ -150,16 +168,17 @@ function submit(): void {
         />
 
         <div v-if="!idea.trim()" class="examples">
-          <span class="faint examples__label">Need a starting point?</span>
+          <span class="examples__label mono">Example routes</span>
           <button
-            v-for="(example, i) in EXAMPLES"
-            :key="i"
+            v-for="example in EXAMPLES"
+            :key="example.label"
             type="button"
             class="example"
             :disabled="busy"
-            @click="useExample(example)"
+            @click="useExample(example.text)"
           >
-            {{ example }}
+            <span class="example__label mono">{{ example.label }}</span>
+            <span class="example__text">{{ example.text }}</span>
           </button>
         </div>
       </div>
@@ -167,7 +186,7 @@ function submit(): void {
       <div class="submit">
         <button type="submit" class="btn btn--primary btn--block" :disabled="!ready || busy">
           <span v-if="busy" class="dot" aria-hidden="true"></span>
-          {{ busy ? PHASES[phase] + '…' : 'Generate plan' }}
+          {{ busy ? PHASES[phase] + '…' : 'Generate my plan' }}
         </button>
 
         <p v-if="busy" class="foot faint" aria-live="polite">
@@ -176,8 +195,8 @@ function submit(): void {
         <p v-else-if="!ready && idea.trim()" class="foot faint">
           A little more detail and it will have something to work with.
         </p>
-        <p v-else-if="freeLeft !== null && freeLeft > 0" class="foot muted">
-          {{ freeLeft }} free {{ freeLeft === 1 ? 'plan' : 'plans' }} left. No card, no account.
+        <p v-else class="foot muted">
+          Free to use. Your finished plan stays on this device.
         </p>
       </div>
 
@@ -188,8 +207,8 @@ function submit(): void {
         :disabled="busy"
         @click="expanded = true"
       >
-        <span>Add more detail</span>
-        <span class="field__optional">Optional, but it sharpens the result</span>
+        <span>Add route context</span>
+        <span class="field__optional">Optional, but it sharpens the map</span>
       </button>
 
       <template v-else>
@@ -242,23 +261,22 @@ function submit(): void {
 </template>
 
 <style scoped>
-.mark {
-  color: var(--accent);
-  display: block;
-  margin-bottom: var(--s3);
-}
-
-.hero {
-  font-size: var(--text-2xl);
-  letter-spacing: -0.024em;
-}
-
-.response-promise {
-  margin-top: var(--s3);
-  color: var(--accent);
-  font-size: var(--text-sm);
-  font-weight: 650;
-}
+.screen--atlas-new { gap: var(--s8); }
+.atlas-hero { position: relative; display: flex; flex-direction: column; gap: var(--s4); padding-bottom: var(--s2); }
+.brandline { margin-bottom: var(--s4); }
+.brandline__symbol { display: grid; place-items: center; width: 38px; height: 38px; color: var(--ink); background: var(--nim); border-radius: 50%; }
+.mark { display: block; }
+.atlas-meta { display: flex; align-items: center; gap: var(--s3); color: var(--text-faint); font-size: var(--text-xs); font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
+.atlas-meta__free { display: inline-flex; align-items: center; gap: var(--s2); color: var(--moss); }
+.atlas-meta__free::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.hero { max-width: 13ch; font-family: var(--font-display); font-size: clamp(2.5rem, 12vw, 4.7rem); font-weight: 600; line-height: .97; letter-spacing: -.055em; }
+.hero-copy { max-width: 38rem; color: var(--text-muted); font-size: var(--text-md); line-height: var(--leading-loose); }
+.route-preview { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); margin: var(--s4) 0 0; padding: 0; list-style: none; }
+.route-preview::before { content: ''; position: absolute; top: 13px; left: 8%; right: 8%; height: 1px; background: var(--line-strong); }
+.route-preview__stop { position: relative; display: flex; flex-direction: column; align-items: center; gap: var(--s2); color: var(--text-faint); font-size: var(--text-xs); font-weight: 650; }
+.route-preview__stop span { position: relative; z-index: 1; display: grid; place-items: center; width: 27px; height: 27px; color: var(--text-muted); background: var(--bg); border: 1px solid var(--line-strong); border-radius: 50%; font-size: .62rem; }
+.route-preview__stop--active { color: var(--text); }
+.route-preview__stop--active span { color: var(--accent-on); background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 5px var(--accent-subtle); }
 
 .form {
   display: flex;
@@ -266,6 +284,8 @@ function submit(): void {
   gap: var(--s5);
 }
 
+.atlas-form { padding-top: var(--s5); border-top: 1px solid var(--line); }
+.project-field { max-width: 28rem; }
 .more {
   align-self: flex-start;
   padding-left: 0;
@@ -291,29 +311,37 @@ function submit(): void {
 .examples {
   display: flex;
   flex-direction: column;
-  gap: var(--s2);
-  margin-top: var(--s1);
+  gap: 0;
+  margin-top: var(--s3);
+  border-top: 1px solid var(--line);
 }
 
 .examples__label {
+  padding: var(--s3) 0 var(--s2);
+  color: var(--text-faint);
   font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
 }
 
 .example {
-  padding: var(--s3);
+  display: grid;
+  grid-template-columns: 4.25rem 1fr;
+  gap: var(--s3);
+  padding: var(--s3) 0;
   text-align: left;
   font-size: var(--text-sm);
   line-height: var(--leading);
   color: var(--text-muted);
-  background: var(--surface-sunken);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  border-bottom: 1px solid var(--line);
 }
 
 .example:hover:not(:disabled) {
-  border-color: var(--accent-line);
   color: var(--text);
 }
+.example__label { color: var(--accent); font-size: var(--text-xs); font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
+.example__text { max-width: 52ch; }
 
 /* -- submit -------------------------------------------------------------- */
 
@@ -382,5 +410,11 @@ function submit(): void {
     background: var(--bg);
     border-top: 1px solid var(--line);
   }
+}
+
+@media (max-width: 380px) {
+  .hero { font-size: 2.3rem; }
+  .route-preview__stop { font-size: .68rem; }
+  .example { grid-template-columns: 3.5rem 1fr; }
 }
 </style>

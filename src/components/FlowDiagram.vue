@@ -170,7 +170,8 @@ function removeStep(index: number): void {
 .steps {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 0 0 var(--s5);
+  border-left: 1px solid var(--accent-line);
 }
 
 .node {
@@ -182,13 +183,27 @@ function removeStep(index: number): void {
 /* -- the card ------------------------------------------------------------ */
 
 .card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--s2);
   padding: var(--s4);
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-sm);
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: var(--s4);
+  left: -26px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 /* Entry and success are the two ends of the story; a single accent edge marks
@@ -248,6 +263,7 @@ function removeStep(index: number): void {
 }
 
 .title {
+  font-family: var(--font-display);
   font-size: var(--text-lg);
   letter-spacing: -0.012em;
   overflow-wrap: break-word;
@@ -357,7 +373,7 @@ function removeStep(index: number): void {
   align-self: center;
   width: 1px;
   height: 22px;
-  background: var(--line-strong);
+  background: var(--accent-line);
 }
 
 /* Chevron, so the spine reads as direction rather than decoration. */

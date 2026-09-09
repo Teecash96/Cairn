@@ -17,7 +17,7 @@ compatibility_date = "2026-08-01"
 # one place.
 #
 # `not_found_handling = "none"` deliberately: Cairn has no client-side router.
-# Share links are query parameters (`/?s=<id>&g=<token>`) precisely so that no
+# Share links are query parameters (`/?s=<id>`) precisely so that no
 # rewrite rule stands between a shared link and a rendered app. Single-page-app
 # handling would also swallow `/api/*` before the Worker ever ran.
 [assets]
@@ -26,7 +26,7 @@ binding = "ASSETS"
 not_found_handling = "none"
 run_worker_first = true
 
-# Credits, share snapshots, gift tokens, spent receipts, budget counters.
+# Share snapshots, wallet sessions, team records, rate limits, and budget counters.
 # Create with: wrangler kv namespace create CAIRN
 #          and wrangler kv namespace create CAIRN --preview
 [[kv_namespaces]]
@@ -39,32 +39,9 @@ preview_id = "e9d8888ac4344658be9fa668ab85bd0d"
 # deployed Worker cannot silently drift to different model behavior.
 GEMINI_MODEL = "gemini-3.1-flash-lite"
 
-# Where payments go. Public information — this is the app's receiving address,
-# and the client is told it in the price quote.
-PAY_TO = "NQ19 E39Q Y9EQ 937E YQYC 13D2 4LCC UPTN 3VPS"
-
-# --- Pricing -----------------------------------------------------------------
-# Amounts are LUNA. 1 NIM = 100,000 Luna.
-#
-# Initial price: 100,000,000 Luna = 1,000 NIM for 10 plans. This is intentionally
-# easy to try, but it is close to the estimated inference cost, so review it after
-# the first real requests. The app's claim — "you're paying for the AI, not a
-# subscription" — must remain true.
-PRICE_LUNA = "100000000"
-PLANS_PER_PAYMENT = "10"
-
-# Free generations granted to a new wallet, capped per device (see credits.ts).
-FREE_PLANS = "3"
-
 # Hard ceiling on generations per UTC day, across all users. This is the backstop
 # that makes it impossible for anyone to run up an unbounded Gemini bill.
 DAILY_BUDGET = "400"
-
-# Read the receiving address's incoming transactions to verify a payment.
-# This public endpoint was tested against getTransactionHashesByAddress and
-# getTransactionByHash on 2026-09-04. It has no uptime guarantee, so monitor it
-# after launch and replace it with a paid or self-hosted endpoint if needed.
-NIMIQ_RPC_URL = "https://rpc.nimiqwatch.com"
 
 # Absolute base for share links. Leave empty to derive it from the request, which
 # is correct in production; set it when the app and the Worker are on different

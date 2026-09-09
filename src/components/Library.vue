@@ -63,9 +63,10 @@ function commitRename(id: string): void {
 <template>
   <div class="screen">
     <header>
-      <h1 class="screen__title">Your plans</h1>
+      <p class="eyebrow">Local atlas</p>
+      <h1 class="screen__title">Marked routes</h1>
       <p class="screen__sub">
-        {{ plans.length }} saved on this device.
+        {{ plans.length }} product {{ plans.length === 1 ? 'route' : 'routes' }} saved on this device.
       </p>
     </header>
 
@@ -77,18 +78,17 @@ function commitRename(id: string): void {
     <!-- Empty state, designed rather than defaulted. -->
     <div v-if="!plans.length" class="empty">
       <CairnMark :size="34" class="empty__mark" />
-      <p class="empty__title">Nothing here yet</p>
+      <p class="empty__title">No routes marked yet</p>
       <p class="empty__body faint">
-        A cairn is a stack of stones left to mark the route for whoever comes next. Describe an idea
-        and Cairn leaves one for you.
+        Describe one rough idea. Cairn will map the product and mark the route to its first release.
       </p>
       <button type="button" class="btn btn--primary" @click="emit('create')">
-        Start a plan
+        Map an idea
       </button>
     </div>
 
     <ul v-else class="list">
-      <li v-for="plan in plans" :key="plan.id" class="item card">
+      <li v-for="plan in plans" :key="plan.id" class="item">
         <div class="row">
           <button type="button" class="open" @click="emit('open', plan.id)">
             <span class="name">{{ titleOf(plan) }}</span>
@@ -163,7 +163,7 @@ function commitRename(id: string): void {
     </ul>
 
     <button v-if="plans.length" type="button" class="btn btn--primary btn--block" @click="emit('create')">
-      New plan
+      Map another idea
     </button>
   </div>
 </template>
@@ -178,6 +178,9 @@ function commitRename(id: string): void {
   font-size: var(--text-sm);
   line-height: var(--leading);
 }
+
+.eyebrow { margin: 0 0 var(--s2); color: var(--accent); font-family: var(--font-mono); font-size: .7rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+.screen__title { font-family: var(--font-display); font-size: clamp(2.25rem, 8vw, 4.5rem); letter-spacing: -.045em; }
 
 /* -- empty --------------------------------------------------------------- */
 
@@ -213,11 +216,13 @@ function commitRename(id: string): void {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--s2);
+  gap: 0;
+  border-top: 1px solid var(--line-strong);
 }
 
 .item {
   overflow: hidden;
+  border-bottom: 1px solid var(--line-strong);
 }
 
 .row {
@@ -231,7 +236,7 @@ function commitRename(id: string): void {
   display: flex;
   flex-direction: column;
   gap: var(--s1);
-  padding: var(--s4);
+  padding: var(--s5) var(--s2);
   text-align: left;
 }
 
@@ -240,8 +245,10 @@ function commitRename(id: string): void {
 }
 
 .name {
-  font-weight: 600;
-  letter-spacing: -0.006em;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: -0.012em;
   /* One line: the library is for scanning, and the plan itself holds the detail. */
   overflow: hidden;
   text-overflow: ellipsis;

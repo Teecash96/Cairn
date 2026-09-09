@@ -4,15 +4,15 @@
 
 ## Product
 
-Cairn is a mobile first web app designed for the Nimiq Pay mini app environment. A person describes an idea in plain language. Cairn returns an editable brief, a five to eight step user flow with one decision point, practical milestones and tasks, acceptance tests, and a reality check.
+Cairn is a mobile first web app designed for the Nimiq Pay mini app environment. A person describes an idea in plain language. Cairn maps it into an editable product plan, a five to eight step user flow, practical milestones and tasks, acceptance tests, and a reality check.
 
 ## Privacy
 
-Saved plans stay in browser local storage until the person chooses to share. Generation sends the submitted description through Cairn's server to Google Gemini. Cairn does not require an account and does not run Google Analytics or advertising tracking.
+Saved plans stay in browser local storage until the person chooses to share. Generation sends the submitted description through Cairn's server to Google Gemini. Cairn uses signed Nimiq wallet identity. It does not require an email account and does not run Google Analytics or advertising tracking.
 
-## Payment
+## Access
 
-New wallets receive a small free allowance. Extra planner actions are purchased as a bundle with NIM through Nimiq Pay. Cairn does not custody user funds.
+Cairn is free to use. Plans, refinements, sharing, exports, and team workspaces do not require payment. Fair use rate limits and a daily service limit keep AI cost bounded.
 
 ## Links
 

@@ -2,8 +2,8 @@
  * Cairn design tokens and primitives.
  *
  * Rules this file follows, from the product spec:
- *   - one restrained indigo accent, used only for actions and emphasis;
- *     everything else is neutral
+ *   - a limestone and ink atlas, with route blue for actions and Nimiq gold
+ *     reserved for identity and wallet moments
  *   - no gradients, no heavy shadows — depth comes from hairline borders
  *   - dark mode is a first-class theme, not an inversion afterthought
  *   - generous, consistent spacing from a single scale
@@ -19,32 +19,41 @@
   /* Tells the WebView to render form controls and scrollbars for both themes. */
   color-scheme: light dark;
 
-  /* -- Neutrals: one cool-grey ramp, light theme -------------------------- */
-  --bg: #fbfbfd;
-  --surface: #ffffff;
-  --surface-sunken: #f4f5f9;
-  --surface-hover: #f0f1f6;
+  /* -- Atlas palette ----------------------------------------------------- */
+  --bg: #f2efe7;
+  --surface: #fffdf7;
+  --surface-sunken: #ebe6da;
+  --surface-hover: #e4ded1;
 
-  --text: #14161c;
-  --text-muted: #585e70;
-  --text-faint: #8b90a0;
+  --ink: #151713;
+  --text: #151713;
+  --text-muted: #565d54;
+  --text-faint: #7d847a;
 
-  --line: #e5e7ef;
-  --line-strong: #cfd3e0;
+  --line: #d8d1c2;
+  --line-strong: #b8b0a1;
 
-  /* -- Accent: indigo ---------------------------------------------------- */
-  --accent: #4f46e5;
-  --accent-hover: #4338ca;
+  /* Route blue carries actions and current position. */
+  --accent: #2457d6;
+  --accent-hover: #1c47b3;
   /* Text sitting on --accent. */
   --accent-on: #ffffff;
   /* A wash for selected tabs and diagram nodes. Must stay subtle. */
-  --accent-subtle: #eef0fe;
-  --accent-line: #c9cbfa;
+  --accent-subtle: #e4eafb;
+  --accent-line: #aebfeb;
+
+  --nim: #f5b72e;
+  --moss: #397258;
+  --clay: #c86145;
 
   /* Feedback. Never the sole carrier of meaning — always paired with text. */
-  --danger: #c02b3f;
-  --danger-subtle: #fdeef0;
-  --success: #12784f;
+  --danger: #ad422d;
+  --danger-subtle: #f7e2da;
+  --success: #397258;
+
+  --font-display: 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* -- Type scale --------------------------------------------------------- */
   --text-xs: 0.75rem; /* 12 — labels, meta */
@@ -71,9 +80,9 @@
   --s12: 3rem;
 
   /* -- Shape and motion -------------------------------------------------- */
-  --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 14px;
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
   --r-full: 999px;
 
   --dur-fast: 120ms;
@@ -94,28 +103,32 @@
 /* Dark theme. Redefines tokens only — no component rules are repeated. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0d0e13;
-    --surface: #14161d;
-    --surface-sunken: #10121a;
-    --surface-hover: #1c1f29;
+    --bg: #111411;
+    --surface: #181c18;
+    --surface-sunken: #1e231e;
+    --surface-hover: #262c25;
 
-    --text: #eceef4;
-    --text-muted: #9298a8;
-    --text-faint: #6b7183;
+    --ink: #f2efe7;
+    --text: #f2efe7;
+    --text-muted: #a7afa4;
+    --text-faint: #747d72;
 
-    --line: #242833;
-    --line-strong: #343948;
+    --line: #30372f;
+    --line-strong: #4a5348;
 
-    /* Lifted so it stays legible on a dark ground; text on it goes dark. */
-    --accent: #818cf8;
-    --accent-hover: #939cfa;
-    --accent-on: #0f1018;
-    --accent-subtle: #191c2e;
-    --accent-line: #333a5c;
+    --accent: #83a6ff;
+    --accent-hover: #9ab7ff;
+    --accent-on: #101820;
+    --accent-subtle: #182545;
+    --accent-line: #355184;
 
-    --danger: #f2798c;
-    --danger-subtle: #2a1620;
-    --success: #4ec08d;
+    --nim: #f5bf42;
+    --moss: #6eae87;
+    --clay: #e17b5e;
+
+    --danger: #ed8066;
+    --danger-subtle: #341f1a;
+    --success: #6eae87;
 
     --shadow-sheet: 0 -1px 0 var(--line), 0 -12px 32px rgb(0 0 0 / 45%);
   }
@@ -133,16 +146,16 @@ html,
 body {
   margin: 0;
   padding: 0;
-  height: 100%;
-  overflow-x: hidden;
+  min-height: 100%;
 }
+
+html { overflow-x: hidden; }
+body { overflow-x: visible; }
 
 body {
   background: var(--bg);
   color: var(--text);
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  font-family: var(--font-ui);
   font-size: var(--text-base);
   line-height: var(--leading);
   -webkit-font-smoothing: antialiased;
@@ -175,7 +188,7 @@ h1,
 h2,
 h3,
 h4 {
-  font-weight: 650;
+  font-weight: 700;
   line-height: var(--leading-tight);
   letter-spacing: -0.011em;
 }
@@ -225,9 +238,9 @@ textarea {
   /* Never smaller than a fingertip. */
   min-height: 46px;
   padding: 0 var(--s5);
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   font-size: var(--text-md);
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: -0.006em;
   white-space: nowrap;
   transition:
@@ -254,6 +267,7 @@ textarea {
 .btn--primary {
   background: var(--accent);
   color: var(--accent-on);
+  box-shadow: 0 1px 0 rgb(0 0 0 / 18%);
 }
 
 .btn--primary:hover:not(:disabled) {
@@ -385,7 +399,7 @@ textarea {
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-md);
 }
 
 .divider {
@@ -405,7 +419,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: var(--s6);
-  width: min(100%, 780px);
+  width: min(100%, 860px);
   margin: 0 auto;
   padding: calc(var(--safe-top) + var(--s8)) var(--s6)
     calc(var(--nav-h) + var(--safe-bottom) + var(--s8));
@@ -447,8 +461,9 @@ textarea {
 
 .brandline__name {
   color: var(--text);
-  font-size: var(--text-md);
-  font-weight: 750;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 700;
   letter-spacing: -0.02em;
 }
 
@@ -458,6 +473,7 @@ textarea {
   font-size: var(--text-xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  font-family: var(--font-mono);
 }
 
 .eyebrow {
@@ -470,10 +486,11 @@ textarea {
 }
 
 .idea-field {
-  padding: var(--s4);
+  padding: var(--s5);
   background: var(--surface);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-sm);
   transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
 
@@ -483,7 +500,7 @@ textarea {
 }
 
 .idea-field .textarea {
-  min-height: 180px;
+  min-height: 210px;
   padding: var(--s3) 0 0;
   border: 0;
   background: transparent;
@@ -512,6 +529,11 @@ textarea {
     padding-right: var(--s4);
   }
 
+  .screen.screen--flush {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
   .brandline {
     margin-bottom: var(--s8);
   }
@@ -532,6 +554,7 @@ textarea {
 }
 
 .mono {
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum';
 }

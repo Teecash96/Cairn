@@ -2,15 +2,13 @@
  * Session state: are we inside Nimiq Pay, and whose wallet is this?
  *
  * Two runtime modes:
- *  - `nimiq`   — running in the Nimiq Pay WebView. Real provider, real payments.
+ *  - `nimiq`   — running in the Nimiq Pay WebView with native wallet identity.
  *  - `preview` — a normal browser. Production uses Nimiq Hub for wallet
- *                authentication and checkout. Only the local Vite preview uses
+ *                authentication. Only the local Vite preview uses
  *                the synthetic wallet and offline generator.
  *
- * Nothing here prompts at boot. Both native dialogs — wallet, then device id —
- * fire on the first "Generate plan" tap, because the competition's only
- * quantitative criterion counts distinct Nimiq wallets and the prompt has to land
- * inside the first minute, attached to an action the user already wanted to take.
+ * Nothing here prompts at boot. Wallet sign in starts on the first action that
+ * needs identity. Cairn never requests a payment or device identifier.
  */
 import { computed, readonly, ref } from 'vue'
 import { clearAuthToken, getAuthChallenge, hasAuthToken, setAuthToken, verifyAuth } from './api'
@@ -19,11 +17,8 @@ import {
   connectWallet,
   detectLanguage,
   getChainStatus,
-  getDeviceId,
   getProvider,
   isInsideNimiqPay,
-  sendPayment,
-  sendPaymentInBrowser,
   signMessage,
   signMessageInBrowser,
   type NimiqProvider,
@@ -41,8 +36,6 @@ const lastError = ref<string | null>(null)
 
 let provider: NimiqProvider | null = null
 let bootPromise: Promise<void> | null = null
-let deviceId: string | null = null
-let deviceIdAsked = false
 
 /** Synthetic address used in preview mode so the whole flow stays walkable. */
 const PREVIEW_ADDRESS = 'NQ07 0000 0000 0000 0000 0000 0000 0000 PRVW'
@@ -113,24 +106,6 @@ export function useSession() {
     } finally {
       connecting.value = false
     }
-  }
-
-  /**
-   * Pseudonymous device id, fetched once and cached.
-   *
-   * The server caps free generations per device rather than per wallet, since
-   * wallets are free to mint. Declining is not an error — the server falls back to
-   * its weaker IP-based limit, so this never blocks a generation.
-   *
-   * Called AFTER `connect()` so the wallet prompt is never queued behind it.
-   */
-  async function ensureDeviceId(): Promise<string | null> {
-    if (mode.value === 'booting') await boot()
-    if (deviceIdAsked) return deviceId
-    deviceIdAsked = true
-    if (mode.value === 'preview' || !provider) return null
-    deviceId = await getDeviceId()
-    return deviceId
   }
 
   /** Establish a short lived server session by signing a one time challenge. */
@@ -220,37 +195,6 @@ export function useSession() {
     }
   }
 
-  /**
-   * Pay Cairn's receiving address for a bundle of generations.
-   * Resolves with an opaque receipt, or null if the user declined the prompt.
-   * Only local Vite preview returns a marker. Production browser mode uses Hub.
-   */
-  async function pay(recipient: string, valueLuna: number, note: string): Promise<string | null> {
-    if (mode.value === 'booting') await boot()
-    lastError.value = null
-
-    if (localPreview) {
-      return 'preview'
-    }
-    try {
-      if (mode.value === 'nimiq' && provider) {
-        return await sendPayment(provider, recipient, valueLuna, note)
-      }
-      if (mode.value === 'preview') {
-        return await sendPaymentInBrowser(recipient, valueLuna, note)
-      }
-      return null
-    } catch (error) {
-      lastError.value =
-        error instanceof ProviderError && error.isDenied
-          ? 'Payment cancelled.'
-          : error instanceof Error
-            ? error.message
-            : 'Payment failed.'
-      return null
-    }
-  }
-
   return {
     mode: readonly(mode),
     address: readonly(address),
@@ -264,8 +208,6 @@ export function useSession() {
     boot,
     connect,
     authenticate,
-    ensureDeviceId,
-    pay,
     refreshChain,
   }
 }

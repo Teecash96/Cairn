@@ -3,7 +3,7 @@
  *
  * ---------------------------------------------------------------------------
  * These domain types are DUPLICATED from `src/lib/plan.ts` (Plan, Prd, FlowStep,
- * PlanInput) and `src/lib/api.ts` (CreditState, PriceQuote, ApiErrorCode, and the
+ * PlanInput) and `src/lib/api.ts` (ApiErrorCode and the
  * result shapes). They are copied rather than imported because those files are
  * typed against the DOM — localStorage, Crypto, Intl — and a Worker project must
  * not have DOM globals in scope.
@@ -14,7 +14,7 @@
  */
 
 export interface Env {
-  /** Credits, shares, gifts, spent receipts, budget counters. */
+  /** Shares, wallet sessions, team records, rate limits, and budget counters. */
   CAIRN: KVNamespace
   /** The built app. Used for static asset fallback. */
   ASSETS: Fetcher
@@ -23,22 +23,9 @@ export interface Env {
   GEMINI_API_KEY: string
   GEMINI_MODEL?: string
 
-  PAY_TO: string
-  /** Numbers arrive as strings; `intVar()` in index.ts parses them. */
-  PRICE_LUNA: string
-  PLANS_PER_PAYMENT: string
-  FREE_PLANS: string
+  /** Numbers arrive as strings; the config parser validates them. */
   DAILY_BUDGET: string
-  NIMIQ_RPC_URL: string
   APP_URL: string
-
-  /**
-   * `.dev.vars` only. Set to "1" to skip on-chain verification so the credit and
-   * pay flows can be walked without a node. It is refused unless the request
-   * arrived on a loopback or private-range host, which a deployed Worker never
-   * is — see `payments.ts`.
-   */
-  DEV_TRUST_PAYMENTS?: string
 }
 
 // -- domain (mirrors src/lib/plan.ts) ---------------------------------------
@@ -188,18 +175,6 @@ export interface PlanChanges {
 
 // -- wire shapes (mirrors src/lib/api.ts) -----------------------------------
 
-export interface CreditState {
-  free: number
-  paid: number
-  total: number
-}
-
-export interface PriceQuote {
-  priceLuna: number
-  plans: number
-  payTo: string
-}
-
 export interface AuthChallengeRecord {
   /** Optional when the challenge was requested before Hub returns its signer. */
   address: string | null
@@ -216,8 +191,6 @@ export interface SessionRecord {
 }
 
 export type ApiErrorCode =
-  | 'payment_required'
-  | 'payment_not_found'
   | 'rate_limited'
   | 'budget_exhausted'
   | 'invalid_request'
@@ -231,39 +204,12 @@ export type ApiErrorCode =
 
 // -- stored records ---------------------------------------------------------
 
-/** `credit:<address>` */
-export interface CreditRecord {
-  free: number
-  paid: number
-  createdAt: number
-  /** Every free credit this address has ever been given. Kept for audit. */
-  grantedFree: number
-}
-
-/** `device:<deviceId>` — which wallets this handset has already had free plans for. */
-export interface DeviceRecord {
-  addresses: string[]
-  granted: number
-}
-
 /** `share:<shareId>` */
 export interface ShareRecord {
   plan: PublicPlan
   /** Normalized address of whoever shared it. */
   by: string
   createdAt: number
-  /**
-   * Minted once, with the share record — not once per share call. Re-sharing an
-   * edited plan reuses this token, or sharing in a loop would mint free plans.
-   */
-  gift: string
-}
-
-/** `gift:<token>` — single use, and never claimable by its own giver. */
-export interface GiftRecord {
-  from: string
-  shareId: string
-  claimedBy?: string
 }
 
 // -- protected teams --------------------------------------------------------

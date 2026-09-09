@@ -1,6 +1,6 @@
 # Cairn
 
-**Describe an idea. Get a plan.**
+**Map the idea before you build it.**
 
 Cairn is a Nimiq Pay mini app that turns a few sentences about a product idea into
 a builder pack an indie builder can act on:
@@ -12,16 +12,16 @@ a builder pack an indie builder can act on:
   first release, proof, and guardrails in one scan
 - a **user-flow diagram** — five to eight connected steps from first open to
   finished task, including one real decision point with both outcomes
-  - a **Build plan** — a small MVP scope, three milestones, risks, acceptance
-    tests, and the next action
-  - a **Track workspace** — a local project board and timeline for milestones,
-    task status, due dates, labels, priorities, notes, and simple blockers
+- a **Build plan** — a small MVP scope, three milestones, risks, acceptance
+  tests, and the next action
+- a **Track workspace** — a local project board and timeline for milestones,
+  task status, due dates, labels, priorities, notes, and simple blockers
 - a **Reality check** — three prioritized concerns with the smallest test or fix
 
 Every field is editable. Your plan is local by default. Cairn uses practical MVP
-planning rather than Scrum process. You pay per AI action, in NIM, and the first
-few actions are free. An optional protected team workspace lets the owner share
-only Track with named Nimiq wallets.
+planning rather than Scrum process. Plans, refinements, sharing, exports, and
+team workspaces are free. An optional protected team workspace lets the owner
+share only Track with named Nimiq wallets.
 
 A cairn is a stack of stones left to mark the route for whoever comes next. That
 is what a PRD is for.
@@ -35,7 +35,7 @@ Filling it properly takes a product manager twenty minutes of structured
 thinking, and most ideas never get those twenty minutes — so they either die or
 get built without a plan.
 
-Cairn is those twenty minutes, on a phone, for about the cost of the inference.
+Cairn is those twenty minutes on a phone, free to the builder.
 
 ## How it works
 
@@ -46,8 +46,8 @@ Cairn is those twenty minutes, on a phone, for about the cost of the inference.
    happens on the action you already chose to take.
 3. Gemini writes the full builder pack. It takes about twenty seconds.
 4. Edit anything. It autosaves to your device.
-5. Open **Visual PRD** for a one page view of the problem, user, promise, first
-   release, proof, and guardrails.
+5. Open **Plan** and choose **Map** for a one page view of the problem, user,
+   promise, first release, proof, and guardrails.
 6. Open **Track** to update task status, dates, labels, blockers, and private
    notes. Changes save on this device.
 7. Open **Build** for the builder pack summary, or ask Cairn to sharpen one part
@@ -60,9 +60,9 @@ Cairn is those twenty minutes, on a phone, for about the cost of the inference.
 The Build tab has four quick actions: cut MVP scope, break work into smaller
 tasks, find missing risks, and improve acceptance tests. You can also ask a
 custom question. Cairn shows targeted changes in a preview before applying them.
-One AI action costs one credit. Task status, dates, labels, notes, and blockers
-stay on your device when a refinement keeps that task. Cairn sends only task text
-to Gemini during refinement.
+Planner actions are free. Fair use rate limits and a daily service limit prevent
+unbounded AI cost. Task status, dates, labels, notes, and blockers stay on your
+device when a refinement keeps that task. Cairn sends only task text to Gemini.
 
 ### Track the work
 
@@ -90,22 +90,13 @@ priorities, or dependency details. Owner changes to the team board sync through 
 revision check, so a stale editor cannot overwrite a newer update. Public Share
 links remain separate and read only.
 
-### Pay it forward
-
-Sharing a plan mints a link that carries a **free generation for whoever opens
-it**. They read your plan, tap once, and get their own — paid for by you, without
-costing you a credit.
-
-This is the part we like most. NIM moves because someone chose to pass something
-on, not because a paywall demanded it.
-
 ## Public pages
 
 The deployed Worker serves a small information layer beside the mini app:
 
 1. `/case-studies` contains illustrative examples. They are not customer
    claims.
-2. `/faq` answers product, timing, payment, sharing, and privacy questions.
+2. `/faq` answers product, timing, free access, sharing, and privacy questions.
 3. `/privacy` explains data handling in plain language.
 4. `/thank-you` is a simple completion page for links and demos.
 5. Unknown routes show a branded 404 page.
@@ -114,21 +105,15 @@ The app has a clear response promise: most plans are ready in under 30 seconds.
 The public pages use canonical URLs, Open Graph metadata, a social card,
 `robots.txt`, `sitemap.xml`, and `llms.txt`.
 
-## Paying
+## Free access
 
-The first few plans are free. After that, one payment buys a **bundle** of plans
-rather than a single one — every wallet call opens a native confirmation dialog
-that an app cannot suppress, and nobody should have to approve a transaction
-between every idea and its result.
+Cairn does not charge for plans or planner actions. A short lived signed Nimiq
+wallet session proves identity for AI requests and protected team access. There
+is no email account, password, subscription, credit balance, or payment prompt.
 
-- The price is set by the server and shown before you confirm. Nothing is
-  hardcoded in the app.
-- Payment goes **straight from your wallet to Cairn's receiving address**. Cairn
-  never holds your funds and has no balance to withdraw.
-- Native NIM transfers inside Nimiq Pay carry no network fee.
-- Credits are held against your wallet address. There is no email account or
-  password. A short lived signed wallet session is required for AI, payments,
-  and protected team access.
+The Worker applies a short rate limit per wallet and a global daily generation
+limit. This keeps the free service useful without exposing an unlimited Gemini
+bill.
 
 ## What leaves your phone
 
@@ -137,12 +122,11 @@ Stated plainly, because it matters:
 | Data | Where it goes |
 | --- | --- |
 | The idea you type | Google's Gemini API, via Cairn's server, to write the plan |
-| The finished plan and private Track data | Your device's local storage. **Nothing else**, unless you use a paid planner follow up, public Share, or a protected team workspace |
+| The finished plan and private Track data | Your device's local storage. **Nothing else**, unless you use a planner follow up, public Share, or a protected team workspace |
 | A plan you refine | Cairn's server and Google's Gemini API for that one follow up. The PRD, flow, and text only builder pack are sent so the change can be targeted. Private tracker metadata is not sent |
 | A plan you tap **Share** on | Cairn's server, so the link can be opened. Progress, milestone dates, task due dates, and labels are shared. Notes, priorities, and dependencies are not shared |
 | A protected team workspace | Cairn's server, so named wallet members can use Track. Milestones, task text, status, labels, dates, and milestone blocker flags are shared. The PRD, flow, Build summary, notes, priorities, and dependencies are not shared |
-| Your wallet address | Cairn's server, as the key your credit balance is held against and the identity bound to your wallet session |
-| A pseudonymous device identifier | Cairn's server, so free plans can't be farmed with fresh wallets. It identifies the device, not you, and declining it does not block anything |
+| Your wallet address | Cairn's server, as the identity bound to your short lived wallet session and protected team access |
 | A request network address | A short lived abuse counter in Cairn's server. It is not used for analytics |
 
 There is no analytics, no tracking, and no third-party script. The app loads no
@@ -162,12 +146,11 @@ npm run dev          # http://localhost:5173
 ```
 
 To run the full local Worker, copy `.dev.vars.example` to `.dev.vars` and add a local Gemini
-key. Then run `npm run build` and `npm run worker:dev`. The Worker uses its local KV store. The
-`DEV_TRUST_PAYMENTS=1` setting is available only for local testing and is refused on public
-requests. Never commit `.dev.vars`.
+key. Then run `npm run build` and `npm run worker:dev`. The Worker uses its local KV store.
+Never commit `.dev.vars`.
 
-In a production build, Chrome uses Nimiq Hub for real wallet authentication and
-checkout. Only a local Vite preview with no `VITE_API_BASE` uses a synthetic wallet
+In a production build, Chrome uses Nimiq Hub for real wallet authentication.
+Only a local Vite preview with no `VITE_API_BASE` uses a synthetic wallet
 and an obviously-labelled placeholder plan. This keeps local UI work walkable
 without weakening the production wallet path.
 
@@ -207,7 +190,6 @@ src/
                    `T | ErrorResponse` rather than throwing, so every call goes
                    through unwrap().
     session.ts     Which mode are we in, and whose wallet is this
-    units.ts       Luna ⇄ NIM. 1 NIM = 100,000 Luna; Luna everywhere internally
     plan.ts        The data model, migration, and on-device library
     tracker.ts     Progress, dates, blocker, and dependency calculations
     api.ts         Typed client for the server
@@ -216,7 +198,7 @@ src/
     stub.ts        Offline placeholder generator, dev only
   components/
     NewPlan.vue      Screen one: the description
-    Workspace.vue    One plan: Brief, Visual PRD, Flow, Build, Track, and Team tabs
+    Workspace.vue    One route: Plan, Flow, Build, and Track
     PrdView.vue      The PRD, readable and editable
     VisualPrd.vue    A visual, editable PRD canvas
     FlowDiagram.vue  The flow diagram
@@ -226,10 +208,9 @@ src/
     TeamPanel.vue    Owner member and permission controls
     RefineSheet.vue  Preview and apply targeted planner follow ups
     Library.vue      Everything you have made
-    PaySheet.vue     Top up, in NIM
   tests/
     client/          Migration, tracker calculations, and targeted merge tests
-    worker/          Shape, credit, payment, share, and team permission tests
+    worker/          Auth, budget, shape, share, and team permission tests
 ```
 
 ## Stack

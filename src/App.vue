@@ -1,20 +1,14 @@
 <script setup lang="ts">
 /**
  * Cairn's shell: the new plan screen, library, workspace, and protected team
- * route, plus the whole generate → pay → share loop.
+ * route, plus the free generate, refine, and share loop.
  *
  * State lives here rather than in a store. There are three screens and one open
  * plan; a store would be indirection for its own sake, and keeping the sequence
  * in one file is what makes the ordering rules below checkable at a glance.
  *
- * Two orderings matter and are easy to get wrong:
- *
- *  1. The wallet prompt fires on the first "Generate plan" tap — never at boot.
- *     Distinct wallets are the competition's only quantitative measure, so the
- *     prompt has to arrive attached to something the user already chose to do.
- *  2. `authenticate()` comes before `ensureDeviceId()`. In Nimiq Pay this is
- *     connect then sign. In Chrome it is a Nimiq Hub signature. Either way the
- *     wallet prompt is never queued behind a permission the user may decline.
+ * The wallet prompt fires on the first generate tap, never at boot. It proves
+ * identity for free generation and protected teams without asking for payment.
  *
  * Editing autosaves. There is no save button, and the deep watcher that does it
  * is guarded so that stamping `updatedAt` cannot retrigger itself.
@@ -23,7 +17,6 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import CairnMark from './components/CairnMark.vue'
 import Library from './components/Library.vue'
 import NewPlan from './components/NewPlan.vue'
-import PaySheet from './components/PaySheet.vue'
 import RefineSheet from './components/RefineSheet.vue'
 import Toast from './components/Toast.vue'
 import Workspace from './components/Workspace.vue'
@@ -34,14 +27,13 @@ import {
   generatePlan,
   getSharedPlan,
   getTeam,
-  redeemPayment,
   refinePlan,
   removeTeamMember,
   sharePlan,
   updateTeamMember,
   updateTeamTracker,
 } from './lib/api'
-import type { CreditState, PriceQuote, RefineAction, TeamResult, TeamRole } from './lib/api'
+import type { RefineAction, TeamResult, TeamRole } from './lib/api'
 import { copyText } from './lib/clipboard'
 import {
   createPlan,
@@ -87,16 +79,6 @@ const sharing = ref(false)
 const toast = ref('')
 const toastTone = ref<Tone>('info')
 
-const credits = ref<CreditState | null>(null)
-const price = ref<PriceQuote | null>(null)
-const payOpen = ref(false)
-const payState = ref<'idle' | 'paying' | 'verifying'>('idle')
-const payError = ref<string | null>(null)
-
-/** The request that was refused for want of credits, replayed after payment. */
-const pending = ref<{ input: PlanInput; replaceId?: string } | null>(null)
-const pendingRefinement = ref<{ action: RefineAction; question?: string } | null>(null)
-
 const refineOpen = ref(false)
 const refineAction = ref<RefineAction>('custom')
 const refineBusy = ref(false)
@@ -106,9 +88,6 @@ const refineChanges = ref<PlanChanges | null>(null)
 
 /** A plan opened from someone else's share link. Read-only, never saved here. */
 const shared = ref<Plan | null>(null)
-/** Single-use token from a share link: a free plan, courtesy of whoever shared it. */
-const gift = ref<string | null>(null)
-
 /** Protected team state. Unlike a public share, this requires wallet auth. */
 const teamResult = ref<TeamResult | null>(null)
 const teamPlan = ref<Plan | null>(null)
@@ -153,7 +132,7 @@ onMounted(() => {
 })
 
 /**
- * Share links are query parameters — `?s=<id>&g=<token>` — not paths, so no
+ * Share links are query parameters — `?s=<id>` — not paths, so no
  * server-side rewrite rule stands between a shared link and the app rendering.
  */
 function readLink(): void {
@@ -163,9 +142,6 @@ function readLink(): void {
   } catch {
     return
   }
-
-  const token = params.get('g')
-  if (token) gift.value = token
 
   const teamId = params.get('t')
   if (teamId) {
@@ -183,7 +159,6 @@ async function loadShared(shareId: string): Promise<void> {
     const normalized = normalizeSharedPlan(result.plan)
     if (!normalized) throw new Error('That shared plan is incomplete.')
     shared.value = normalized
-    if (result.gift) gift.value = result.gift
   } catch (error) {
     notify(
       error instanceof ApiError && error.code === 'not_found'
@@ -504,11 +479,7 @@ async function pushTeamBuild(teamId: string, build: Plan['build']): Promise<void
  */
 async function generate(input: PlanInput, replaceId?: string): Promise<void> {
   if (generating.value) return
-  // A new generation supersedes any unpaid refinement. Keeping both pending
-  // actions would let a later payment replay the wrong request.
-  pendingRefinement.value = null
   generating.value = true
-  pending.value = { input, replaceId }
 
   try {
     const address = await requireAuth()
@@ -516,20 +487,13 @@ async function generate(input: PlanInput, replaceId?: string): Promise<void> {
       return
     }
 
-    const deviceId = await session.ensureDeviceId()
     if (localPreview) {
       const stub = stubGenerate(input)
-      pending.value = null
       apply(input, stub.prd, stub.flow, stub.build, stub.realityCheck, replaceId)
       notify('Local preview plan — connect the Worker for real AI', 'info')
       return
     }
-    const result = await generatePlan({ address, input, deviceId, gift: gift.value })
-
-    credits.value = result.credits
-    // Spent, whether or not it was honoured. The server is the authority.
-    gift.value = null
-    pending.value = null
+    const result = await generatePlan({ address, input })
 
     apply(input, result.prd, result.flow, result.build, result.realityCheck, replaceId)
   } catch (error) {
@@ -571,14 +535,6 @@ function apply(
 
 function onGenerateFailed(error: unknown, input: PlanInput, replaceId?: string): void {
   if (error instanceof ApiError) {
-    if (error.needsPayment) {
-      if (error.price) price.value = error.price
-      if (error.credits) credits.value = error.credits
-      payError.value = null
-      payOpen.value = true
-      return
-    }
-
     /**
      * Development only. `vite dev` has no Worker and therefore no AI key, so
      * rather than leave every screen unreachable, an obviously-placeholder plan
@@ -614,9 +570,6 @@ function openRefine(action: RefineAction): void {
 async function runRefinement(action: RefineAction, question?: string): Promise<void> {
   const plan = current.value
   if (!plan || refineBusy.value) return
-  // Refinements and generations are mutually exclusive pending actions. A
-  // refinement starts here, so an older unpaid generation must not be replayed.
-  pending.value = null
   refineBusy.value = true
 
   try {
@@ -626,7 +579,6 @@ async function runRefinement(action: RefineAction, question?: string): Promise<v
       return
     }
 
-    const deviceId = await session.ensureDeviceId()
     if (localPreview) {
       const stub = stubRefinement(plan, action, question)
       refineExplanation.value = stub.explanation
@@ -634,23 +586,13 @@ async function runRefinement(action: RefineAction, question?: string): Promise<v
       refineChanges.value = stub.changes
       return
     }
-    const result = await refinePlan({ address, plan, action, question, deviceId })
-    credits.value = result.credits
+    const result = await refinePlan({ address, plan, action, question })
     refineExplanation.value = result.explanation
     refineAnswer.value = result.answer ?? ''
     refineChanges.value = result.changes
   } catch (error) {
-    if (error instanceof ApiError && error.needsPayment) {
-      pendingRefinement.value = { action, question }
-      if (error.price) price.value = error.price
-      if (error.credits) credits.value = error.credits
-      refineOpen.value = false
-      payError.value = null
-      payOpen.value = true
-    } else {
-      refineOpen.value = false
-      notify(messageOf(error), 'error')
-    }
+    refineOpen.value = false
+    notify(messageOf(error), 'error')
   } finally {
     refineBusy.value = false
   }
@@ -709,7 +651,7 @@ async function share(): Promise<void> {
     flush()
 
     if (await copyText(result.url)) {
-      notify('Link copied — it carries a free plan for whoever opens it', 'success')
+      notify('Read-only link copied', 'success')
     } else {
       notify("Shared, but this browser wouldn't let us copy the link", 'error')
     }
@@ -717,57 +659,6 @@ async function share(): Promise<void> {
     notify(messageOf(error), 'error')
   } finally {
     sharing.value = false
-  }
-}
-
-// -- payment ----------------------------------------------------------------
-
-async function pay(): Promise<void> {
-  const quote = price.value
-  if (!quote || payState.value !== 'idle') return
-
-  payError.value = null
-  payState.value = 'paying'
-
-  try {
-    const address = await requireAuth()
-    if (!address) {
-      payError.value = session.lastError.value ?? 'Connect your wallet first.'
-      return
-    }
-
-    const receipt = await session.pay(quote.payTo, quote.priceLuna, 'Cairn plans')
-    if (!receipt) {
-      payError.value = session.lastError.value ?? 'Payment cancelled.'
-      return
-    }
-
-    // The send is on the network; the server still has to see it settle.
-    payState.value = 'verifying'
-    const result = await redeemPayment(address, receipt, await session.ensureDeviceId())
-
-    credits.value = result.credits
-    payOpen.value = false
-    notify(`${result.granted} plans added`, 'success')
-
-    const replayRefinement = pendingRefinement.value
-    pendingRefinement.value = null
-    if (replayRefinement) {
-      refineOpen.value = true
-      refineAction.value = replayRefinement.action
-      clearRefineResult()
-      void runRefinement(replayRefinement.action, replayRefinement.question)
-    } else {
-      const replay = pending.value
-      if (replay) void generate(replay.input, replay.replaceId)
-    }
-  } catch (error) {
-    payError.value =
-      error instanceof ApiError && error.code === 'payment_not_found'
-        ? "We can't see that payment on the network yet. Give it a few seconds and try again."
-        : messageOf(error)
-  } finally {
-    payState.value = 'idle'
   }
 }
 
@@ -811,15 +702,10 @@ function ownIt(): void {
           Someone left this for you
         </p>
         <p class="gifted__body">
-          <template v-if="gift">
-            Their link carries a free plan. Make your own and it's yours — no card, no account.
-          </template>
-          <template v-else>
-            Cairn turns an idea into a product plan and a user flow. Read this one, then write yours.
-          </template>
+          Cairn turns an idea into a product map and a route to release. Read this one, then map yours for free.
         </p>
         <button type="button" class="btn btn--primary btn--sm" @click="ownIt">
-          {{ gift ? 'Claim my free plan' : 'Make my own' }}
+          Map my own idea
         </button>
       </div>
     </template>
@@ -854,7 +740,6 @@ function ownIt(): void {
       :key="formKey"
       :busy="generating"
       :initial="formInitial"
-      :free-left="credits ? credits.free : null"
       @submit="generate"
     />
 
@@ -909,7 +794,7 @@ function ownIt(): void {
           stroke-linecap="round"
         />
       </svg>
-      New plan
+      Map
     </button>
 
     <button
@@ -924,20 +809,10 @@ function ownIt(): void {
           <path d="M4 6h12M4 10h12M4 14h8" />
         </g>
       </svg>
-      Library
+      Routes
       <span v-if="plans.length" class="nav__count mono">{{ plans.length }}</span>
     </button>
   </nav>
-
-  <PaySheet
-    v-if="payOpen"
-    :price="price"
-    :state="payState"
-    :error="payError"
-    :credits="credits"
-    @pay="pay"
-    @close="payOpen = false"
-  />
 
   <RefineSheet
     v-if="refineOpen"
@@ -966,8 +841,8 @@ function ownIt(): void {
   /* The bar is --nav-h tall; the inset is extra, below it. */
   height: calc(var(--nav-h) + var(--safe-bottom));
   padding-bottom: var(--safe-bottom);
-  background: var(--surface);
-  border-top: 1px solid var(--line);
+  background: var(--ink);
+  border-top: 3px solid var(--nim);
 }
 
 .nav__item {
@@ -977,22 +852,23 @@ function ownIt(): void {
   justify-content: center;
   gap: var(--s2);
   font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--text-muted);
+  font-weight: 700;
+  color: #b9beb5;
 }
 
 .nav__item--on {
-  color: var(--accent);
+  color: #fffdf7;
+  background: #2457d6;
 }
 
 .nav__count {
   padding: 1px var(--s2);
   border-radius: var(--r-full);
-  background: var(--surface-sunken);
-  border: 1px solid var(--line);
+  background: rgb(255 255 255 / .12);
+  border: 1px solid rgb(255 255 255 / .18);
   font-size: var(--text-xs);
   font-weight: 650;
-  color: var(--text-muted);
+  color: inherit;
 }
 
 /* -- shared-plan banner -------------------------------------------------- */

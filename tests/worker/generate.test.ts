@@ -5,14 +5,8 @@ import type { Config } from '../../worker/config.ts'
 
 const config: Config = {
   model: 'gemini-3.1-flash-lite',
-  priceLuna: 100_000_000,
-  plansPerPayment: 10,
-  freePlans: 3,
   dailyBudget: 400,
-  rpcUrl: '',
-  payTo: null,
   appUrl: 'https://cairn.example',
-  trustPaymentsInDev: false,
 }
 
 const generatedPlan = {

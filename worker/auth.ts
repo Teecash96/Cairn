@@ -1,7 +1,7 @@
 import { verifyAsync } from '@noble/ed25519'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { clientIp, addressFromPublicKey, normalizeAddress, token } from './http'
-import { tooFastByKey } from './credits'
+import { tooFastByKey } from './limits'
 import type { AuthChallengeRecord, Env, SessionRecord } from './types'
 
 const CHALLENGE_TTL = 5 * 60

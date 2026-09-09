@@ -1,11 +1,11 @@
 /**
  * Responses, CORS, and address handling.
  *
- * Error bodies match what `src/lib/api.ts` parses: `{ error, message, price?,
- * credits? }`, where `error` is one of a closed set of codes so the client can map
+ * Error bodies match what `src/lib/api.ts` parses: `{ error, message }`, where
+ * `error` is one of a closed set of codes so the client can map
  * each to a distinct UI state rather than showing raw server text.
  */
-import type { ApiErrorCode, CreditState, PriceQuote } from './types'
+import type { ApiErrorCode } from './types'
 import { blake2b } from '@noble/hashes/blake2.js'
 
 export type Cors = Record<string, string>
@@ -47,10 +47,8 @@ function isLocalOrigin(origin: string): boolean {
 }
 
 /**
- * True for loopback and RFC1918 hosts. Used both for CORS and — more
- * importantly — to gate the `DEV_TRUST_PAYMENTS` escape hatch, which must be
- * unreachable on a deployed Worker. A Worker on workers.dev or a custom domain
- * never sees a hostname in these ranges.
+ * True for loopback and RFC1918 hosts. A Worker on workers.dev or a custom
+ * domain never sees a hostname in these ranges.
  */
 export function isLocalHost(host: string): boolean {
   if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]') return true
@@ -101,9 +99,8 @@ export function fail(
   message: string,
   status: number,
   cors: Cors,
-  extra: { price?: PriceQuote; credits?: CreditState } = {},
 ): Response {
-  return json({ error: code, message, ...extra }, status, cors)
+  return json({ error: code, message }, status, cors)
 }
 
 /**
