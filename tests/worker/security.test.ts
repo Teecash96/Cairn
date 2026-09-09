@@ -49,6 +49,7 @@ test('security headers are present and HSTS is HTTPS only', () => {
   const https = securityHeaders()
   assert.equal(https.get('x-content-type-options'), 'nosniff')
   assert.equal(https.get('content-security-policy')?.includes("frame-ancestors 'none'"), true)
+  assert.equal(https.get('cross-origin-opener-policy'), 'same-origin-allow-popups')
   assert.equal(https.get('strict-transport-security'), 'max-age=31536000; includeSubDomains')
   const http = securityHeaders({}, false)
   assert.equal(http.get('strict-transport-security'), null)

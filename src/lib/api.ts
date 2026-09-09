@@ -322,7 +322,8 @@ export function getCredits(address: string, deviceId?: string | null): Promise<C
   return request<CreditsResult>(`/credits?${params.toString()}`, { auth: true })
 }
 
-export function getAuthChallenge(address: string): Promise<AuthChallenge> {
+export function getAuthChallenge(address?: string): Promise<AuthChallenge> {
+  if (!address) return request<AuthChallenge>('/auth/challenge')
   const params = new URLSearchParams({ address })
   return request<AuthChallenge>(`/auth/challenge?${params.toString()}`)
 }

@@ -45,7 +45,8 @@ function sessionKey(value: string): string {
 
 export async function createChallenge(env: Env, request: Request, addressValue: unknown): Promise<AuthChallenge | null> {
   const address = normalizeAddress(addressValue)
-  if (!address || await tooFastByKey(env, clientIp(request), 'auth-challenge', 5)) return null
+  const hasAddress = addressValue !== null && addressValue !== undefined && addressValue !== ''
+  if ((hasAddress && !address) || await tooFastByKey(env, clientIp(request), 'auth-challenge', 5)) return null
 
   const challenge = token(24)
   const expiresAt = Date.now() + CHALLENGE_TTL * 1000
@@ -67,11 +68,11 @@ export async function verifyChallenge(
   const challenge = typeof body.challenge === 'string' ? body.challenge.trim().slice(0, 64) : ''
   const publicKey = hexBytes(body.publicKey, 32)
   const signature = hexBytes(body.signature, 64)
-  if (!address || !/^[a-z0-9]{24}$/i.test(challenge) || !publicKey || !signature) return null
+  if (body.address !== undefined && !address) return null
+  if (!/^[a-z0-9]{24}$/i.test(challenge) || !publicKey || !signature) return null
 
   const record = await env.CAIRN.get<AuthChallengeRecord>(challengeKey(challenge), 'json')
   if (!record || record.used || record.expiresAt <= Date.now()) return null
-  if (record.address !== address) return null
   const ip = clientIp(request)
   if (record.ip !== 'unknown' && ip !== 'unknown' && record.ip !== ip) return null
 
@@ -83,7 +84,10 @@ export async function verifyChallenge(
   }
 
   const publicKeyHex = Array.from(publicKey, (byte) => byte.toString(16).padStart(2, '0')).join('')
-  if (addressFromPublicKey(publicKeyHex) !== address) return null
+  const derivedAddress = addressFromPublicKey(publicKeyHex)
+  if (!derivedAddress) return null
+  if (record.address && record.address !== derivedAddress) return null
+  if (address && address !== derivedAddress) return null
 
   // KV has no compare-and-swap. Marking used before issuing the session makes a
   // replay fail in the common case; a simultaneous duplicate can only create
@@ -93,9 +97,9 @@ export async function verifyChallenge(
 
   const session = token(48)
   const expiresAt = Date.now() + SESSION_TTL * 1000
-  const sessionRecord: SessionRecord = { address, createdAt: Date.now(), expiresAt }
+  const sessionRecord: SessionRecord = { address: derivedAddress, createdAt: Date.now(), expiresAt }
   await env.CAIRN.put(sessionKey(session), JSON.stringify(sessionRecord), { expirationTtl: SESSION_TTL })
-  return { token: session, address, expiresAt }
+  return { token: session, address: derivedAddress, expiresAt }
 }
 
 export interface AuthSession {

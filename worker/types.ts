@@ -201,7 +201,8 @@ export interface PriceQuote {
 }
 
 export interface AuthChallengeRecord {
-  address: string
+  /** Optional when the challenge was requested before Hub returns its signer. */
+  address: string | null
   message: string
   expiresAt: number
   ip: string

@@ -40,9 +40,10 @@ Cairn is those twenty minutes, on a phone, for about the cost of the inference.
 ## How it works
 
 1. Describe the idea in your own words. One field is required.
-2. Tap **Generate plan**. Nimiq Pay asks you to connect your wallet, then Cairn
-   asks the wallet to sign a short login challenge. This creates a short lived
-   server session. Both prompts happen on the action you already chose to take.
+2. Tap **Generate plan**. In Nimiq Pay, Cairn asks the injected wallet to connect
+   and sign a short login challenge. In Chrome, Nimiq Hub opens the wallet for the
+   same signature flow. This creates a short lived server session. The prompt
+   happens on the action you already chose to take.
 3. Gemini writes the full builder pack. It takes about twenty seconds.
 4. Edit anything. It autosaves to your device.
 5. Open **Visual PRD** for a one page view of the problem, user, promise, first
@@ -165,10 +166,14 @@ key. Then run `npm run build` and `npm run worker:dev`. The Worker uses its loca
 `DEV_TRUST_PAYMENTS=1` setting is available only for local testing and is refused on public
 requests. Never commit `.dev.vars`.
 
-Desktop, with no wallet and no API key, is a first-class path: the app detects
-that it isn't inside Nimiq Pay, simulates the wallet, and — in a dev build only —
-falls back to an obviously-labelled placeholder plan when no backend is reachable.
-Every screen and every state is walkable this way.
+In a production build, Chrome uses Nimiq Hub for real wallet authentication and
+checkout. Only a local Vite preview with no `VITE_API_BASE` uses a synthetic wallet
+and an obviously-labelled placeholder plan. This keeps local UI work walkable
+without weakening the production wallet path.
+
+When you open the deployed app in Chrome, tap **Generate plan** and complete the
+Nimiq Hub popup. Allow popups for the Cairn site. Hub returns the selected wallet
+address and signature to Cairn, which the Worker verifies before any AI action.
 
 ### On a real device
 

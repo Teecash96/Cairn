@@ -37,7 +37,7 @@ export class ProviderError extends Error {
 
   /** True when the user actively refused the native dialog. */
   get isDenied(): boolean {
-    return /denied|rejected|cancel/i.test(`${this.type} ${this.message}`)
+    return /denied|rejected|cancel|closed/i.test(`${this.type} ${this.message}`)
   }
 }
 
@@ -68,11 +68,26 @@ export function unwrap<T>(result: T | ErrorResponse): T {
 let providerPromise: Promise<NimiqProvider> | null = null
 
 /**
- * True when Nimiq Pay has injected its host objects. `window.nimiqPay` is seeded
- * synchronously before the page script runs, so this is reliable at boot.
+ * True when this page is running in Nimiq Pay.
+ *
+ * The provider can arrive a little after the document starts, especially on
+ * mobile. The host context is injected before page scripts. Its language marker
+ * and device API are only available inside Nimiq Pay, so either is a safe early
+ * signal. A browser extension may expose a `nimiqPay` helper object without
+ * those host fields; that must continue down the standalone Hub path.
  */
 export function isInsideNimiqPay(): boolean {
-  return typeof window !== 'undefined' && (!!window.nimiq || !!window.nimiqPay)
+  if (typeof window === 'undefined') return false
+  const host = window.nimiqPay
+  const extendedHost = host as (typeof host & {
+    sendBasicTransactionWithData?: unknown
+  }) | undefined
+  return Boolean(
+    window.nimiq ||
+      typeof host?.language === 'string' ||
+      typeof host?.requestDeviceIdentifier === 'function' ||
+      typeof extendedHost?.sendBasicTransactionWithData === 'function',
+  )
 }
 
 /**
@@ -131,6 +146,148 @@ export interface SignedMessage {
 /** Sign a server challenge without exposing a private key to the mini app. */
 export async function signMessage(provider: NimiqProvider, message: string): Promise<SignedMessage> {
   return unwrap(await provider.sign({ message }))
+}
+
+const HUB_ENDPOINT = 'https://hub.nimiq.com'
+const HUB_APP_NAME = 'Cairn'
+
+const HUB_SIGN_FEATURES = 'left=200,top=75,width=800,height=850,location=yes,dependent=yes'
+const HUB_CHECKOUT_FEATURES = 'left=200,top=50,width=800,height=895,location=yes,dependent=yes'
+
+function bytesToHex(value: Uint8Array): string {
+  return Array.from(value, (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function hubError(error: unknown): ProviderError {
+  if (error instanceof ProviderError) return error
+  const message = error instanceof Error && error.message
+    ? error.message
+    : 'Could not reach your Nimiq wallet.'
+  const type = /denied|rejected|cancel|closed/i.test(message) ? 'UserDenied' : 'HubError'
+  return new ProviderError(message, type)
+}
+
+export interface BrowserSignedMessage extends SignedMessage {
+  address: string
+}
+
+/**
+ * Open Hub while the original tap still has browser user activation.
+ *
+ * Chrome blocks window.open when it happens after a fetch or a lazy-import.
+ * The popup starts as about:blank, then the Hub request behavior navigates it
+ * once the challenge and Hub module are ready.
+ */
+function openHubPopup(features: string): Window {
+  const popup = window.open('about:blank', 'NimiqAccounts', features)
+  if (!popup) {
+    throw new ProviderError(
+      'Could not open Nimiq Hub. Allow pop-ups for Cairn and try again.',
+      'PopupBlocked',
+    )
+  }
+  return popup
+}
+
+/**
+ * Sign a server challenge through Nimiq Hub when Cairn is opened in Chrome.
+ * The import is lazy so the Mini App path does not pay the Hub bundle cost.
+ */
+export async function signMessageInBrowser(
+  message: string | PromiseLike<string>,
+): Promise<BrowserSignedMessage> {
+  let popup: Window | null = null
+  try {
+    // This must be the first operation. Awaiting either fetch or import before
+    // window.open loses Chrome's transient user activation.
+    popup = openHubPopup(HUB_SIGN_FEATURES)
+    const [{ default: HubApi }, text] = await Promise.all([
+      import('@nimiq/hub-api'),
+      message,
+    ])
+    const PopupRequestBehavior = HubApi.PopupRequestBehavior
+    class PreopenedPopupBehavior extends PopupRequestBehavior {
+      readonly existing: Window
+
+      constructor(existing: Window) {
+        super(HUB_SIGN_FEATURES)
+        this.existing = existing
+      }
+
+      override createPopup(url: string): Window {
+        if (this.existing.closed) throw new Error('Nimiq Hub popup was closed.')
+        this.existing.location.href = url
+        return this.existing
+      }
+    }
+    const hub = new HubApi(HUB_ENDPOINT)
+    const signed = await hub.signMessage(
+      { appName: HUB_APP_NAME, message: text },
+      new PreopenedPopupBehavior(popup),
+    )
+    if (
+      typeof signed.signer !== 'string' ||
+      !signed.signer ||
+      !(signed.signerPublicKey instanceof Uint8Array) ||
+      signed.signerPublicKey.byteLength !== 32 ||
+      !(signed.signature instanceof Uint8Array) ||
+      signed.signature.byteLength !== 64
+    ) {
+      throw new Error('Nimiq Hub returned an invalid signature.')
+    }
+    return {
+      address: signed.signer,
+      publicKey: bytesToHex(signed.signerPublicKey),
+      signature: bytesToHex(signed.signature),
+    }
+  } catch (error) {
+    throw hubError(error)
+  } finally {
+    if (popup && !popup.closed) popup.close()
+  }
+}
+
+/** Send a real NIM payment through Nimiq Hub when Cairn is opened in Chrome. */
+export async function sendPaymentInBrowser(
+  recipient: string,
+  valueLuna: number,
+  note?: string,
+): Promise<string> {
+  let popup: Window | null = null
+  try {
+    popup = openHubPopup(HUB_CHECKOUT_FEATURES)
+    const { default: HubApi } = await import('@nimiq/hub-api')
+    const PopupRequestBehavior = HubApi.PopupRequestBehavior
+    class PreopenedPopupBehavior extends PopupRequestBehavior {
+      readonly existing: Window
+
+      constructor(existing: Window) {
+        super(HUB_CHECKOUT_FEATURES)
+        this.existing = existing
+      }
+
+      override createPopup(url: string): Window {
+        if (this.existing.closed) throw new Error('Nimiq Hub popup was closed.')
+        this.existing.location.href = url
+        return this.existing
+      }
+    }
+    const hub = new HubApi(HUB_ENDPOINT)
+    const signed = await hub.checkout({
+      appName: HUB_APP_NAME,
+      recipient,
+      value: valueLuna,
+      ...(note ? { extraData: note } : {}),
+    }, new PreopenedPopupBehavior(popup))
+    if (!signed || typeof signed.hash !== 'string' || !signed.hash) {
+      throw new Error('Nimiq Hub returned no payment receipt.')
+    }
+    return signed.hash
+  } catch (error) {
+    throw hubError(error)
+  } finally {
+    if (popup && !popup.closed) popup.close()
+  }
 }
 
 export interface ChainStatus {

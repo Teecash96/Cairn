@@ -61,3 +61,29 @@ test('wallet challenge verifies an Ed25519 signature and creates a session', asy
   const replay = await verifyChallenge(env(kv), verifyRequest, await verifyRequest.clone().json())
   assert.equal(replay, null)
 })
+
+test('addressless challenge binds the session to the Hub signer', async () => {
+  const secret = Uint8Array.from({ length: 32 }, (_, index) => index + 33)
+  const publicKey = await getPublicKeyAsync(secret)
+  const publicKeyHex = hex(publicKey)
+  const address = addressFromPublicKey(publicKeyHex)
+  assert.ok(address)
+
+  const kv = new MemoryKV()
+  const challengeRequest = new Request('https://cairn.example/api/auth/challenge', {
+    headers: { 'cf-connecting-ip': '198.51.100.11' },
+  })
+  const challenge = await createChallenge(env(kv), challengeRequest, null)
+  assert.ok(challenge)
+
+  const payload = `\x16Nimiq Signed Message:\n${challenge?.message.length}${challenge?.message}`
+  const signature = await signAsync(sha256(new TextEncoder().encode(payload)), secret)
+  const verifyRequest = new Request('https://cairn.example/api/auth/verify', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'cf-connecting-ip': '198.51.100.11' },
+    body: JSON.stringify({ challenge: challenge?.challenge, publicKey: publicKeyHex, signature: hex(signature) }),
+  })
+  const result = await verifyChallenge(env(kv), verifyRequest, await verifyRequest.clone().json())
+  assert.ok(result)
+  assert.equal(result?.address, address)
+})

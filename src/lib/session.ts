@@ -3,9 +3,9 @@
  *
  * Two runtime modes:
  *  - `nimiq`   — running in the Nimiq Pay WebView. Real provider, real payments.
- *  - `preview` — a normal browser. Everything is walkable and payments are
- *                simulated, so the app can be built and reviewed on desktop.
- *                A judge's first look will almost certainly be this mode.
+ *  - `preview` — a normal browser. Production uses Nimiq Hub for wallet
+ *                authentication and checkout. Only the local Vite preview uses
+ *                the synthetic wallet and offline generator.
  *
  * Nothing here prompts at boot. Both native dialogs — wallet, then device id —
  * fire on the first "Generate plan" tap, because the competition's only
@@ -21,8 +21,11 @@ import {
   getChainStatus,
   getDeviceId,
   getProvider,
+  isInsideNimiqPay,
   sendPayment,
+  sendPaymentInBrowser,
   signMessage,
+  signMessageInBrowser,
   type NimiqProvider,
 } from './nimiq'
 
@@ -43,12 +46,21 @@ let deviceIdAsked = false
 
 /** Synthetic address used in preview mode so the whole flow stays walkable. */
 const PREVIEW_ADDRESS = 'NQ07 0000 0000 0000 0000 0000 0000 0000 PRVW'
+const localPreview = import.meta.env.DEV && !import.meta.env.VITE_API_BASE
 
 export function useSession() {
   async function boot(): Promise<void> {
     if (bootPromise) return bootPromise
     bootPromise = (async () => {
       language.value = detectLanguage()
+
+      // A normal browser must never wait for the Mini App provider. Some
+      // wallet extensions expose similarly named globals, so the synchronous
+      // host check is the source of truth for choosing Nimiq Pay or Hub.
+      if (!isInsideNimiqPay()) {
+        mode.value = 'preview'
+        return
+      }
 
       try {
         provider = await getProvider()
@@ -75,13 +87,15 @@ export function useSession() {
 
   /** Returns the connected address, or null if the user declined. */
   async function connect(): Promise<string | null> {
+    if (mode.value === 'booting') await boot()
     if (address.value) return address.value
     lastError.value = null
 
-    if (mode.value === 'preview') {
+    if (mode.value === 'preview' && localPreview) {
       address.value = PREVIEW_ADDRESS
       return address.value
     }
+    if (mode.value === 'preview') return null
     if (!provider) return null
 
     connecting.value = true
@@ -111,6 +125,7 @@ export function useSession() {
    * Called AFTER `connect()` so the wallet prompt is never queued behind it.
    */
   async function ensureDeviceId(): Promise<string | null> {
+    if (mode.value === 'booting') await boot()
     if (deviceIdAsked) return deviceId
     deviceIdAsked = true
     if (mode.value === 'preview' || !provider) return null
@@ -119,15 +134,66 @@ export function useSession() {
   }
 
   /** Establish a short lived server session by signing a one time challenge. */
-  async function authenticate(): Promise<boolean> {
-    const wallet = await connect()
-    if (!wallet) return false
-    if (mode.value === 'preview') return true
-    if (!provider) return false
-    if (hasAuthToken(wallet)) return true
+  async function authenticate(): Promise<string | null> {
+    if (mode.value === 'booting') {
+      // Preserve the click's user activation for Hub. The browser path does
+      // not need the provider poll, and waiting for it would block the popup.
+      if (isInsideNimiqPay()) await boot()
+      else {
+        mode.value = 'preview'
+        void boot()
+      }
+    }
+    if (localPreview) return connect()
 
-    lastError.value = null
+    // A few mobile WebViews inject their host bridge after the first paint.
+    // If boot classified that first paint as a browser, re-check on the user's
+    // tap and switch to the native provider before opening a Hub popup.
+    if (mode.value === 'preview' && isInsideNimiqPay()) {
+      bootPromise = null
+      mode.value = 'booting'
+      await boot()
+    }
+
+    // A previous successful auth is enough. In browser mode the address is
+    // already known from the Hub signer; in Pay mode it came from listAccounts.
+    if (address.value && hasAuthToken(address.value)) return address.value
+
     try {
+      const compact = (value: string): string => value.replace(/\s+/g, '').toUpperCase()
+
+      if (mode.value === 'preview') {
+        // Nimiq Hub is the standalone Chrome path. The signer address is
+        // returned by Hub before the server verifies the signature.
+        lastError.value = null
+        const challengePromise = getAuthChallenge()
+        const signed = await signMessageInBrowser(
+          challengePromise.then((challenge) => challenge.message),
+        )
+        const challenge = await challengePromise
+        if (hasAuthToken(signed.address)) {
+          address.value = signed.address
+          return signed.address
+        }
+        const result = await verifyAuth({
+          address: signed.address,
+          challenge: challenge.challenge,
+          publicKey: signed.publicKey,
+          signature: signed.signature,
+        })
+        if (compact(result.address) !== compact(signed.address)) {
+          throw new Error('The wallet session did not match the connected wallet.')
+        }
+        address.value = result.address
+        setAuthToken(result.token, result.address)
+        return result.address
+      }
+
+      const wallet = await connect()
+      if (!wallet || !provider) return null
+      if (hasAuthToken(wallet)) return wallet
+
+      lastError.value = null
       const challenge = await getAuthChallenge(wallet)
       const signed = await signMessage(provider, challenge.message)
       const result = await verifyAuth({
@@ -136,10 +202,12 @@ export function useSession() {
         publicKey: signed.publicKey,
         signature: signed.signature,
       })
-      const compact = (value: string): string => value.replace(/\s+/g, '').toUpperCase()
-      if (compact(result.address) !== compact(wallet)) throw new Error('The wallet session did not match the connected wallet.')
+      if (compact(result.address) !== compact(wallet)) {
+        throw new Error('The wallet session did not match the connected wallet.')
+      }
+      address.value = result.address
       setAuthToken(result.token, result.address)
-      return true
+      return result.address
     } catch (error) {
       clearAuthToken()
       lastError.value =
@@ -148,23 +216,30 @@ export function useSession() {
           : error instanceof Error
             ? error.message
             : 'Could not verify your wallet.'
-      return false
+      return null
     }
   }
 
   /**
    * Pay Cairn's receiving address for a bundle of generations.
    * Resolves with an opaque receipt, or null if the user declined the prompt.
-   * In preview mode this returns a marker string and moves no funds.
+   * Only local Vite preview returns a marker. Production browser mode uses Hub.
    */
   async function pay(recipient: string, valueLuna: number, note: string): Promise<string | null> {
+    if (mode.value === 'booting') await boot()
     lastError.value = null
 
-    if (mode.value === 'preview' || !provider) {
+    if (localPreview) {
       return 'preview'
     }
     try {
-      return await sendPayment(provider, recipient, valueLuna, note)
+      if (mode.value === 'nimiq' && provider) {
+        return await sendPayment(provider, recipient, valueLuna, note)
+      }
+      if (mode.value === 'preview') {
+        return await sendPaymentInBrowser(recipient, valueLuna, note)
+      }
+      return null
     } catch (error) {
       lastError.value =
         error instanceof ProviderError && error.isDenied

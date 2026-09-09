@@ -66,9 +66,39 @@ function authRequired(cors: Record<string, string>): Response {
   return fail('auth_required', 'Sign in with your Nimiq wallet first.', 401, cors)
 }
 
+/**
+ * Keep provider details on the Worker, but give the phone a useful next step.
+ * The old generic message made key, quota, model, timeout, and malformed output
+ * failures indistinguishable. Never include the provider response verbatim: it
+ * can contain request metadata that is useful in logs but not to a user.
+ */
+function generationFailure(error: unknown, fallback: string, cors: Record<string, string>): Response {
+  const detail = error instanceof Error ? error.message.slice(0, 300) : 'unknown error'
+  console.error('Cairn AI generation failed', detail)
+
+  const status = /Gemini returned (\d{3})/i.exec(detail)?.[1]
+  const keyDetail = /api[\s_-]?key|key\s+(?:is\s+)?(?:not\s+valid|invalid|rejected|not\s+found)|key.{0,40}(?:invalid|rejected|leaked)|standard key|authorization key/i.test(detail)
+  const message = status === '401' || status === '403' || (status === '400' && keyDetail)
+    ? 'Cairn’s Gemini key was rejected. Create a new authorization key in Google AI Studio, then update GEMINI_API_KEY in Cloudflare.'
+    : status === '404'
+      ? 'Cairn’s configured AI model is unavailable. Check GEMINI_MODEL in Cloudflare.'
+      : status === '400'
+        ? 'Cairn’s AI request was rejected. Check the Gemini model and key configuration.'
+      : status === '429'
+        ? 'The AI provider is out of quota or rate limited. Try again shortly.'
+        : /timed out|abort/i.test(detail)
+          ? 'The AI provider took too long to respond. Try again.'
+          : fallback
+
+  return fail('generation_failed', message, 502, cors)
+}
+
 async function handleAuthChallenge(env: Env, request: Request, url: URL, cors: Record<string, string>): Promise<Response> {
-  const address = addressFrom(url.searchParams.get('address'))
-  if (!address) return fail('invalid_request', 'Connect a valid Nimiq wallet.', 400, cors)
+  const rawAddress = url.searchParams.get('address')
+  const address = rawAddress && rawAddress.trim() ? addressFrom(rawAddress) : null
+  if (rawAddress && rawAddress.trim() && !address) {
+    return fail('invalid_request', 'Connect a valid Nimiq wallet.', 400, cors)
+  }
   const challenge = await createChallenge(env, request, address)
   if (!challenge) return fail('rate_limited', 'Please wait before requesting another sign in challenge.', 429, cors)
   return json(challenge, 200, cors)
@@ -110,15 +140,16 @@ async function handleGenerate(env: Env, request: Request, cors: Record<string, s
   }
   if (await tooFast(env, context.address)) return fail('rate_limited', 'Please wait a moment before generating again.', 429, cors)
   if (await budgetLeft(env, context.config) < 1) return fail('budget_exhausted', 'Today’s generation limit has been reached. Try again tomorrow.', 429, cors)
-  if (!env.GEMINI_API_KEY) return fail('server', 'Cairn is not configured with an AI key yet.', 503, cors)
+  const geminiKey = env.GEMINI_API_KEY?.trim()
+  if (!geminiKey) return fail('server', 'Cairn is not configured with an AI key yet.', 503, cors)
 
   await chargeBudget(env)
   try {
-    const result = await generateWithGemini(context.config, env.GEMINI_API_KEY, input as PlanInput)
+    const result = await generateWithGemini(context.config, geminiKey, input as PlanInput)
     const credits = await spendOne(env, context.address, refreshed)
     return json({ ...result, credits }, 200, cors)
-  } catch {
-    return fail('generation_failed', 'The plan could not be generated. Please try again.', 502, cors)
+  } catch (error) {
+    return generationFailure(error, 'The AI returned an incomplete plan. Try again.', cors)
   }
 }
 
@@ -156,15 +187,16 @@ async function handleRefine(env: Env, request: Request, cors: Record<string, str
   }
   if (await tooFast(env, context.address)) return fail('rate_limited', 'Please wait a moment before asking again.', 429, cors)
   if (await budgetLeft(env, context.config) < 1) return fail('budget_exhausted', 'Today’s generation limit has been reached. Try again tomorrow.', 429, cors)
-  if (!env.GEMINI_API_KEY) return fail('server', 'Cairn is not configured with an AI key yet.', 503, cors)
+  const geminiKey = env.GEMINI_API_KEY?.trim()
+  if (!geminiKey) return fail('server', 'Cairn is not configured with an AI key yet.', 503, cors)
 
   await chargeBudget(env)
   try {
-    const result = await refineWithGemini(context.config, env.GEMINI_API_KEY, plan, action, question)
+    const result = await refineWithGemini(context.config, geminiKey, plan, action, question)
     const credits = await spendOne(env, context.address, refreshed)
     return json({ ...result, credits }, 200, cors)
-  } catch {
-    return fail('generation_failed', 'The follow up could not be completed. Please try again.', 502, cors)
+  } catch (error) {
+    return generationFailure(error, 'The AI returned an incomplete follow up. Try again.', cors)
   }
 }
 

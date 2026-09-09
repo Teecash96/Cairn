@@ -87,7 +87,9 @@ export function securityHeaders(existing: HeadersInit = {}, https = true): Heade
   headers.set('referrer-policy', 'no-referrer')
   headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=(), payment=()')
   headers.set('content-security-policy', "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; form-action 'self'")
-  headers.set('cross-origin-opener-policy', 'same-origin')
+  // Nimiq Hub returns wallet signatures through a cross-origin popup. Keeping
+  // the opener relationship is required for its postMessage handshake.
+  headers.set('cross-origin-opener-policy', 'same-origin-allow-popups')
   headers.set('cross-origin-resource-policy', 'same-origin')
   headers.set('x-frame-options', 'DENY')
   if (https) headers.set('strict-transport-security', 'max-age=31536000; includeSubDomains')

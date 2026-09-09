@@ -19,6 +19,16 @@ interface GeminiResponse {
   error?: { message?: string }
 }
 
+class GeminiRequestError extends Error {
+  readonly status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'GeminiRequestError'
+    this.status = status
+  }
+}
+
 type JsonSchema = Record<string, unknown>
 
 const GEMINI_TIMEOUT_MS = 45_000
@@ -307,51 +317,85 @@ async function askGemini(
   maxTokens: number,
   schema: JsonSchema,
 ): Promise<unknown> {
+  const apiKey = key.trim()
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.model)}:generateContent`
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS)
-  let response: Response
-  try {
-    response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-goog-api-key': key,
+  const baseConfig: Record<string, unknown> = {
+    temperature: 0.2,
+    maxOutputTokens: maxTokens,
+  }
+  // Gemini 3 uses the responseFormat envelope for structured output. Older
+  // Gemini models use responseMimeType and responseSchema directly. Some
+  // deployed Gemini endpoints still reject the structured envelope, so a
+  // 400 is retried once as a plain text JSON request. The prompt and the
+  // semantic shape checks below remain the source of truth for the result.
+  const structuredConfig: Record<string, unknown> = { ...baseConfig }
+  if (/^gemini-3(?:\.|$)/i.test(config.model)) {
+    structuredConfig.responseFormat = {
+      text: {
+        mimeType: 'application/json',
+        schema,
       },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: content }] }],
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: maxTokens,
-          responseMimeType: 'application/json',
-          responseSchema: schema,
-        },
-      }),
-      signal: controller.signal,
-    })
-  } finally {
-    clearTimeout(timer)
+    }
+  } else {
+    structuredConfig.responseMimeType = 'application/json'
+    structuredConfig.responseSchema = schema
   }
 
-  const declared = Number(response.headers.get('content-length') ?? '0')
-  if (Number.isFinite(declared) && declared > GEMINI_MAX_RESPONSE_BYTES) {
-    throw new Error('The model response was too large.')
+  const request = async (generationConfig: Record<string, unknown>): Promise<unknown> => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS)
+    let response: Response
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: content }] }],
+          generationConfig,
+        }),
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+
+    const declared = Number(response.headers.get('content-length') ?? '0')
+    if (Number.isFinite(declared) && declared > GEMINI_MAX_RESPONSE_BYTES) {
+      throw new Error('The model response was too large.')
+    }
+    const bodyText = await response.text()
+    if (new TextEncoder().encode(bodyText).byteLength > GEMINI_MAX_RESPONSE_BYTES) {
+      throw new Error('The model response was too large.')
+    }
+    let body: GeminiResponse
+    try {
+      body = JSON.parse(bodyText) as GeminiResponse
+    } catch {
+      if (!response.ok) throw new GeminiRequestError(response.status, `Gemini returned ${response.status}: non-JSON response`)
+      throw new Error('The model returned unreadable data.')
+    }
+    if (!response.ok) {
+      const detail = body.error?.message ? `: ${body.error.message}` : ''
+      throw new GeminiRequestError(response.status, `Gemini returned ${response.status}${detail}`)
+    }
+    const output = body.candidates
+      ?.flatMap((candidate) => candidate.content?.parts ?? [])
+      .map((part) => part.text ?? '')
+      .find(Boolean)
+    if (!output) throw new Error('The model returned no plan.')
+    return parseJson(output)
   }
-  const bodyText = await response.text()
-  if (new TextEncoder().encode(bodyText).byteLength > GEMINI_MAX_RESPONSE_BYTES) {
-    throw new Error('The model response was too large.')
+
+  try {
+    return await request(structuredConfig)
+  } catch (error) {
+    if (!(error instanceof GeminiRequestError) || error.status !== 400) throw error
+    console.warn('Gemini structured response was rejected; retrying with text JSON')
+    return request(baseConfig)
   }
-  const body = JSON.parse(bodyText) as GeminiResponse
-  if (!response.ok) {
-    const detail = body.error?.message ? `: ${body.error.message}` : ''
-    throw new Error(`Gemini returned ${response.status}${detail}`)
-  }
-  const output = body.candidates
-    ?.flatMap((candidate) => candidate.content?.parts ?? [])
-    .map((part) => part.text ?? '')
-    .find(Boolean)
-  if (!output) throw new Error('The model returned no plan.')
-  return parseJson(output)
 }
 
 export async function generateWithGemini(

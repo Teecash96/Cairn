@@ -12,9 +12,9 @@
  *  1. The wallet prompt fires on the first "Generate plan" tap — never at boot.
  *     Distinct wallets are the competition's only quantitative measure, so the
  *     prompt has to arrive attached to something the user already chose to do.
- *  2. `connect()` comes before `ensureDeviceId()`. Both open native dialogs, and
- *     the wallet must not be queued behind a permission the user cares less
- *     about and may well decline.
+ *  2. `authenticate()` comes before `ensureDeviceId()`. In Nimiq Pay this is
+ *     connect then sign. In Chrome it is a Nimiq Hub signature. Either way the
+ *     wallet prompt is never queued behind a permission the user may decline.
  *
  * Editing autosaves. There is no save button, and the deep watcher that does it
  * is guarded so that stamping `updatedAt` cannot retrigger itself.
@@ -136,11 +136,10 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong.'
 }
 
-async function requireAuth(): Promise<boolean> {
-  if (localPreview) return true
-  const ok = await session.authenticate()
-  if (!ok) notify(session.lastError.value ?? 'Sign in with your Nimiq wallet to continue.', 'error')
-  return ok
+async function requireAuth(): Promise<string | null> {
+  const address = await session.authenticate()
+  if (!address) notify(session.lastError.value ?? 'Sign in with your Nimiq wallet to continue.', 'error')
+  return address
 }
 
 // -- boot -------------------------------------------------------------------
@@ -230,13 +229,11 @@ async function loadTeamLink(teamId: string): Promise<void> {
   teamError.value = null
   try {
     await session.boot()
-    const address = await session.connect()
+    const address = await requireAuth()
     if (!address) {
       teamError.value = session.lastError.value ?? 'Connect your Nimiq wallet to open this team.'
-      notify(teamError.value, 'error')
       return
     }
-    if (!(await requireAuth())) return
     const result = await getTeam(teamId)
     teamResult.value = result
     teamPlan.value = teamPlanFrom(result)
@@ -357,12 +354,10 @@ async function openTeamPanel(): Promise<void> {
   teamLoading.value = true
   teamError.value = null
   try {
-    const address = await session.connect()
-    if (!address) {
+    if (!(await requireAuth())) {
       teamError.value = session.lastError.value ?? 'Connect your wallet to manage the team.'
       return
     }
-    if (!(await requireAuth())) return
     teamResult.value = await getTeam(plan.teamId)
   } catch (error) {
     teamError.value = messageOf(error)
@@ -382,12 +377,10 @@ async function createOwnerTeam(): Promise<void> {
   teamLoading.value = true
   teamError.value = null
   try {
-    const address = await session.connect()
-    if (!address) {
+    if (!(await requireAuth())) {
       teamError.value = session.lastError.value ?? 'Connect your wallet to create a team.'
       return
     }
-    if (!(await requireAuth())) return
     const result = await createTeam({
       planId: plan.id,
       name: titleOf(plan),
@@ -518,13 +511,10 @@ async function generate(input: PlanInput, replaceId?: string): Promise<void> {
   pending.value = { input, replaceId }
 
   try {
-    const address = await session.connect()
+    const address = await requireAuth()
     if (!address) {
-      notify(session.lastError.value ?? 'Connect your Nimiq wallet to generate a plan.', 'error')
       return
     }
-
-    if (!(await requireAuth())) return
 
     const deviceId = await session.ensureDeviceId()
     if (localPreview) {
@@ -630,14 +620,8 @@ async function runRefinement(action: RefineAction, question?: string): Promise<v
   refineBusy.value = true
 
   try {
-    const address = await session.connect()
+    const address = await requireAuth()
     if (!address) {
-      refineOpen.value = false
-      notify(session.lastError.value ?? 'Connect your wallet to refine this plan.', 'error')
-      return
-    }
-
-    if (!(await requireAuth())) {
       refineOpen.value = false
       return
     }
@@ -715,13 +699,10 @@ async function share(): Promise<void> {
   sharing.value = true
 
   try {
-    const address = await session.connect()
+    const address = await requireAuth()
     if (!address) {
-      notify(session.lastError.value ?? 'Connect your wallet to share.', 'error')
       return
     }
-
-    if (!(await requireAuth())) return
 
     const result = await sharePlan(address, plan)
     plan.shareId = result.shareId
@@ -749,14 +730,9 @@ async function pay(): Promise<void> {
   payState.value = 'paying'
 
   try {
-    const address = await session.connect()
+    const address = await requireAuth()
     if (!address) {
       payError.value = session.lastError.value ?? 'Connect your wallet first.'
-      return
-    }
-
-    if (!(await requireAuth())) {
-      payError.value = session.lastError.value ?? 'Sign in with your wallet first.'
       return
     }
 
