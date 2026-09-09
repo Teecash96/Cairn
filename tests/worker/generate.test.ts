@@ -78,6 +78,16 @@ test('retries Gemini 3 structured output as plain JSON text after a 400', async 
   const firstConfig = calls[0]?.generationConfig as Record<string, unknown>
   const secondConfig = calls[1]?.generationConfig as Record<string, unknown>
   assert.ok(firstConfig.responseFormat)
+  const prompt = (((calls[0]?.contents as Array<Record<string, unknown>>)?.[0]?.parts as Array<Record<string, unknown>>)?.[0]?.text as string)
+  assert.match(prompt, /"task 9"/)
+  const responseFormat = firstConfig.responseFormat as { text: { schema: Record<string, unknown> } }
+  const planProperties = responseFormat.text.schema.properties as Record<string, Record<string, unknown>>
+  const buildProperties = planProperties.build.properties as Record<string, Record<string, unknown>>
+  assert.equal(buildProperties.mvpScope.minItems, 3)
+  const milestoneItems = buildProperties.milestones.items as Record<string, Record<string, unknown>>
+  const milestoneProperties = milestoneItems.properties as Record<string, Record<string, unknown>>
+  assert.equal(milestoneProperties.tasks.minItems, 3)
+  assert.equal(milestoneProperties.tasks.maxItems, 4)
   assert.equal('responseFormat' in secondConfig, false)
   assert.equal('responseMimeType' in secondConfig, false)
   assert.equal('responseSchema' in secondConfig, false)

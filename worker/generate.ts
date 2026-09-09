@@ -81,7 +81,11 @@ const FLOW_STEP_SCHEMA: JsonSchema = {
 
 const BUILD_MILESTONE_SCHEMA: JsonSchema = {
   type: 'object',
-  properties: { title: TEXT_SCHEMA, outcome: TEXT_SCHEMA, tasks: listSchema(6) },
+  properties: {
+    title: TEXT_SCHEMA,
+    outcome: TEXT_SCHEMA,
+    tasks: { type: 'array', items: TEXT_SCHEMA, minItems: 3, maxItems: 4 },
+  },
   required: ['title', 'outcome', 'tasks'],
   additionalProperties: false,
 }
@@ -89,7 +93,7 @@ const BUILD_MILESTONE_SCHEMA: JsonSchema = {
 const BUILD_SCHEMA: JsonSchema = {
   type: 'object',
   properties: {
-    mvpScope: listSchema(5),
+    mvpScope: { type: 'array', items: TEXT_SCHEMA, minItems: 3, maxItems: 5 },
     milestones: { type: 'array', items: BUILD_MILESTONE_SCHEMA, minItems: 3, maxItems: 3 },
     risks: listSchema(5),
     acceptanceTests: listSchema(5),
@@ -212,11 +216,11 @@ Return this exact shape:
     { "kind": "entry|action|decision|success|exit", "title": "string", "action": "string", "result": "string", "branches": [{"label":"string","result":"string"},{"label":"string","result":"string"}] }
   ],
   "build": {
-    "mvpScope": ["3 to 5 strings"],
+    "mvpScope": ["scope item 1", "scope item 2", "scope item 3"],
     "milestones": [
-      { "title": "string", "outcome": "string", "tasks": ["strings"] },
-      { "title": "string", "outcome": "string", "tasks": ["strings"] },
-      { "title": "string", "outcome": "string", "tasks": ["strings"] }
+      { "title": "string", "outcome": "string", "tasks": ["task 1", "task 2", "task 3"] },
+      { "title": "string", "outcome": "string", "tasks": ["task 4", "task 5", "task 6"] },
+      { "title": "string", "outcome": "string", "tasks": ["task 7", "task 8", "task 9"] }
     ],
     "risks": ["up to 5 strings"],
     "acceptanceTests": ["up to 5 observable strings"],
