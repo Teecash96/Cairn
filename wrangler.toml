@@ -39,6 +39,13 @@ preview_id = "e9d8888ac4344658be9fa668ab85bd0d"
 # deployed Worker cannot silently drift to different model behavior.
 GEMINI_MODEL = "gemini-3.1-flash-lite"
 
+# Required NIM payment bundle. 1 NIM equals 100,000 Luna and unlocks ten
+# successful AI generations or refinements.
+PAY_TO = "NQ19 E39Q Y9EQ 937E YQYC 13D2 4LCC UPTN 3VPS"
+PRICE_LUNA = "100000"
+PLANS_PER_PAYMENT = "10"
+NIMIQ_RPC_URL = "https://rpc.nimiqwatch.com"
+
 # Hard ceiling on generations per UTC day, across all users. This is the backstop
 # that makes it impossible for anyone to run up an unbounded Gemini bill.
 DAILY_BUDGET = "400"
