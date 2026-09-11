@@ -1,8 +1,10 @@
 import { budgetLeft, chargeBudget, tooFast, tooFastByKey } from './limits'
 import { createChallenge, requireSession, verifyChallenge, type AuthSession } from './auth'
-import { readConfig } from './config'
+import { quote, readConfig } from './config'
+import { grantPaid, isSpent, markSpent, readCredits, spendOne, stateOf } from './credits'
 import { fail, corsHeaders, isLocalHost, json, normalizeAddress, readJson, securityHeaders } from './http'
 import { generateWithGemini, refineWithGemini } from './generate'
+import { verifyPayment } from './payments'
 import { clampPlan, isInvalid, readPlanInput } from './shape'
 import { createShare, publicPlan, readShare } from './share'
 import { addMember, createTeam, getTeam, removeMember, TeamError, updateMember, updateTracker } from './team'
@@ -35,6 +37,23 @@ function authenticatedAddress(raw: Record<string, unknown>, session: AuthSession
 
 function authRequired(cors: Record<string, string>): Response {
   return fail('auth_required', 'Sign in with your Nimiq wallet first.', 401, cors)
+}
+
+function originIsLocal(request: Request): boolean {
+  try { return isLocalHost(new URL(request.url).hostname) } catch { return false }
+}
+
+async function localReceiptKey(receipt: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(receipt))
+  return `dev:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`
+}
+
+function paymentDetails(env: Env) {
+  const config = readConfig(env)
+  return {
+    config,
+    price: config.payTo ? quote(config, config.payTo) : null,
+  }
 }
 
 /**
@@ -83,6 +102,13 @@ async function handleAuthVerify(env: Env, request: Request, cors: Record<string,
   return json(result, 200, cors)
 }
 
+async function handleCredits(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  const { price } = paymentDetails(env)
+  return json({ credits: stateOf(await readCredits(env, session.address)), price }, 200, cors)
+}
+
 async function handleGenerate(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
   const raw = bodyRecord(await readJson(request))
   if (!raw) return fail('invalid_request', 'The request body is invalid.', 400, cors)
@@ -93,16 +119,22 @@ async function handleGenerate(env: Env, request: Request, cors: Record<string, s
   const input = readPlanInput(raw.input)
   if (isInvalid(input)) return fail('invalid_request', input.message, 400, cors)
 
-  const config = readConfig(env)
+  const { config, price } = paymentDetails(env)
+  const balance = stateOf(await readCredits(env, address))
+  if (balance.total < 1) {
+    return fail('payment_required', 'Payment is required to generate a plan.', 402, cors, { credits: balance, price })
+  }
   if (await tooFast(env, address)) return fail('rate_limited', 'Please wait a moment before generating again.', 429, cors)
-  if (await budgetLeft(env, config) < 1) return fail('budget_exhausted', 'Today’s free generation limit has been reached. Try again tomorrow.', 429, cors)
+  if (await budgetLeft(env, config) < 1) return fail('budget_exhausted', 'Today’s generation capacity has been reached. Try again tomorrow.', 429, cors)
   const geminiKey = env.GEMINI_API_KEY?.trim()
   if (!geminiKey) return fail('server', 'Cairn is not configured with an AI key yet.', 503, cors)
 
   await chargeBudget(env)
   try {
     const result = await generateWithGemini(config, geminiKey, input as PlanInput)
-    return json(result, 200, cors)
+    const credits = await spendOne(env, address)
+    if (!credits) return fail('payment_required', 'Payment is required to generate a plan.', 402, cors, { price })
+    return json({ ...result, credits }, 200, cors)
   } catch (error) {
     return generationFailure(error, 'The AI returned an incomplete plan. Try again.', cors)
   }
@@ -133,19 +165,52 @@ async function handleRefine(env: Env, request: Request, cors: Record<string, str
   const plan = clampPlan(raw.plan, 'refine', Date.now())
   if (isInvalid(plan)) return fail('invalid_request', plan.message, 400, cors)
 
-  const config = readConfig(env)
+  const { config, price } = paymentDetails(env)
+  const balance = stateOf(await readCredits(env, address))
+  if (balance.total < 1) {
+    return fail('payment_required', 'Payment is required to use planner actions.', 402, cors, { credits: balance, price })
+  }
   if (await tooFast(env, address)) return fail('rate_limited', 'Please wait a moment before asking again.', 429, cors)
-  if (await budgetLeft(env, config) < 1) return fail('budget_exhausted', 'Today’s free generation limit has been reached. Try again tomorrow.', 429, cors)
+  if (await budgetLeft(env, config) < 1) return fail('budget_exhausted', 'Today’s generation capacity has been reached. Try again tomorrow.', 429, cors)
   const geminiKey = env.GEMINI_API_KEY?.trim()
   if (!geminiKey) return fail('server', 'Cairn is not configured with an AI key yet.', 503, cors)
 
   await chargeBudget(env)
   try {
     const result = await refineWithGemini(config, geminiKey, plan, action, question)
-    return json(result, 200, cors)
+    const credits = await spendOne(env, address)
+    if (!credits) return fail('payment_required', 'Payment is required to use planner actions.', 402, cors, { price })
+    return json({ ...result, credits }, 200, cors)
   } catch (error) {
     return generationFailure(error, 'The AI returned an incomplete follow up. Try again.', cors)
   }
+}
+
+async function handleRedeem(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
+  const raw = bodyRecord(await readJson(request))
+  if (!raw || typeof raw.receipt !== 'string' || raw.receipt.length < 1 || raw.receipt.length > 4096) {
+    return fail('invalid_request', 'Payment details are invalid.', 400, cors)
+  }
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  const address = authenticatedAddress(raw, session)
+  if (!address) return fail('invalid_request', 'Connect a valid Nimiq wallet.', 400, cors)
+  if (await tooFast(env, address, 'redeem')) return fail('rate_limited', 'Please wait before checking payment again.', 429, cors)
+
+  const { config } = paymentDetails(env)
+  const receipt = raw.receipt.trim()
+  const keyHint = /^[0-9a-f]{64}$/i.test(receipt) ? receipt : null
+  if (keyHint && await isSpent(env, keyHint)) return fail('payment_not_found', 'That payment was already used.', 402, cors)
+  const trusted = config.trustPaymentsInDev && originIsLocal(request)
+  const verifiedHash = trusted
+    ? await localReceiptKey(receipt)
+    : await verifyPayment(config, address, config.priceLuna, receipt)
+  if (!verifiedHash || await isSpent(env, verifiedHash)) {
+    return fail('payment_not_found', 'Payment is not visible on the network yet.', 402, cors)
+  }
+  await markSpent(env, verifiedHash, address)
+  const credits = await grantPaid(env, address, config.plansPerPayment)
+  return json({ credits, granted: config.plansPerPayment }, 200, cors)
 }
 
 async function handleShare(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
@@ -271,8 +336,10 @@ async function route(env: Env, request: Request): Promise<Response> {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: securityHeaders(cors, url.protocol === 'https:') })
   if (url.pathname === '/api/auth/challenge' && request.method === 'GET') return handleAuthChallenge(env, request, url, cors)
   if (url.pathname === '/api/auth/verify' && request.method === 'POST') return handleAuthVerify(env, request, cors)
+  if (url.pathname === '/api/credits' && request.method === 'GET') return handleCredits(env, request, cors)
   if (url.pathname === '/api/generate' && request.method === 'POST') return handleGenerate(env, request, cors)
   if (url.pathname === '/api/refine' && request.method === 'POST') return handleRefine(env, request, cors)
+  if (url.pathname === '/api/redeem' && request.method === 'POST') return handleRedeem(env, request, cors)
   if (url.pathname === '/api/share' && request.method === 'POST') return handleShare(env, request, cors)
   if (url.pathname === '/api/team' && request.method === 'POST') return handleTeamCreate(env, request, cors)
   const teamMatch = /^\/api\/team\/([a-z2-9]{16,32})$/i.exec(url.pathname)

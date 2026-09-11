@@ -99,8 +99,9 @@ export function fail(
   message: string,
   status: number,
   cors: Cors,
+  details: Record<string, unknown> = {},
 ): Response {
-  return json({ error: code, message }, status, cors)
+  return json({ ...details, error: code, message }, status, cors)
 }
 
 /**

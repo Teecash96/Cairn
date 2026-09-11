@@ -96,7 +96,7 @@ The deployed Worker serves a small information layer beside the mini app:
 
 1. `/case-studies` contains illustrative examples. They are not customer
    claims.
-2. `/faq` answers product, timing, free access, sharing, and privacy questions.
+2. `/faq` answers product, timing, NIM payment, sharing, and privacy questions.
 3. `/privacy` explains data handling in plain language.
 4. `/thank-you` is a simple completion page for links and demos.
 5. Unknown routes show a branded 404 page.
@@ -105,15 +105,15 @@ The app has a clear response promise: most plans are ready in under 30 seconds.
 The public pages use canonical URLs, Open Graph metadata, a social card,
 `robots.txt`, `sitemap.xml`, and `llms.txt`.
 
-## Free access
+## NIM payment
 
-Cairn does not charge for plans or planner actions. A short lived signed Nimiq
-wallet session proves identity for AI requests and protected team access. There
-is no email account, password, subscription, credit balance, or payment prompt.
+Cairn requires paid credits for AI generation and refinement. A payment of 1 NIM
+unlocks 10 successful AI actions. There is no subscription. Sharing, exports,
+local editing, and team workspaces do not spend AI credits.
 
-The Worker applies a short rate limit per wallet and a global daily generation
-limit. This keeps the free service useful without exposing an unlimited Gemini
-bill.
+The Worker verifies the payment on the Nimiq network before it grants credits.
+Each transaction can be redeemed once. Credits are spent only after Gemini
+returns a valid result.
 
 ## What leaves your phone
 
@@ -157,6 +157,8 @@ without weakening the production wallet path.
 When you open the deployed app in Chrome, tap **Generate plan** and complete the
 Nimiq Hub popup. Allow popups for the Cairn site. Hub returns the selected wallet
 address and signature to Cairn, which the Worker verifies before any AI action.
+When the wallet has no credits, Cairn opens Nimiq Hub checkout for the required
+NIM payment.
 
 ### On a real device
 

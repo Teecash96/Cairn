@@ -23,6 +23,28 @@ export interface GenerateResult {
   flow: FlowStep[]
   build: BuildPlanDraft
   realityCheck: RealityCheckItem[]
+  credits: CreditState
+}
+
+export interface CreditState {
+  paid: number
+  total: number
+}
+
+export interface PriceQuote {
+  priceLuna: number
+  plans: number
+  payTo: string
+}
+
+export interface CreditsResult {
+  credits: CreditState
+  price: PriceQuote | null
+}
+
+export interface RedeemResult {
+  credits: CreditState
+  granted: number
 }
 
 export interface ShareResult {
@@ -90,6 +112,7 @@ export interface RefineResult {
   /** Short explanation of the proposed targeted changes. */
   explanation: string
   changes: PlanChanges
+  credits: CreditState
 }
 
 /**
@@ -97,6 +120,8 @@ export interface RefineResult {
  * why they are a closed set rather than free-text messages.
  */
 export type ApiErrorCode =
+  | 'payment_required'
+  | 'payment_not_found'
   | 'rate_limited'
   | 'budget_exhausted'
   | 'invalid_request'
@@ -111,20 +136,29 @@ export type ApiErrorCode =
 export class ApiError extends Error {
   readonly code: ApiErrorCode
   readonly status: number
+  readonly credits: CreditState | null
+  readonly price: PriceQuote | null
   constructor(
     code: ApiErrorCode,
     message: string,
     status = 0,
+    details: { credits?: CreditState; price?: PriceQuote | null } = {},
   ) {
     super(message)
     this.name = 'ApiError'
     this.code = code
     this.status = status
+    this.credits = details.credits ?? null
+    this.price = details.price ?? null
   }
 
   /** True when nothing reached the server — the only case a stub can cover. */
   get isOffline(): boolean {
     return this.code === 'network'
+  }
+
+  get needsPayment(): boolean {
+    return this.code === 'payment_required'
   }
 }
 
@@ -160,6 +194,8 @@ const TIMEOUT_MS = { generate: 60_000, default: 15_000 }
 interface ErrorBody {
   error?: string
   message?: string
+  credits?: CreditState
+  price?: PriceQuote | null
 }
 
 function isErrorCode(value: unknown): value is ApiErrorCode {
@@ -167,6 +203,8 @@ function isErrorCode(value: unknown): value is ApiErrorCode {
     typeof value === 'string' &&
     [
       'rate_limited',
+      'payment_required',
+      'payment_not_found',
       'budget_exhausted',
       'invalid_request',
       'not_found',
@@ -236,7 +274,10 @@ async function request<T>(
 
   if (code === 'auth_required') clearAuthToken()
 
-  throw new ApiError(code, body.message ?? 'Something went wrong.', response.status)
+  throw new ApiError(code, body.message ?? 'Something went wrong.', response.status, {
+    credits: body.credits,
+    price: body.price,
+  })
 }
 
 export interface GenerateRequest {
@@ -245,7 +286,7 @@ export interface GenerateRequest {
   input: PlanInput
 }
 
-/** Generate a plan for free, subject to service rate and daily capacity limits. */
+/** Generate a plan using one paid credit. */
 export function generatePlan(body: GenerateRequest): Promise<GenerateResult> {
   return request<GenerateResult>('/generate', {
     method: 'POST',
@@ -273,6 +314,18 @@ export function verifyAuth(body: {
   })
 }
 
+export function getCredits(): Promise<CreditsResult> {
+  return request<CreditsResult>('/credits', { auth: true })
+}
+
+export function redeemPayment(address: string, receipt: string): Promise<RedeemResult> {
+  return request<RedeemResult>('/redeem', {
+    method: 'POST',
+    body: JSON.stringify({ address, receipt }),
+    auth: true,
+  })
+}
+
 /** Publish a read-only snapshot. Explicit user action — never automatic. */
 export function sharePlan(address: string, plan: Plan): Promise<ShareResult> {
   return request<ShareResult>('/share', {
@@ -286,7 +339,7 @@ export function getSharedPlan(shareId: string): Promise<SharedPlanResult> {
   return request<SharedPlanResult>(`/share/${encodeURIComponent(shareId)}`)
 }
 
-/** Run a free targeted planner action. */
+/** Run a targeted planner action using one paid credit. */
 export function refinePlan(body: RefineRequest): Promise<RefineResult> {
   return request<RefineResult>('/refine', {
     method: 'POST',

@@ -12,7 +12,7 @@ Saved plans stay in browser local storage until the person chooses to share. Gen
 
 ## Access
 
-Cairn is free to use. Plans, refinements, sharing, exports, and team workspaces do not require payment. Fair use rate limits and a daily service limit keep AI cost bounded.
+Cairn requires paid credits for AI generation and refinement. One NIM unlocks ten successful AI actions. The Worker verifies each payment on the Nimiq network and rejects reused receipts. Sharing, exports, local editing, and team workspaces do not spend AI credits.
 
 ## Links
 

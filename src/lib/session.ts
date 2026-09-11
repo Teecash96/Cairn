@@ -19,6 +19,8 @@ import {
   getChainStatus,
   getProvider,
   isInsideNimiqPay,
+  sendPayment,
+  sendPaymentInBrowser,
   signMessage,
   signMessageInBrowser,
   type NimiqProvider,
@@ -195,6 +197,28 @@ export function useSession() {
     }
   }
 
+  async function pay(recipient: string, valueLuna: number, note: string): Promise<string | null> {
+    if (mode.value === 'booting') await boot()
+    lastError.value = null
+    try {
+      if (mode.value === 'nimiq' && provider) {
+        return await sendPayment(provider, recipient, valueLuna, note)
+      }
+      if (mode.value === 'preview' && !localPreview) {
+        return await sendPaymentInBrowser(recipient, valueLuna, note)
+      }
+      return null
+    } catch (error) {
+      lastError.value =
+        error instanceof ProviderError && error.isDenied
+          ? 'Payment cancelled.'
+          : error instanceof Error
+            ? error.message
+            : 'Payment failed.'
+      return null
+    }
+  }
+
   return {
     mode: readonly(mode),
     address: readonly(address),
@@ -208,6 +232,7 @@ export function useSession() {
     boot,
     connect,
     authenticate,
+    pay,
     refreshChain,
   }
 }

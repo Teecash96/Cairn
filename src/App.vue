@@ -1,14 +1,14 @@
 <script setup lang="ts">
 /**
  * Cairn's shell: the new plan screen, library, workspace, and protected team
- * route, plus the free generate, refine, and share loop.
+ * route, plus the paid generate, refine, and share loop.
  *
  * State lives here rather than in a store. There are three screens and one open
  * plan; a store would be indirection for its own sake, and keeping the sequence
  * in one file is what makes the ordering rules below checkable at a glance.
  *
  * The wallet prompt fires on the first generate tap, never at boot. It proves
- * identity for free generation and protected teams without asking for payment.
+ * identity before required NIM payment and protected team actions.
  *
  * Editing autosaves. There is no save button, and the deep watcher that does it
  * is guarded so that stamping `updatedAt` cannot retrigger itself.
@@ -17,6 +17,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import CairnMark from './components/CairnMark.vue'
 import Library from './components/Library.vue'
 import NewPlan from './components/NewPlan.vue'
+import PaySheet from './components/PaySheet.vue'
 import RefineSheet from './components/RefineSheet.vue'
 import Toast from './components/Toast.vue'
 import Workspace from './components/Workspace.vue'
@@ -27,13 +28,14 @@ import {
   generatePlan,
   getSharedPlan,
   getTeam,
+  redeemPayment,
   refinePlan,
   removeTeamMember,
   sharePlan,
   updateTeamMember,
   updateTeamTracker,
 } from './lib/api'
-import type { RefineAction, TeamResult, TeamRole } from './lib/api'
+import type { PriceQuote, RefineAction, TeamResult, TeamRole } from './lib/api'
 import { copyText } from './lib/clipboard'
 import {
   createPlan,
@@ -75,6 +77,12 @@ const formInitial = ref<PlanInput | undefined>(undefined)
 
 const generating = ref(false)
 const sharing = ref(false)
+const payOpen = ref(false)
+const payState = ref<'idle' | 'paying' | 'verifying'>('idle')
+const payError = ref<string | null>(null)
+const price = ref<PriceQuote | null>(null)
+const pendingGeneration = ref<{ input: PlanInput; replaceId?: string } | null>(null)
+const pendingRefinement = ref<{ action: RefineAction; question?: string } | null>(null)
 
 const toast = ref('')
 const toastTone = ref<Tone>('info')
@@ -535,6 +543,13 @@ function apply(
 
 function onGenerateFailed(error: unknown, input: PlanInput, replaceId?: string): void {
   if (error instanceof ApiError) {
+    if (error.needsPayment) {
+      price.value = error.price
+      pendingGeneration.value = { input, ...(replaceId ? { replaceId } : {}) }
+      payError.value = error.price ? null : 'Cairn payment is not configured yet.'
+      payOpen.value = true
+      return
+    }
     /**
      * Development only. `vite dev` has no Worker and therefore no AI key, so
      * rather than leave every screen unreachable, an obviously-placeholder plan
@@ -549,6 +564,48 @@ function onGenerateFailed(error: unknown, input: PlanInput, replaceId?: string):
   }
 
   notify(messageOf(error), 'error')
+}
+
+async function pay(): Promise<void> {
+  const quote = price.value
+  if (!quote || payState.value !== 'idle') return
+  const address = await requireAuth()
+  if (!address) return
+
+  payError.value = null
+  payState.value = 'paying'
+  const receipt = await session.pay(quote.payTo, quote.priceLuna, 'Cairn AI credits')
+  if (!receipt) {
+    payState.value = 'idle'
+    payError.value = session.lastError.value ?? 'Payment was not completed.'
+    return
+  }
+
+  payState.value = 'verifying'
+  try {
+    await redeemPayment(address, receipt)
+    payOpen.value = false
+    const generation = pendingGeneration.value
+    const refinement = pendingRefinement.value
+    pendingGeneration.value = null
+    pendingRefinement.value = null
+    notify(`${quote.plans} AI actions unlocked`, 'success')
+    if (generation) await generate(generation.input, generation.replaceId)
+    else if (refinement) await runRefinement(refinement.action, refinement.question)
+  } catch (error) {
+    payError.value = error instanceof ApiError && error.code === 'payment_not_found'
+      ? 'Payment is not confirmed yet. Wait a moment, then check again.'
+      : messageOf(error)
+  } finally {
+    payState.value = 'idle'
+  }
+}
+
+function closePay(): void {
+  if (payState.value !== 'idle') return
+  payOpen.value = false
+  pendingGeneration.value = null
+  pendingRefinement.value = null
 }
 
 // -- planner follow ups ----------------------------------------------------
@@ -591,6 +648,13 @@ async function runRefinement(action: RefineAction, question?: string): Promise<v
     refineAnswer.value = result.answer ?? ''
     refineChanges.value = result.changes
   } catch (error) {
+    if (error instanceof ApiError && error.needsPayment) {
+      price.value = error.price
+      pendingRefinement.value = { action, ...(question ? { question } : {}) }
+      payError.value = error.price ? null : 'Cairn payment is not configured yet.'
+      payOpen.value = true
+      return
+    }
     refineOpen.value = false
     notify(messageOf(error), 'error')
   } finally {
@@ -823,6 +887,15 @@ function ownIt(): void {
     :busy="refineBusy"
     @submit="submitRefinement"
     @cancel="closeRefinement"
+  />
+
+  <PaySheet
+    v-if="payOpen"
+    :price="price"
+    :state="payState"
+    :error="payError"
+    @pay="pay"
+    @close="closePay"
   />
 
   <Toast :message="toast" :tone="toastTone" />

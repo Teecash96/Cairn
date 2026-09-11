@@ -117,7 +117,7 @@ function submit(): void {
       </div>
       <div class="atlas-meta mono">
         <span>Route 01</span>
-        <span class="atlas-meta__free">Free to use</span>
+        <span class="atlas-meta__free">Pay with NIM</span>
       </div>
       <h1 class="hero">Map the idea before you build it.</h1>
       <p class="hero-copy">
@@ -196,7 +196,7 @@ function submit(): void {
           A little more detail and it will have something to work with.
         </p>
         <p v-else class="foot muted">
-          Free to use. Your finished plan stays on this device.
+          1 NIM unlocks 10 AI actions. Your finished plan stays on this device.
         </p>
       </div>
 
