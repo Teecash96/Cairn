@@ -717,6 +717,7 @@ async function pay(): Promise<void> {
     if (!(error instanceof ApiError) || error.code !== 'payment_not_found') {
       payState.value = 'idle'
       payError.value = messageOf(error)
+      if (error instanceof ApiError && error.code === 'payment_wrong_wallet') session.disconnect()
       return
     }
   }
