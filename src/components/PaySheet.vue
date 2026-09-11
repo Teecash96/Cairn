@@ -18,12 +18,16 @@ const {
   price,
   state = 'idle',
   error = null,
+  pending = false,
+  pendingMessage = null,
   retrying = false,
 } = defineProps<{
   price: PriceQuote | null
   /** `paying` — waiting on Nimiq Pay. `verifying` — waiting on the network. */
   state?: 'idle' | 'paying' | 'verifying'
   error?: string | null
+  pending?: boolean
+  pendingMessage?: string | null
   retrying?: boolean
 }>()
 
@@ -38,10 +42,11 @@ const confirmButton = ref<HTMLButtonElement | null>(null)
 onMounted(() => confirmButton.value?.focus())
 
 const busy = computed(() => state !== 'idle')
+const canDismiss = computed(() => state !== 'paying' && !(state === 'verifying' && !pending))
 
 /** A payment already in flight must not be dismissed out from under itself. */
 function dismiss(): void {
-  if (!busy.value) emit('close')
+  if (canDismiss.value) emit('close')
 }
 
 function perPlan(quote: PriceQuote): string {
@@ -84,13 +89,14 @@ function perPlan(quote: PriceQuote): string {
           </div>
           <div class="rows__row">
             <dt>Payment</dt>
-            <dd>Sent with Nimiq Pay</dd>
+            <dd>Through your Nimiq wallet</dd>
           </div>
         </dl>
       </template>
 
       <p v-else class="body faint">Fetching the current price…</p>
 
+      <p v-if="pendingMessage" class="pending" role="status">{{ pendingMessage }}</p>
       <p v-if="error" class="error" role="alert">{{ error }}</p>
 
       <div class="actions">
@@ -111,7 +117,7 @@ function perPlan(quote: PriceQuote): string {
         <button
           type="button"
           class="btn btn--ghost btn--block"
-          :disabled="state === 'verifying'"
+          :disabled="state === 'paying' || (state === 'verifying' && !pending)"
           @click="emit('close')"
         >
           Not now
@@ -249,6 +255,15 @@ function perPlan(quote: PriceQuote): string {
   border-radius: var(--r-sm);
   background: var(--danger-subtle);
   color: var(--danger);
+  font-size: var(--text-sm);
+  line-height: var(--leading);
+}
+
+.pending {
+  padding: var(--s3);
+  border-radius: var(--r-sm);
+  background: var(--accent-subtle);
+  color: var(--text);
   font-size: var(--text-sm);
   line-height: var(--leading);
 }

@@ -19,6 +19,9 @@ refines a plan. Production grants no free AI actions.
    private key.
 8. Local payment trust is allowed only on a local host and must never be enabled
    in production.
+9. If confirmation is delayed, the client keeps the opaque receipt in session
+   storage and checks the Worker with bounded backoff. It never opens a second
+   payment prompt for the same pending receipt.
 
 ## Scope
 

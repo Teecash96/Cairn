@@ -84,6 +84,13 @@ const price = ref<PriceQuote | null>(null)
 const pendingGeneration = ref<{ input: PlanInput; replaceId?: string } | null>(null)
 const pendingRefinement = ref<{ action: RefineAction; question?: string } | null>(null)
 
+const PAYMENT_POLL_DELAYS_MS = [3_000, 6_000, 12_000, 20_000, 30_000, 30_000]
+const PAYMENT_WAITING_MESSAGE = 'Payment sent. Cairn is checking for one network confirmation. Do not pay again.'
+const paymentPendingMessage = ref<string | null>(null)
+const paymentPollAttempt = ref(0)
+let paymentPollTimer: ReturnType<typeof setTimeout> | undefined
+let paymentPollRun = 0
+
 const PENDING_PAYMENT_KEY = 'cairn:pending-payment'
 function readPendingReceipt(): { address: string; receipt: string } | null {
   try {
@@ -100,15 +107,26 @@ function readPendingReceipt(): { address: string; receipt: string } | null {
 
 function rememberPendingReceipt(value: { address: string; receipt: string }): void {
   pendingReceipt.value = value
+  paymentPendingMessage.value = PAYMENT_WAITING_MESSAGE
   try { sessionStorage.setItem(PENDING_PAYMENT_KEY, JSON.stringify(value)) } catch { /* best effort */ }
 }
 
 function forgetPendingReceipt(): void {
   pendingReceipt.value = null
+  paymentPendingMessage.value = null
   try { sessionStorage.removeItem(PENDING_PAYMENT_KEY) } catch { /* best effort */ }
 }
 
 const pendingReceipt = ref<{ address: string; receipt: string } | null>(readPendingReceipt())
+
+function stopPaymentPolling(): void {
+  paymentPollRun += 1
+  paymentPollAttempt.value = 0
+  if (paymentPollTimer !== undefined) {
+    clearTimeout(paymentPollTimer)
+    paymentPollTimer = undefined
+  }
+}
 
 const toast = ref('')
 const toastTone = ref<Tone>('info')
@@ -291,6 +309,7 @@ onUnmounted(() => {
   if (saveTimer !== undefined) clearTimeout(saveTimer)
   if (toastTimer !== undefined) clearTimeout(toastTimer)
   if (teamSyncTimer !== undefined) clearTimeout(teamSyncTimer)
+  stopPaymentPolling()
 })
 
 // -- navigation -------------------------------------------------------------
@@ -592,6 +611,76 @@ function onGenerateFailed(error: unknown, input: PlanInput, replaceId?: string):
   notify(messageOf(error), 'error')
 }
 
+async function completePayment(quote: PriceQuote): Promise<void> {
+  stopPaymentPolling()
+  forgetPendingReceipt()
+  payOpen.value = false
+  const generation = pendingGeneration.value
+  const refinement = pendingRefinement.value
+  pendingGeneration.value = null
+  pendingRefinement.value = null
+  notify(String(quote.plans) + ' AI actions unlocked', 'success')
+  if (generation) await generate(generation.input, generation.replaceId)
+  else if (refinement) await runRefinement(refinement.action, refinement.question)
+}
+
+function startPaymentPolling(address: string, receipt: string, quote: PriceQuote): void {
+  stopPaymentPolling()
+  const run = paymentPollRun
+  paymentPollAttempt.value = 0
+  paymentPendingMessage.value = PAYMENT_WAITING_MESSAGE
+
+  const poll = async (): Promise<void> => {
+    const pending = pendingReceipt.value
+    if (
+      run !== paymentPollRun ||
+      !pending ||
+      pending.address !== address ||
+      pending.receipt !== receipt
+    ) return
+
+    payState.value = 'verifying'
+    try {
+      await redeemPayment(address, receipt)
+      if (run !== paymentPollRun) return
+      await completePayment(quote)
+      return
+    } catch (error) {
+      if (run !== paymentPollRun) return
+      const transient = error instanceof ApiError && (
+        error.code === 'payment_not_found' ||
+        error.code === 'rate_limited' ||
+        error.code === 'network'
+      )
+      if (!transient) {
+        stopPaymentPolling()
+        payState.value = 'idle'
+        paymentPendingMessage.value = null
+        payError.value = messageOf(error)
+        return
+      }
+
+      const delay = PAYMENT_POLL_DELAYS_MS[paymentPollAttempt.value]
+      if (delay === undefined) {
+        paymentPollTimer = undefined
+        payState.value = 'idle'
+        paymentPendingMessage.value = 'Payment is still pending. Automatic checks are complete for now. Tap Check payment later. Do not pay again.'
+        return
+      }
+
+      paymentPollAttempt.value += 1
+      payState.value = 'idle'
+      paymentPendingMessage.value = PAYMENT_WAITING_MESSAGE
+      paymentPollTimer = setTimeout(() => {
+        paymentPollTimer = undefined
+        void poll()
+      }, delay)
+    }
+  }
+
+  void poll()
+}
+
 async function pay(): Promise<void> {
   const quote = price.value
   if (!quote || payState.value !== 'idle') return
@@ -599,67 +688,44 @@ async function pay(): Promise<void> {
   if (!address) return
 
   payError.value = null
-  let receipt = pendingReceipt.value?.address === address ? pendingReceipt.value.receipt : null
-  if (!receipt) {
-    payState.value = 'verifying'
-    try {
-      await redeemPayment(address)
-      forgetPendingReceipt()
-      payOpen.value = false
-      const generation = pendingGeneration.value
-      const refinement = pendingRefinement.value
-      pendingGeneration.value = null
-      pendingRefinement.value = null
-      notify(String(quote.plans) + ' AI actions unlocked', 'success')
-      if (generation) await generate(generation.input, generation.replaceId)
-      else if (refinement) await runRefinement(refinement.action, refinement.question)
-      return
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.code !== 'payment_not_found') {
-        payState.value = 'idle'
-        payError.value = messageOf(error)
-        return
-      }
-    }
-    payState.value = 'paying'
-    receipt = await session.pay(quote.payTo, quote.priceLuna, 'Cairn AI credits')
-    if (!receipt) {
-      payState.value = 'idle'
-      payError.value = session.lastError.value ?? 'Payment was not completed.'
-      return
-    }
-    rememberPendingReceipt({ address, receipt })
+  const storedReceipt = pendingReceipt.value?.address === address ? pendingReceipt.value.receipt : null
+  if (storedReceipt) {
+    startPaymentPolling(address, storedReceipt, quote)
+    return
   }
 
   payState.value = 'verifying'
   try {
-    await redeemPayment(address, receipt)
-    forgetPendingReceipt()
-    payOpen.value = false
-    const generation = pendingGeneration.value
-    const refinement = pendingRefinement.value
-    pendingGeneration.value = null
-    pendingRefinement.value = null
-    notify(String(quote.plans) + ' AI actions unlocked', 'success')
-    if (generation) await generate(generation.input, generation.replaceId)
-    else if (refinement) await runRefinement(refinement.action, refinement.question)
+    await redeemPayment(address)
+    await completePayment(quote)
+    return
   } catch (error) {
-    payError.value = error instanceof ApiError && error.code === 'payment_not_found'
-      ? 'Payment is still confirming. Tap Check payment in a moment. Do not pay again.'
-      : messageOf(error)
-    if (error instanceof ApiError && error.code === 'payment_not_found') {
-      rememberPendingReceipt({ address, receipt })
+    if (!(error instanceof ApiError) || error.code !== 'payment_not_found') {
+      payState.value = 'idle'
+      payError.value = messageOf(error)
+      return
     }
-  } finally {
-    payState.value = 'idle'
   }
+
+  payState.value = 'paying'
+  const receipt = await session.pay(quote.payTo, quote.priceLuna, 'Cairn AI credits')
+  if (!receipt) {
+    payState.value = 'idle'
+    payError.value = session.lastError.value ?? 'Payment was not completed.'
+    return
+  }
+  rememberPendingReceipt({ address, receipt })
+  startPaymentPolling(address, receipt, quote)
 }
 
 function closePay(): void {
-  if (payState.value !== 'idle') return
+  if (payState.value === 'paying' || (payState.value === 'verifying' && !pendingReceipt.value)) return
+  stopPaymentPolling()
+  payState.value = 'idle'
   payOpen.value = false
   pendingGeneration.value = null
   pendingRefinement.value = null
+  if (pendingReceipt.value) paymentPendingMessage.value = PAYMENT_WAITING_MESSAGE
 }
 
 // -- planner follow ups ----------------------------------------------------
@@ -948,6 +1014,8 @@ function ownIt(): void {
     :price="price"
     :state="payState"
     :error="payError"
+    :pending="Boolean(pendingReceipt)"
+    :pending-message="paymentPendingMessage"
     :retrying="Boolean(pendingReceipt)"
     @pay="pay"
     @close="closePay"

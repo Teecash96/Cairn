@@ -189,7 +189,7 @@ export function hasAuthToken(address: string): boolean {
 }
 
 /** Generation can take a while; everything else should be quick. */
-const TIMEOUT_MS = { generate: 60_000, default: 15_000 }
+const TIMEOUT_MS = { generate: 60_000, payment: 20_000, default: 15_000 }
 
 interface ErrorBody {
   error?: string
@@ -322,6 +322,7 @@ export function redeemPayment(address: string, receipt?: string): Promise<Redeem
   return request<RedeemResult>('/redeem', {
     method: 'POST',
     body: JSON.stringify({ address, ...(receipt ? { receipt } : {}) }),
+    timeoutMs: TIMEOUT_MS.payment,
     auth: true,
   })
 }
