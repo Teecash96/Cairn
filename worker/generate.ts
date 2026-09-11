@@ -283,6 +283,8 @@ Rules:
 3. Never return task ids or done/completion flags. The client owns both.
 4. Keep practical MVP planning. Do not add Scrum or enterprise process language.
 5. Return only valid JSON. No markdown fences and no commentary.
+6. When a requirement changes, consider its effects on the PRD, user flow, MVP scope, milestones, acceptance tests, and next action. Include affected fields together so the plan stays consistent; leave unrelated fields alone. Explain the impact.
+7. Preserve the exact text of unchanged tasks and titles of unchanged milestones, even when moving them. Text is used to retain local progress. Rename or remove work only when the requested change requires it, and explain replacements.
 
 Action: ${action}
 ${actionInstruction(action, question)}

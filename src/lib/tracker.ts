@@ -107,6 +107,25 @@ export function nextStatus(status: TaskStatus): TaskStatus {
   return 'todo'
 }
 
+/** Suggest only actionable work. Ties retain the owner's milestone/task order. */
+export function recommendedTask(build: BuildPlan): { task: Task; milestone: Milestone; reason: string } | null {
+  const map = taskMap(build)
+  const priorities = { high: 2, medium: 1, low: 0 }
+  const candidates = build.milestones.flatMap((milestone) => milestone.blocked ? [] :
+    milestone.tasks.filter((task) => task.status !== 'done' && !taskIsBlocked(task, map))
+      .map((task) => ({ task, milestone })))
+  candidates.sort((a, b) =>
+    Number(b.task.status === 'in_progress') - Number(a.task.status === 'in_progress') ||
+    priorities[b.task.priority] - priorities[a.task.priority])
+  const next = candidates[0]
+  if (!next) return null
+  return { ...next, reason: next.task.status === 'in_progress'
+    ? 'Continue work already in progress; no unfinished dependencies are blocking it.'
+    : next.task.priority === 'high'
+      ? 'This is high-priority work with no unfinished dependencies.'
+      : 'This is the next available task in your build order at the highest available priority.' }
+}
+
 export function dateRange(milestone: Milestone): string {
   if (milestone.startDate && milestone.dueDate) return `${milestone.startDate} to ${milestone.dueDate}`
   if (milestone.startDate) return `From ${milestone.startDate}`

@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import type { RefineAction } from '../lib/api'
-import type { PlanChanges } from '../lib/plan'
+import type { Plan, PlanChanges } from '../lib/plan'
+import { refinementDifferences, removedRefinementTasks } from '../lib/refinement'
 
 const {
   action,
+  plan,
   explanation = '',
   answer = '',
   changes,
   busy = false,
 } = defineProps<{
   action: RefineAction
+  plan: Plan
   explanation?: string
   answer?: string
   changes?: PlanChanges | null
@@ -23,6 +26,11 @@ const emit = defineEmits<{
 }>()
 
 const question = ref('')
+const acknowledgeRemoval = ref(false)
+watch(() => changes, () => { acknowledgeRemoval.value = false })
+const differences = computed(() => changes ? refinementDifferences(plan, changes) : [])
+const removedTasks = computed(() => changes ? removedRefinementTasks(plan, changes) : [])
+const canApply = computed(() => !busy && (!removedTasks.value.length || acknowledgeRemoval.value))
 const labels: Record<RefineAction, string> = {
   cut_mvp_scope: 'Cut MVP scope',
   break_into_tasks: 'Break work into smaller tasks',
@@ -64,7 +72,7 @@ function submitQuestion(): void {
 }
 
 function applyChanges(): void {
-  if (!busy) emit('cancel', true)
+  if (canApply.value) emit('cancel', true)
 }
 
 function dismiss(): void {
@@ -124,13 +132,25 @@ onMounted(() => {
           <ul class="clean-list">
             <li v-for="label in changeLabels" :key="label">{{ label }}</li>
           </ul>
-          <p class="faint refine-result__note">Apply keeps completed tasks when the task still exists.</p>
+          <details v-for="difference in differences" :key="difference.label" class="change-detail">
+            <summary>{{ difference.label }}</summary>
+            <p class="eyebrow">Current</p>
+            <p class="change-copy">{{ difference.before || 'Empty' }}</p>
+            <p class="eyebrow">Proposed</p>
+            <p class="change-copy">{{ difference.after || 'Empty' }}</p>
+          </details>
+          <div v-if="removedTasks.length" class="removal-warning">
+            <h4>{{ removedTasks.length }} existing task(s) will be removed or replaced</h4>
+            <ul><li v-for="task in removedTasks" :key="task.id">{{ task.text }} — {{ task.status === 'done' ? 'completed' : task.status === 'in_progress' ? 'in progress' : 'to do' }}</li></ul>
+            <label><input v-model="acknowledgeRemoval" type="checkbox" /> I understand that these tasks and their saved progress, notes, and dependencies will be removed.</label>
+          </div>
+          <p class="faint refine-result__note">Unchanged task text keeps its progress and notes, even when moved to another milestone. Renamed tasks are treated as replacements.</p>
         </div>
         <p v-else class="empty-result muted">No plan changes were proposed. Your plan stays as it is.</p>
 
         <div class="sheet__actions">
           <button type="button" class="btn btn--secondary btn--block" :disabled="busy" @click="emit('cancel')">Cancel</button>
-          <button v-if="hasChanges" type="button" class="btn btn--primary btn--block" :disabled="busy" @click="applyChanges">Apply changes</button>
+          <button v-if="hasChanges" type="button" class="btn btn--primary btn--block" :disabled="!canApply" @click="applyChanges">Apply changes</button>
           <button v-else type="button" class="btn btn--primary btn--block" :disabled="busy" @click="emit('cancel')">Done</button>
         </div>
       </div>
@@ -139,6 +159,13 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.change-detail { padding: var(--s3) 0; border-top: 1px solid var(--line); }
+.change-detail summary { cursor: pointer; font-size: 1rem; font-weight: 650; }
+.change-detail .eyebrow { margin-top: var(--s3); }
+.change-copy { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 1rem; line-height: var(--leading); }
+.removal-warning { display: grid; gap: var(--s3); padding: var(--s3); border: 1px solid var(--line-strong); border-radius: var(--r-md); font-size: .875rem; line-height: var(--leading); }
+.removal-warning ul { padding-left: var(--s4); }
+.removal-warning input { margin-right: var(--s2); }
 .sheet-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; padding: var(--s3); background: rgb(15 16 24 / 48%); }
 .sheet { width: min(100%, 35rem); max-height: min(88vh, 44rem); overflow-y: auto; border: 1px solid var(--line); border-radius: var(--r-lg) var(--r-lg) var(--r-md) var(--r-md); background: var(--surface); box-shadow: var(--shadow-sheet); }
 .refine-sheet { padding: var(--s3) var(--s4) calc(var(--safe-bottom) + var(--s5)); }

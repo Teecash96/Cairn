@@ -59,6 +59,7 @@ import {
 import type { TeamPanelState } from './components/Workspace.vue'
 import { useSession } from './lib/session'
 import { mergeRefinement } from './lib/refinement'
+import { createExamplePlan } from './lib/example'
 import { stubGenerate, stubRefinement } from './lib/stub'
 
 type View = 'new' | 'workspace' | 'library'
@@ -140,6 +141,14 @@ const refineChanges = ref<PlanChanges | null>(null)
 
 /** A plan opened from someone else's share link. Read-only, never saved here. */
 const shared = ref<Plan | null>(null)
+const showingExample = ref(false)
+
+function openExample(): void {
+  flush()
+  showingExample.value = true
+  shared.value = createExamplePlan()
+  window.scrollTo(0, 0)
+}
 /** Protected team state. Unlike a public share, this requires wallet auth. */
 const teamResult = ref<TeamResult | null>(null)
 const teamPlan = ref<Plan | null>(null)
@@ -315,6 +324,7 @@ onUnmounted(() => {
 // -- navigation -------------------------------------------------------------
 
 function goNew(input?: PlanInput): void {
+  showingExample.value = false
   flush()
   formInitial.value = input
   formKey.value += 1
@@ -325,6 +335,7 @@ function goNew(input?: PlanInput): void {
 }
 
 function goLibrary(): void {
+  showingExample.value = false
   flush()
   shared.value = null
   teamPlan.value = null
@@ -883,10 +894,10 @@ function ownIt(): void {
       <div class="gifted">
         <p class="gifted__title">
           <CairnMark :size="18" class="gifted__mark" />
-          Someone left this for you
+          {{ showingExample ? 'Sample plan · Meetup tickets' : 'Someone left this for you' }}
         </p>
         <p class="gifted__body">
-          Cairn turns an idea into a product map and a route to release. Read this one, then map yours for free.
+          {{ showingExample ? 'A curated illustration, not a customer project or a live AI result. Explore Plan, Flow, Build, and Track without connecting a wallet.' : 'Cairn turns an idea into a product map and a route to release. Explore this plan, then create your own. 1 NIM unlocks 10 AI actions.' }}
         </p>
         <button type="button" class="btn btn--primary btn--sm" @click="ownIt">
           Map my own idea
@@ -925,6 +936,7 @@ function ownIt(): void {
       :busy="generating"
       :initial="formInitial"
       @submit="generate"
+      @example="openExample"
     />
 
     <Workspace
@@ -999,7 +1011,8 @@ function ownIt(): void {
   </nav>
 
   <RefineSheet
-    v-if="refineOpen"
+    v-if="refineOpen && current"
+    :plan="current"
     :action="refineAction"
     :explanation="refineExplanation"
     :answer="refineAnswer"

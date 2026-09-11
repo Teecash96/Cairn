@@ -19,8 +19,8 @@ a builder pack an indie builder can act on:
 - a **Reality check** — three prioritized concerns with the smallest test or fix
 
 Every field is editable. Your plan is local by default. Cairn uses practical MVP
-planning rather than Scrum process. Plans, refinements, sharing, exports, and
-team workspaces are free. An optional protected team workspace lets the owner
+planning rather than Scrum process. Generation and refinements use paid AI credits;
+local editing, tracking, sharing, exports, and team workspaces are free. An optional protected team workspace lets the owner
 share only Track with named Nimiq wallets.
 
 A cairn is a stack of stones left to mark the route for whoever comes next. That
@@ -35,7 +35,7 @@ Filling it properly takes a product manager twenty minutes of structured
 thinking, and most ideas never get those twenty minutes — so they either die or
 get built without a plan.
 
-Cairn is those twenty minutes on a phone, free to the builder.
+Cairn brings that structured thinking to a phone: 1 NIM unlocks 10 successful AI actions.
 
 ## How it works
 
@@ -60,7 +60,7 @@ Cairn is those twenty minutes on a phone, free to the builder.
 The Build tab has four quick actions: cut MVP scope, break work into smaller
 tasks, find missing risks, and improve acceptance tests. You can also ask a
 custom question. Cairn shows targeted changes in a preview before applying them.
-Planner actions are free. Fair use rate limits and a daily service limit prevent
+Each successful planner action spends one AI credit. Fair use rate limits and a daily service limit prevent
 unbounded AI cost. Task status, dates, labels, notes, and blockers stay on your
 device when a refinement keeps that task. Cairn sends only task text to Gemini.
 

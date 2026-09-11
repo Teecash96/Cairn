@@ -79,3 +79,43 @@ export function mergeRefinement(plan: Plan, changes: PlanChanges): Plan {
   next.updatedAt = Date.now()
   return next
 }
+
+export interface RefinementDifference {
+  label: string
+  before: string
+  after: string
+}
+
+function readable(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (Array.isArray(value)) return value.map(readable).join('\n\n')
+  if (value && typeof value === 'object') return Object.entries(value)
+    .map(([key, item]) => `${key.replace(/([A-Z])/g, ' $1')}: ${readable(item)}`).join('\n')
+  return ''
+}
+
+/** Compare only model-editable fields; never expose private tracker metadata. */
+export function refinementDifferences(plan: Plan, changes: PlanChanges): RefinementDifference[] {
+  const result: RefinementDifference[] = []
+  function add(label: string, before: unknown, after: unknown) {
+    if (after === undefined || JSON.stringify(before) === JSON.stringify(after)) return
+    result.push({ label, before: readable(before), after: readable(after) })
+  }
+  for (const key of Object.keys(changes.prd ?? {}) as (keyof Prd)[]) {
+    add(`Plan · ${key.replace(/([A-Z])/g, ' $1')}`, plan.prd[key], changes.prd?.[key])
+  }
+  add('User flow', plan.flow, changes.flow)
+  const draft = draftFromBuild(plan.build)
+  for (const key of Object.keys(changes.build ?? {}) as (keyof BuildPlanDraft)[]) {
+    add(`Build · ${key.replace(/([A-Z])/g, ' $1')}`, draft[key], changes.build?.[key])
+  }
+  add('Reality check', plan.realityCheck, changes.realityCheck)
+  return result
+}
+
+export function removedRefinementTasks(plan: Plan, changes: PlanChanges) {
+  if (!changes.build?.milestones) return []
+  const merged = mergeRefinement(plan, changes)
+  const retained = new Set(merged.build.milestones.flatMap((milestone) => milestone.tasks.map((task) => task.id)))
+  return plan.build.milestones.flatMap((milestone) => milestone.tasks).filter((task) => !retained.has(task.id))
+}

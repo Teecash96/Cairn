@@ -12,6 +12,7 @@ import {
   MILESTONE_STATUS_LABEL,
   nextStatus,
   projectStats,
+  recommendedTask,
   taskIsBlocked,
   taskMap,
   TASK_STATUS_LABEL,
@@ -38,6 +39,7 @@ const filter = ref<Filter>('all')
 const editor = ref<EditorState>(null)
 
 const stats = computed(() => projectStats(build.value))
+const recommendation = computed(() => recommendedTask(build.value))
 const projectTasks = computed(() => allTasks(build.value))
 const projectTaskMap = computed(() => taskMap(build.value))
 const datedMilestones = computed(() => build.value.milestones.filter((milestone) => milestone.startDate || milestone.dueDate))
@@ -255,6 +257,16 @@ function newMilestone(): void {
       <span class="progress-track__fill" :style="{ width: `${stats.progress}%` }" />
     </div>
 
+    <section v-if="!teamMode" class="next-work" aria-labelledby="next-work-heading">
+      <h3 id="next-work-heading">{{ recommendation ? 'Next recommended task' : stats.totalTasks === 0 ? 'Add your first task' : stats.completedTasks === stats.totalTasks ? 'All tasks complete' : 'Resolve a blocker to continue' }}</h3>
+      <template v-if="recommendation">
+        <p>{{ recommendation.task.text }}</p>
+        <p class="muted">{{ recommendation.milestone.title }} · {{ recommendation.reason }}</p>
+        <button v-if="!readOnly && editing" type="button" class="btn btn--secondary" @click="openTask(recommendation.milestone.id, recommendation.task)">Open task</button>
+      </template>
+      <p v-else class="muted">{{ stats.totalTasks === 0 ? 'Create a milestone and add the work needed for your first release.' : stats.completedTasks === stats.totalTasks ? 'Review your acceptance tests before releasing.' : 'Remaining tasks have unfinished dependencies or belong to a blocked milestone.' }}</p>
+    </section>
+
     <div class="view-toggle" role="group" aria-label="Tracker view">
       <button type="button" class="toggle" :class="{ 'toggle--on': view === 'board' }" :aria-pressed="view === 'board'" @click="view = 'board'">Board</button>
       <button type="button" class="toggle" :class="{ 'toggle--on': view === 'timeline' }" :aria-pressed="view === 'timeline'" @click="view = 'timeline'">Timeline</button>
@@ -389,6 +401,11 @@ function newMilestone(): void {
 </template>
 
 <style scoped>
+.next-work { display: grid; gap: var(--s3); padding: var(--s4); background: var(--accent-subtle); border: 1px solid var(--accent-line); border-radius: var(--r-md); overflow-wrap: anywhere; }
+.next-work h3 { font-size: 1rem; }
+.next-work p { font-size: 1rem; line-height: var(--leading); }
+.next-work .muted { font-size: .875rem; }
+.next-work button { justify-self: start; }
 .tracker { display: flex; flex-direction: column; gap: var(--s4); }
 .eyebrow { margin: 0 0 var(--s1); color: var(--accent); font-size: var(--text-xs); font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
 .tracker-summary { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s4); }

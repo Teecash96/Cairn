@@ -16,6 +16,7 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
 import CairnMark from './CairnMark.vue'
 import type { PlanInput } from '../lib/plan'
+import { NIMIQ_TEMPLATE } from '../lib/example'
 
 const {
   busy = false,
@@ -29,6 +30,7 @@ const {
 
 const emit = defineEmits<{
   submit: [input: PlanInput]
+  example: []
 }>()
 
 const name = ref(initial?.name ?? '')
@@ -60,6 +62,15 @@ const EXAMPLES = [
 
 function useExample(text: string): void {
   idea.value = text
+}
+
+function useNimiqTemplate(): void {
+  name.value = NIMIQ_TEMPLATE.name
+  idea.value = NIMIQ_TEMPLATE.idea
+  targetUser.value = NIMIQ_TEMPLATE.targetUser ?? ''
+  problem.value = NIMIQ_TEMPLATE.problem ?? ''
+  goal.value = NIMIQ_TEMPLATE.goal ?? ''
+  expanded.value = true
 }
 
 // -- the generating sequence ------------------------------------------------
@@ -125,6 +136,8 @@ function submit(): void {
         and the next useful move.
       </p>
 
+      <button type="button" class="btn btn--secondary" :disabled="busy" @click="emit('example')">Explore a sample plan · no wallet needed</button>
+
       <ol class="route-preview" aria-label="Cairn maps an idea into a plan, flow, build path, and tracker">
         <li class="route-preview__stop route-preview__stop--active"><span>01</span>Idea</li>
         <li class="route-preview__stop"><span>02</span>Plan</li>
@@ -165,6 +178,7 @@ function submit(): void {
           spellcheck="true"
           required
           aria-required="true"
+          maxlength="1500"
         />
 
         <div v-if="!idea.trim()" class="examples">
@@ -183,6 +197,8 @@ function submit(): void {
         </div>
       </div>
 
+      <button type="button" class="btn btn--secondary" :disabled="busy" @click="useNimiqTemplate">Use the Nimiq Mini App template</button>
+
       <div class="submit">
         <button type="submit" class="btn btn--primary btn--block" :disabled="!ready || busy">
           <span v-if="busy" class="dot" aria-hidden="true"></span>
@@ -196,7 +212,8 @@ function submit(): void {
           A little more detail and it will have something to work with.
         </p>
         <p v-else class="foot muted">
-          1 NIM unlocks 10 AI actions. Your finished plan stays on this device.
+          1 NIM unlocks 10 successful AI actions. One generated plan or follow-up uses one action.
+          Editing, tracking, and exports use no credits. Your finished plan stays on this device.
         </p>
       </div>
 
