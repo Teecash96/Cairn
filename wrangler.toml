@@ -55,8 +55,9 @@ DAILY_BUDGET = "400"
 # hosts, i.e. `vite dev` on :5173 talking to `wrangler dev` on :8787.
 APP_URL = "https://cairn.cairn-planner.workers.dev"
 
-# Keep disabled on the first deployment. See docs/credit-ledger-cutover.md.
-CREDIT_LEDGER_READY = "0"
+# Enabled only after the production KV ledger was frozen and reconciled.
+# See docs/credit-ledger-cutover.md.
+CREDIT_LEDGER_READY = "1"
 
 [[durable_objects.bindings]]
 name = "CREDIT_LEDGER"
