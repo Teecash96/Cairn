@@ -83,6 +83,7 @@ const payError = ref<string | null>(null)
 const price = ref<PriceQuote | null>(null)
 const pendingGeneration = ref<{ input: PlanInput; replaceId?: string } | null>(null)
 const pendingRefinement = ref<{ action: RefineAction; question?: string } | null>(null)
+const pendingReceipt = ref<{ address: string; receipt: string } | null>(null)
 
 const toast = ref('')
 const toastTone = ref<Tone>('info')
@@ -573,17 +574,21 @@ async function pay(): Promise<void> {
   if (!address) return
 
   payError.value = null
-  payState.value = 'paying'
-  const receipt = await session.pay(quote.payTo, quote.priceLuna, 'Cairn AI credits')
+  let receipt = pendingReceipt.value?.address === address ? pendingReceipt.value.receipt : null
   if (!receipt) {
-    payState.value = 'idle'
-    payError.value = session.lastError.value ?? 'Payment was not completed.'
-    return
+    payState.value = 'paying'
+    receipt = await session.pay(quote.payTo, quote.priceLuna, 'Cairn AI credits')
+    if (!receipt) {
+      payState.value = 'idle'
+      payError.value = session.lastError.value ?? 'Payment was not completed.'
+      return
+    }
   }
 
   payState.value = 'verifying'
   try {
     await redeemPayment(address, receipt)
+    pendingReceipt.value = null
     payOpen.value = false
     const generation = pendingGeneration.value
     const refinement = pendingRefinement.value
@@ -594,8 +599,11 @@ async function pay(): Promise<void> {
     else if (refinement) await runRefinement(refinement.action, refinement.question)
   } catch (error) {
     payError.value = error instanceof ApiError && error.code === 'payment_not_found'
-      ? 'Payment is not confirmed yet. Wait a moment, then check again.'
+      ? 'Payment is still confirming. Tap Check payment in a moment. Do not pay again.'
       : messageOf(error)
+    if (error instanceof ApiError && error.code === 'payment_not_found') {
+      pendingReceipt.value = { address, receipt }
+    }
   } finally {
     payState.value = 'idle'
   }
@@ -894,6 +902,7 @@ function ownIt(): void {
     :price="price"
     :state="payState"
     :error="payError"
+    :retrying="Boolean(pendingReceipt)"
     @pay="pay"
     @close="closePay"
   />

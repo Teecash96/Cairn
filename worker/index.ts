@@ -48,6 +48,19 @@ async function localReceiptKey(receipt: string): Promise<string> {
   return `dev:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`
 }
 
+async function verifyPaymentEventually(
+  config: ReturnType<typeof readConfig>,
+  address: string,
+  receipt: string,
+): Promise<string | null> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const hash = await verifyPayment(config, address, config.priceLuna, receipt)
+    if (hash) return hash
+    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1_500))
+  }
+  return null
+}
+
 function paymentDetails(env: Env) {
   const config = readConfig(env)
   return {
@@ -204,7 +217,7 @@ async function handleRedeem(env: Env, request: Request, cors: Record<string, str
   const trusted = config.trustPaymentsInDev && originIsLocal(request)
   const verifiedHash = trusted
     ? await localReceiptKey(receipt)
-    : await verifyPayment(config, address, config.priceLuna, receipt)
+    : await verifyPaymentEventually(config, address, receipt)
   if (!verifiedHash || await isSpent(env, verifiedHash)) {
     return fail('payment_not_found', 'Payment is not visible on the network yet.', 402, cors)
   }

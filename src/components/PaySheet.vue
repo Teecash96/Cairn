@@ -18,11 +18,13 @@ const {
   price,
   state = 'idle',
   error = null,
+  retrying = false,
 } = defineProps<{
   price: PriceQuote | null
   /** `paying` — waiting on Nimiq Pay. `verifying` — waiting on the network. */
   state?: 'idle' | 'paying' | 'verifying'
   error?: string | null
+  retrying?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -101,6 +103,7 @@ function perPlan(quote: PriceQuote): string {
         >
           <template v-if="state === 'paying'">Confirm in Nimiq Pay…</template>
           <template v-else-if="state === 'verifying'">Checking the network…</template>
+          <template v-else-if="price && retrying">Check payment</template>
           <template v-else-if="price">Pay {{ formatNim(price.priceLuna) }} NIM</template>
           <template v-else>Pay</template>
         </button>

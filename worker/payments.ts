@@ -83,17 +83,15 @@ async function loadTransactions(rpcUrl: string, address: string): Promise<ChainT
   // sender, recipient, amount, and confirmation count.
   const hashes = await rpcCall<string[]>(base, 'getTransactionHashesByAddress', [address, MAX_HISTORY, null])
   if (hashes?.length) {
-    const transactions: ChainTransaction[] = []
-    for (const hash of hashes.slice(0, MAX_HISTORY)) {
-      const transaction = await rpcCall<ChainTransaction>(base, 'getTransactionByHash', [hash])
-      if (transaction) transactions.push(transaction)
-    }
+    const transactions = (await Promise.all(
+      hashes.slice(0, MAX_HISTORY).map((hash) => rpcCall<ChainTransaction>(base, 'getTransactionByHash', [hash])),
+    )).filter((transaction): transaction is ChainTransaction => transaction !== null)
     if (transactions.length) return transactions
   }
 
   // Keep a compatibility fallback for providers that expose the older
   // convenience method instead of the two-call Albatross history API.
-  const result = await rpcCall<unknown>(base, 'getTransactionsByAddress', [address])
+  const result = await rpcCall<unknown>(base, 'getTransactionsByAddress', [address, MAX_HISTORY, null])
   const transactions = collect(result)
   if (transactions.length) return transactions
 
