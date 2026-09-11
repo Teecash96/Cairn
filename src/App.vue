@@ -85,7 +85,7 @@ const price = ref<PriceQuote | null>(null)
 const pendingGeneration = ref<{ input: PlanInput; replaceId?: string } | null>(null)
 const pendingRefinement = ref<{ action: RefineAction; question?: string } | null>(null)
 
-const PAYMENT_POLL_DELAYS_MS = [3_000, 6_000, 12_000, 20_000, 30_000, 30_000]
+const PAYMENT_POLL_DELAYS_MS = [3_000, 5_000, 8_000, 10_000, 15_000]
 const PAYMENT_WAITING_MESSAGE = 'Payment sent. Cairn is checking for one network confirmation. Do not pay again.'
 const paymentPendingMessage = ref<string | null>(null)
 const paymentPollAttempt = ref(0)
@@ -672,17 +672,13 @@ function startPaymentPolling(address: string, receipt: string, quote: PriceQuote
         return
       }
 
-      const delay = PAYMENT_POLL_DELAYS_MS[paymentPollAttempt.value]
-      if (delay === undefined) {
-        paymentPollTimer = undefined
-        payState.value = 'idle'
-        paymentPendingMessage.value = 'Payment is still pending. Automatic checks are complete for now. Tap Check payment later. Do not pay again.'
-        return
-      }
-
+      const delay = PAYMENT_POLL_DELAYS_MS[paymentPollAttempt.value] ?? 15_000
       paymentPollAttempt.value += 1
-      payState.value = 'idle'
-      paymentPendingMessage.value = PAYMENT_WAITING_MESSAGE
+      // Stay busy between requests: no repeated taps or second payment required.
+      payState.value = 'verifying'
+      paymentPendingMessage.value = paymentPollAttempt.value >= 5
+        ? 'Confirmation is taking longer than usual. We are still checking automatically. Do not pay again.'
+        : PAYMENT_WAITING_MESSAGE
       paymentPollTimer = setTimeout(() => {
         paymentPollTimer = undefined
         void poll()
@@ -700,7 +696,8 @@ async function pay(): Promise<void> {
   if (!address) return
 
   payError.value = null
-  const storedReceipt = pendingReceipt.value?.address === address ? pendingReceipt.value.receipt : null
+  const pending = pendingReceipt.value
+  const storedReceipt = pending?.address === address ? pending.receipt : null
   if (storedReceipt) {
     startPaymentPolling(address, storedReceipt, quote)
     return
@@ -708,9 +705,14 @@ async function pay(): Promise<void> {
 
   payState.value = 'verifying'
   try {
-    await redeemPayment(address)
-    await completePayment(quote)
-    return
+    // Keep the saved receipt when reconnecting a different wallet. A canonical
+    // receipt lets the Worker check one transaction directly and explain a
+    // wallet mismatch without scanning the whole recipient history.
+    const recovered = await redeemPayment(address, pending?.receipt)
+    if (recovered.credits.total > 0) {
+      await completePayment(quote)
+      return
+    }
   } catch (error) {
     if (!(error instanceof ApiError) || error.code !== 'payment_not_found') {
       payState.value = 'idle'
@@ -729,6 +731,11 @@ async function pay(): Promise<void> {
   rememberPendingReceipt({ address, receipt })
   startPaymentPolling(address, receipt, quote)
 }
+
+// Reopening a saved pending payment resumes checks without a second button tap.
+watch([payOpen, price, pendingReceipt], ([open, quote, pending]) => {
+  if (open && quote && pending && payState.value === 'idle') void pay()
+})
 
 function closePay(): void {
   if (payState.value === 'paying' || (payState.value === 'verifying' && !pendingReceipt.value)) return

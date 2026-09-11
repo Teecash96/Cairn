@@ -103,13 +103,16 @@ function perPlan(quote: PriceQuote): string {
         <button
           ref="confirmButton"
           type="button"
-          class="btn btn--primary btn--block"
+          class="btn btn--primary btn--block payment-button"
+          :class="{ 'payment-button--processing': busy }"
+          :aria-busy="busy"
           :disabled="!price || busy"
           @click="emit('pay')"
         >
+          <span v-if="busy" class="payment-spinner" aria-hidden="true"></span>
           <template v-if="state === 'paying'">Confirm in Nimiq Pay…</template>
-          <template v-else-if="state === 'verifying'">Checking the network…</template>
-          <template v-else-if="price && retrying">Check payment</template>
+          <template v-else-if="state === 'verifying'">Processing payment…</template>
+          <template v-else-if="price && retrying">Resume automatic checking</template>
           <template v-else-if="price">Pay {{ formatNim(price.priceLuna) }} NIM</template>
           <template v-else>Pay</template>
         </button>
@@ -120,7 +123,7 @@ function perPlan(quote: PriceQuote): string {
           :disabled="state === 'paying' || (state === 'verifying' && !pending)"
           @click="emit('close')"
         >
-          Not now
+          {{ pending ? 'Pause and close' : 'Not now' }}
         </button>
       </div>
 
@@ -132,6 +135,11 @@ function perPlan(quote: PriceQuote): string {
 </template>
 
 <style scoped>
+.payment-button--processing:disabled { opacity: 1; cursor: progress; }
+.payment-spinner { width: 1.1em; height: 1.1em; flex-shrink: 0; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: payment-spin .8s linear infinite; }
+@keyframes payment-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .payment-spinner { animation: none; border-style: dotted; } }
+
 .wrap {
   position: fixed;
   inset: 0;

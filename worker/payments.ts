@@ -140,10 +140,14 @@ export async function inspectPayment(
 ): Promise<PaymentInspection> {
   if (!config.payTo || amount <= 0) return null
 
-  const transactions = await loadTransactions(config.rpcUrl, config.payTo)
+  const canonicalReceipt = receipt && /^[0-9a-f]{64}$/i.test(receipt) ? receipt.toLowerCase() : null
+  // A known hash needs one lookup, not a scan of the recipient's recent history.
+  const direct = canonicalReceipt
+    ? await rpcCall<ChainTransaction>(config.rpcUrl.replace(/\/+$/, ''), 'getTransactionByHash', [canonicalReceipt])
+    : null
+  const transactions = canonicalReceipt ? (direct ? [direct] : []) : await loadTransactions(config.rpcUrl, config.payTo)
   const sender = compact(address)
   const recipient = compact(config.payTo)
-  const canonicalReceipt = receipt && /^[0-9a-f]{64}$/i.test(receipt) ? receipt.toLowerCase() : null
   let wrongWallet = false
 
   for (const transaction of transactions) {

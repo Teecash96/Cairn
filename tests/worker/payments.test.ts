@@ -105,3 +105,36 @@ test('reports a canonical payment sent by another wallet', async () => {
     globalThis.fetch = originalFetch
   }
 })
+
+test('checks a canonical receipt directly without loading address history', async () => {
+  const hash = 'a'.repeat(64)
+  const calls: string[] = []
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (_input, init) => {
+    const request = JSON.parse(String(init?.body))
+    calls.push(request.method)
+    assert.deepEqual(request.params, [hash])
+    return new Response(JSON.stringify({ result: { data: { hash, from: sender, to: payTo, value: 1000000, confirmations: 1 } } }))
+  }
+  try {
+    assert.equal(await verifyPayment(config, sender, 1000000, hash.toUpperCase()), hash)
+    assert.deepEqual(calls, ['getTransactionByHash'])
+  } finally { globalThis.fetch = originalFetch }
+})
+
+test('direct lookup never grants for a missing, unconfirmed, mismatched or underpaid transaction', async () => {
+  const hash = 'b'.repeat(64)
+  const valid = { hash, from: sender, to: payTo, value: 1000000, confirmations: 1 }
+  const originalFetch = globalThis.fetch
+  try {
+    for (const transaction of [null, { ...valid, confirmations: 0 }, { ...valid, hash: 'c'.repeat(64) }, { ...valid, from: payTo }, { ...valid, to: sender }, { ...valid, value: 1 }]) {
+      const calls: string[] = []
+      globalThis.fetch = async (_input, init) => {
+        calls.push(JSON.parse(String(init?.body)).method)
+        return new Response(JSON.stringify({ result: { data: transaction } }))
+      }
+      assert.equal(await verifyPayment(config, sender, 1000000, hash), null)
+      assert.deepEqual(calls, ['getTransactionByHash'])
+    }
+  } finally { globalThis.fetch = originalFetch }
+})
