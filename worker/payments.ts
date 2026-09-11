@@ -119,7 +119,12 @@ export async function verifyPayment(
 ): Promise<string | null> {
   if (!config.payTo || amount <= 0) return null
 
-  const transactions = await loadTransactions(config.rpcUrl, config.payTo)
+  const canonicalReceipt = receipt && /^[0-9a-f]{64}$/i.test(receipt) ? receipt.toLowerCase() : null
+  // A known hash needs one lookup, not a scan of the recipient's recent history.
+  const direct = canonicalReceipt
+    ? await rpcCall<ChainTransaction>(config.rpcUrl.replace(/\/+$/, ''), 'getTransactionByHash', [canonicalReceipt])
+    : null
+  const transactions = canonicalReceipt ? (direct ? [direct] : []) : await loadTransactions(config.rpcUrl, config.payTo)
   const sender = compact(address)
   const recipient = compact(config.payTo)
 
@@ -128,7 +133,7 @@ export async function verifyPayment(
     if (!hash) continue
     // Hub returns a transaction hash. Nimiq Pay may return a serialized
     // transaction instead, so only a canonical hash can be matched directly.
-    if (receipt && /^[0-9a-f]{64}$/i.test(receipt) && hash !== receipt) continue
+    if (canonicalReceipt && hash.toLowerCase() !== canonicalReceipt) continue
     if (compact(transaction.from ?? '') !== sender) continue
     if (compact(transaction.to ?? '') !== recipient) continue
     if (numberValue(transaction.value) < amount) continue

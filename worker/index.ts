@@ -49,18 +49,6 @@ async function localReceiptKey(receipt: string): Promise<string> {
   return `dev:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`
 }
 
-async function verifyPaymentEventually(
-  config: ReturnType<typeof readConfig>,
-  address: string,
-  receipt?: string,
-): Promise<string | null> {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const hash = await verifyPayment(config, address, config.priceLuna, receipt)
-    if (hash) return hash
-    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1_500))
-  }
-  return null
-}
 
 function paymentDetails(env: Env) {
   const config = readConfig(env)
@@ -210,7 +198,7 @@ async function handleRedeem(env: Env, request: Request, cors: Record<string, str
   if (!session) return authRequired(cors)
   const address = authenticatedAddress(raw, session)
   if (!address) return fail('invalid_request', 'Connect a valid Nimiq wallet.', 400, cors)
-  if (await tooFast(env, address, 'redeem')) return fail('rate_limited', 'Please wait before checking payment again.', 429, cors)
+  if (await tooFastByKey(env, address, 'redeem', 30)) return fail('rate_limited', 'Please wait before checking payment again.', 429, cors)
 
   const { config } = paymentDetails(env)
   const receipt = typeof raw.receipt === 'string' ? raw.receipt.trim() : ''
@@ -218,7 +206,7 @@ async function handleRedeem(env: Env, request: Request, cors: Record<string, str
   if (trusted && !receipt) return fail('payment_not_found', 'Payment details are required in local development.', 402, cors)
   const verifiedHash = trusted
     ? await localReceiptKey(receipt)
-    : await verifyPaymentEventually(config, address, receipt)
+    : await verifyPayment(config, address, config.priceLuna, receipt)
   if (!verifiedHash) {
     return fail('payment_not_found', 'Payment is not visible on the network yet.', 402, cors)
   }
