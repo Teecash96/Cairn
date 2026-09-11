@@ -40,6 +40,7 @@ test('verifies a matching incoming transaction by sender and amount', async () =
 
   try {
     assert.equal(await verifyPayment(config, sender, 1_000_000, 'opaque-receipt'), 'hash-1')
+    assert.equal(await verifyPayment(config, sender, 1_000_000), 'hash-1')
     assert.equal(await verifyPayment(config, sender, 2_000_000, 'opaque-receipt'), null)
   } finally {
     globalThis.fetch = originalFetch

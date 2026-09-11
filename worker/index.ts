@@ -51,7 +51,7 @@ async function localReceiptKey(receipt: string): Promise<string> {
 async function verifyPaymentEventually(
   config: ReturnType<typeof readConfig>,
   address: string,
-  receipt: string,
+  receipt?: string,
 ): Promise<string | null> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const hash = await verifyPayment(config, address, config.priceLuna, receipt)
@@ -201,7 +201,7 @@ async function handleRefine(env: Env, request: Request, cors: Record<string, str
 
 async function handleRedeem(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
   const raw = bodyRecord(await readJson(request))
-  if (!raw || typeof raw.receipt !== 'string' || raw.receipt.length < 1 || raw.receipt.length > 4096) {
+  if (!raw || (raw.receipt !== undefined && (typeof raw.receipt !== 'string' || raw.receipt.length < 1 || raw.receipt.length > 4096))) {
     return fail('invalid_request', 'Payment details are invalid.', 400, cors)
   }
   const session = await requireSession(env, request)
@@ -211,10 +211,11 @@ async function handleRedeem(env: Env, request: Request, cors: Record<string, str
   if (await tooFast(env, address, 'redeem')) return fail('rate_limited', 'Please wait before checking payment again.', 429, cors)
 
   const { config } = paymentDetails(env)
-  const receipt = raw.receipt.trim()
+  const receipt = typeof raw.receipt === 'string' ? raw.receipt.trim() : ''
   const keyHint = /^[0-9a-f]{64}$/i.test(receipt) ? receipt : null
   if (keyHint && await isSpent(env, keyHint)) return fail('payment_not_found', 'That payment was already used.', 402, cors)
   const trusted = config.trustPaymentsInDev && originIsLocal(request)
+  if (trusted && !receipt) return fail('payment_not_found', 'Payment details are required in local development.', 402, cors)
   const verifiedHash = trusted
     ? await localReceiptKey(receipt)
     : await verifyPaymentEventually(config, address, receipt)

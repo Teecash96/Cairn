@@ -83,7 +83,32 @@ const payError = ref<string | null>(null)
 const price = ref<PriceQuote | null>(null)
 const pendingGeneration = ref<{ input: PlanInput; replaceId?: string } | null>(null)
 const pendingRefinement = ref<{ action: RefineAction; question?: string } | null>(null)
-const pendingReceipt = ref<{ address: string; receipt: string } | null>(null)
+
+const PENDING_PAYMENT_KEY = 'cairn:pending-payment'
+function readPendingReceipt(): { address: string; receipt: string } | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_PAYMENT_KEY)
+    if (!raw) return null
+    const value = JSON.parse(raw) as { address?: unknown; receipt?: unknown }
+    return typeof value.address === 'string' && typeof value.receipt === 'string'
+      ? { address: value.address, receipt: value.receipt }
+      : null
+  } catch {
+    return null
+  }
+}
+
+function rememberPendingReceipt(value: { address: string; receipt: string }): void {
+  pendingReceipt.value = value
+  try { sessionStorage.setItem(PENDING_PAYMENT_KEY, JSON.stringify(value)) } catch { /* best effort */ }
+}
+
+function forgetPendingReceipt(): void {
+  pendingReceipt.value = null
+  try { sessionStorage.removeItem(PENDING_PAYMENT_KEY) } catch { /* best effort */ }
+}
+
+const pendingReceipt = ref<{ address: string; receipt: string } | null>(readPendingReceipt())
 
 const toast = ref('')
 const toastTone = ref<Tone>('info')
@@ -576,6 +601,26 @@ async function pay(): Promise<void> {
   payError.value = null
   let receipt = pendingReceipt.value?.address === address ? pendingReceipt.value.receipt : null
   if (!receipt) {
+    payState.value = 'verifying'
+    try {
+      await redeemPayment(address)
+      forgetPendingReceipt()
+      payOpen.value = false
+      const generation = pendingGeneration.value
+      const refinement = pendingRefinement.value
+      pendingGeneration.value = null
+      pendingRefinement.value = null
+      notify(String(quote.plans) + ' AI actions unlocked', 'success')
+      if (generation) await generate(generation.input, generation.replaceId)
+      else if (refinement) await runRefinement(refinement.action, refinement.question)
+      return
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.code !== 'payment_not_found') {
+        payState.value = 'idle'
+        payError.value = messageOf(error)
+        return
+      }
+    }
     payState.value = 'paying'
     receipt = await session.pay(quote.payTo, quote.priceLuna, 'Cairn AI credits')
     if (!receipt) {
@@ -583,18 +628,19 @@ async function pay(): Promise<void> {
       payError.value = session.lastError.value ?? 'Payment was not completed.'
       return
     }
+    rememberPendingReceipt({ address, receipt })
   }
 
   payState.value = 'verifying'
   try {
     await redeemPayment(address, receipt)
-    pendingReceipt.value = null
+    forgetPendingReceipt()
     payOpen.value = false
     const generation = pendingGeneration.value
     const refinement = pendingRefinement.value
     pendingGeneration.value = null
     pendingRefinement.value = null
-    notify(`${quote.plans} AI actions unlocked`, 'success')
+    notify(String(quote.plans) + ' AI actions unlocked', 'success')
     if (generation) await generate(generation.input, generation.replaceId)
     else if (refinement) await runRefinement(refinement.action, refinement.question)
   } catch (error) {
@@ -602,7 +648,7 @@ async function pay(): Promise<void> {
       ? 'Payment is still confirming. Tap Check payment in a moment. Do not pay again.'
       : messageOf(error)
     if (error instanceof ApiError && error.code === 'payment_not_found') {
-      pendingReceipt.value = { address, receipt }
+      rememberPendingReceipt({ address, receipt })
     }
   } finally {
     payState.value = 'idle'

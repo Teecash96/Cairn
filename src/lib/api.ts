@@ -318,10 +318,10 @@ export function getCredits(): Promise<CreditsResult> {
   return request<CreditsResult>('/credits', { auth: true })
 }
 
-export function redeemPayment(address: string, receipt: string): Promise<RedeemResult> {
+export function redeemPayment(address: string, receipt?: string): Promise<RedeemResult> {
   return request<RedeemResult>('/redeem', {
     method: 'POST',
-    body: JSON.stringify({ address, receipt }),
+    body: JSON.stringify({ address, ...(receipt ? { receipt } : {}) }),
     auth: true,
   })
 }
