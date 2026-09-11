@@ -230,6 +230,7 @@ export async function sendPaymentInBrowser(
   recipient: string,
   valueLuna: number,
   note?: string,
+  sender?: string,
 ): Promise<string> {
   let popup: Window | null = null
   try {
@@ -255,6 +256,7 @@ export async function sendPaymentInBrowser(
       appName: HUB_APP_NAME,
       recipient,
       value: valueLuna,
+      ...(sender ? { sender, forceSender: true } : {}),
       ...(note ? { extraData: note } : {}),
     }, new PreopenedPopupBehavior(popup))
     if (!signed || typeof signed.hash !== 'string' || !signed.hash) {

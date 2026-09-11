@@ -117,23 +117,49 @@ export async function verifyPayment(
   amount: number,
   receipt?: string,
 ): Promise<string | null> {
+  const result = await inspectPayment(config, address, amount, receipt)
+  return result?.status === 'verified' ? result.hash : null
+}
+
+export type PaymentInspection =
+  | { status: 'verified'; hash: string }
+  | { status: 'wrong_wallet'; hash: null }
+  | null
+
+/**
+ * Inspect a payment while retaining the one actionable failure that the UI
+ * otherwise cannot distinguish from a slow network: a canonical receipt that
+ * belongs to another wallet. Opaque receipts stay fail-closed because they
+ * cannot identify a specific transaction safely.
+ */
+export async function inspectPayment(
+  config: Config,
+  address: string,
+  amount: number,
+  receipt?: string,
+): Promise<PaymentInspection> {
   if (!config.payTo || amount <= 0) return null
 
   const transactions = await loadTransactions(config.rpcUrl, config.payTo)
   const sender = compact(address)
   const recipient = compact(config.payTo)
+  const canonicalReceipt = receipt && /^[0-9a-f]{64}$/i.test(receipt) ? receipt.toLowerCase() : null
+  let wrongWallet = false
 
   for (const transaction of transactions) {
     const hash = hashOf(transaction)
     if (!hash) continue
     // Hub returns a transaction hash. Nimiq Pay may return a serialized
     // transaction instead, so only a canonical hash can be matched directly.
-    if (receipt && /^[0-9a-f]{64}$/i.test(receipt) && hash !== receipt) continue
-    if (compact(transaction.from ?? '') !== sender) continue
+    if (canonicalReceipt && hash.toLowerCase() !== canonicalReceipt) continue
     if (compact(transaction.to ?? '') !== recipient) continue
     if (numberValue(transaction.value) < amount) continue
     if (numberValue(transaction.confirmations) < 1 && numberValue(transaction.blockNumber) <= 0) continue
-    return hash
+    if (compact(transaction.from ?? '') !== sender) {
+      if (canonicalReceipt) wrongWallet = true
+      continue
+    }
+    return { status: 'verified', hash }
   }
-  return null
+  return wrongWallet ? { status: 'wrong_wallet', hash: null } : null
 }

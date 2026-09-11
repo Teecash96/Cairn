@@ -202,10 +202,15 @@ export function useSession() {
     lastError.value = null
     try {
       if (mode.value === 'nimiq' && provider) {
+        const connected = await connectWallet(provider)
+        const canonical = (value: string): string => value.replace(/\s+/g, '').toUpperCase()
+        if (address.value && canonical(connected) !== canonical(address.value)) {
+          throw new ProviderError('The connected wallet changed. Sign in again before paying.', 'WalletChanged')
+        }
         return await sendPayment(provider, recipient, valueLuna, note)
       }
       if (mode.value === 'preview' && !localPreview) {
-        return await sendPaymentInBrowser(recipient, valueLuna, note)
+        return await sendPaymentInBrowser(recipient, valueLuna, note, address.value ?? undefined)
       }
       return null
     } catch (error) {
@@ -217,6 +222,13 @@ export function useSession() {
             : 'Payment failed.'
       return null
     }
+  }
+
+  /** Clear the in memory wallet session so a different wallet can reconnect. */
+  function disconnect(): void {
+    clearAuthToken()
+    address.value = null
+    lastError.value = null
   }
 
   return {
@@ -233,6 +245,7 @@ export function useSession() {
     connect,
     authenticate,
     pay,
+    disconnect,
     refreshChain,
   }
 }

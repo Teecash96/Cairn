@@ -668,6 +668,7 @@ function startPaymentPolling(address: string, receipt: string, quote: PriceQuote
         payState.value = 'idle'
         paymentPendingMessage.value = null
         payError.value = messageOf(error)
+        if (error instanceof ApiError && error.code === 'payment_wrong_wallet') session.disconnect()
         return
       }
 

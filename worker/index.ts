@@ -5,7 +5,7 @@ import { quote, readConfig } from './config'
 import { CreditLedgerUnavailable, redeemCredits, readCredits, spendOne, stateOf } from './credits'
 import { fail, corsHeaders, isLocalHost, json, normalizeAddress, readJson, securityHeaders } from './http'
 import { generateWithGemini, refineWithGemini } from './generate'
-import { verifyPayment } from './payments'
+import { inspectPayment, type PaymentInspection } from './payments'
 import { clampPlan, isInvalid, readPlanInput } from './shape'
 import { createShare, publicPlan, readShare } from './share'
 import { addMember, createTeam, getTeam, removeMember, TeamError, updateMember, updateTracker } from './team'
@@ -49,14 +49,14 @@ async function localReceiptKey(receipt: string): Promise<string> {
   return `dev:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`
 }
 
-async function verifyPaymentEventually(
+async function inspectPaymentEventually(
   config: ReturnType<typeof readConfig>,
   address: string,
   receipt?: string,
-): Promise<string | null> {
+): Promise<PaymentInspection> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const hash = await verifyPayment(config, address, config.priceLuna, receipt)
-    if (hash) return hash
+    const result = await inspectPayment(config, address, config.priceLuna, receipt)
+    if (result) return result
     if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1_500))
   }
   return null
@@ -216,9 +216,18 @@ async function handleRedeem(env: Env, request: Request, cors: Record<string, str
   const receipt = typeof raw.receipt === 'string' ? raw.receipt.trim() : ''
   const trusted = config.trustPaymentsInDev && originIsLocal(request)
   if (trusted && !receipt) return fail('payment_not_found', 'Payment details are required in local development.', 402, cors)
-  const verifiedHash = trusted
-    ? await localReceiptKey(receipt)
-    : await verifyPaymentEventually(config, address, receipt)
+  const inspection: PaymentInspection = trusted
+    ? { status: 'verified', hash: await localReceiptKey(receipt) }
+    : await inspectPaymentEventually(config, address, receipt)
+  if (inspection?.status === 'wrong_wallet') {
+    return fail(
+      'payment_wrong_wallet',
+      'This payment came from a different Nimiq wallet. Cairn cleared this session. Connect the wallet that sent it, then tap Check payment.',
+      409,
+      cors,
+    )
+  }
+  const verifiedHash = inspection?.status === 'verified' ? inspection.hash : null
   if (!verifiedHash) {
     return fail('payment_not_found', 'Payment is not visible on the network yet.', 402, cors)
   }

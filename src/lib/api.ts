@@ -122,6 +122,7 @@ export interface RefineResult {
 export type ApiErrorCode =
   | 'payment_required'
   | 'payment_not_found'
+  | 'payment_wrong_wallet'
   | 'rate_limited'
   | 'budget_exhausted'
   | 'invalid_request'
@@ -205,6 +206,7 @@ function isErrorCode(value: unknown): value is ApiErrorCode {
       'rate_limited',
       'payment_required',
       'payment_not_found',
+      'payment_wrong_wallet',
       'budget_exhausted',
       'invalid_request',
       'not_found',

@@ -213,6 +213,7 @@ export interface PriceQuote {
 export type ApiErrorCode =
   | 'payment_required'
   | 'payment_not_found'
+  | 'payment_wrong_wallet'
   | 'rate_limited'
   | 'budget_exhausted'
   | 'invalid_request'
