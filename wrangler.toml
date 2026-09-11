@@ -54,3 +54,14 @@ DAILY_BUDGET = "400"
 # is correct in production; set it when the app and the Worker are on different
 # hosts, i.e. `vite dev` on :5173 talking to `wrangler dev` on :8787.
 APP_URL = "https://cairn.cairn-planner.workers.dev"
+
+# Keep disabled on the first deployment. See docs/credit-ledger-cutover.md.
+CREDIT_LEDGER_READY = "0"
+
+[[durable_objects.bindings]]
+name = "CREDIT_LEDGER"
+class_name = "CreditLedger"
+
+[[migrations]]
+tag = "v1-credit-ledger"
+new_sqlite_classes = ["CreditLedger"]

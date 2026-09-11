@@ -112,8 +112,12 @@ unlocks 10 successful AI actions. There is no subscription. Sharing, exports,
 local editing, and team workspaces do not spend AI credits.
 
 The Worker verifies the payment on the Nimiq network before it grants credits.
-Each transaction can be redeemed once. Credits are spent only after Gemini
-returns a valid result.
+A SQLite-backed Durable Object records receipt redemption and its credit grant
+in one transaction. Balance deductions are atomic. Credits are spent only after
+Gemini returns a valid result. See [credit ledger cutover](docs/credit-ledger-cutover.md)
+before deploying this upgrade: existing balances must be frozen and reconciled
+before setting `CREDIT_LEDGER_READY=1`. The checked-in deployment configuration
+starts in credit-service maintenance mode.
 
 ## What leaves your phone
 

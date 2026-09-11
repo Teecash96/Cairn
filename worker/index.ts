@@ -1,7 +1,8 @@
+export { CreditLedger } from './credit-ledger'
 import { budgetLeft, chargeBudget, tooFast, tooFastByKey } from './limits'
 import { createChallenge, requireSession, verifyChallenge, type AuthSession } from './auth'
 import { quote, readConfig } from './config'
-import { grantPaid, isSpent, markSpent, readCredits, spendOne, stateOf } from './credits'
+import { CreditLedgerUnavailable, redeemCredits, readCredits, spendOne, stateOf } from './credits'
 import { fail, corsHeaders, isLocalHost, json, normalizeAddress, readJson, securityHeaders } from './http'
 import { generateWithGemini, refineWithGemini } from './generate'
 import { verifyPayment } from './payments'
@@ -76,6 +77,7 @@ function paymentDetails(env: Env) {
  * can contain request metadata that is useful in logs but not to a user.
  */
 function generationFailure(error: unknown, fallback: string, cors: Record<string, string>): Response {
+  if (error instanceof CreditLedgerUnavailable) throw error
   const detail = error instanceof Error ? error.message.slice(0, 300) : 'unknown error'
   console.error('Cairn AI generation failed', detail)
 
@@ -212,19 +214,17 @@ async function handleRedeem(env: Env, request: Request, cors: Record<string, str
 
   const { config } = paymentDetails(env)
   const receipt = typeof raw.receipt === 'string' ? raw.receipt.trim() : ''
-  const keyHint = /^[0-9a-f]{64}$/i.test(receipt) ? receipt : null
-  if (keyHint && await isSpent(env, keyHint)) return fail('payment_not_found', 'That payment was already used.', 402, cors)
   const trusted = config.trustPaymentsInDev && originIsLocal(request)
   if (trusted && !receipt) return fail('payment_not_found', 'Payment details are required in local development.', 402, cors)
   const verifiedHash = trusted
     ? await localReceiptKey(receipt)
     : await verifyPaymentEventually(config, address, receipt)
-  if (!verifiedHash || await isSpent(env, verifiedHash)) {
+  if (!verifiedHash) {
     return fail('payment_not_found', 'Payment is not visible on the network yet.', 402, cors)
   }
-  await markSpent(env, verifiedHash, address)
-  const credits = await grantPaid(env, address, config.plansPerPayment)
-  return json({ credits, granted: config.plansPerPayment }, 200, cors)
+  const redeemed = await redeemCredits(env, address, verifiedHash, config.plansPerPayment)
+  if (!redeemed) return fail('payment_not_found', 'That payment was already used.', 402, cors)
+  return json(redeemed, 200, cors)
 }
 
 async function handleShare(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
@@ -392,4 +392,11 @@ async function route(env: Env, request: Request): Promise<Response> {
   })
 }
 
-export default { fetch(request: Request, env: Env): Promise<Response> { return route(env, request) } }
+export default { async fetch(request: Request, env: Env): Promise<Response> {
+  try { return await route(env, request) } catch (error) {
+    if (error instanceof CreditLedgerUnavailable) {
+      return fail('server', 'Credit service maintenance. Please try again later; do not send another payment.', 503, corsHeaders(request))
+    }
+    throw error
+  }
+} }

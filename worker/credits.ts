@@ -1,37 +1,41 @@
 import type { CreditRecord, CreditState, Env } from './types'
 
+export class CreditLedgerUnavailable extends Error {}
+
 export function stateOf(record: CreditRecord | null): CreditState {
   const paid = record?.paid ?? 0
   return { paid, total: paid }
 }
 
-export async function readCredits(env: Env, address: string): Promise<CreditRecord | null> {
-  return env.CAIRN.get<CreditRecord>(`credit:${address}`, 'json')
+async function ledger<T>(env: Env, body: object): Promise<T> {
+  // Fail closed during cutover or a missing binding. Never fall back to KV writes.
+  if (env.CREDIT_LEDGER_READY !== '1' || !env.CREDIT_LEDGER) {
+    throw new CreditLedgerUnavailable('Credit ledger maintenance: finish the ledger cutover before enabling payments.')
+  }
+  const stub = env.CREDIT_LEDGER.get(env.CREDIT_LEDGER.idFromName('cairn-credits-v1'))
+  let response: Response
+  try {
+    response = await stub.fetch('https://ledger.internal/', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    })
+  } catch {
+    throw new CreditLedgerUnavailable('The credit ledger is temporarily unavailable. Try again shortly.')
+  }
+  if (!response.ok) throw new CreditLedgerUnavailable('The credit ledger is temporarily unavailable. Try again shortly.')
+  return response.json<T>()
 }
 
-async function writeCredits(env: Env, address: string, record: CreditRecord): Promise<void> {
-  await env.CAIRN.put(`credit:${address}`, JSON.stringify(record))
+export function readCredits(env: Env, address: string): Promise<CreditRecord | null> {
+  return ledger(env, { action: 'read', address })
 }
 
-export async function spendOne(env: Env, address: string): Promise<CreditState | null> {
-  const record = await readCredits(env, address)
-  if (!record || record.paid < 1) return null
-  const updated = { ...record, paid: record.paid - 1 }
-  await writeCredits(env, address, updated)
-  return stateOf(updated)
+export function spendOne(env: Env, address: string): Promise<CreditState | null> {
+  return ledger(env, { action: 'spend', address })
 }
 
-export async function grantPaid(env: Env, address: string, amount: number): Promise<CreditState> {
-  const record = (await readCredits(env, address)) ?? { paid: 0, createdAt: Date.now() }
-  const updated = { ...record, paid: record.paid + amount }
-  await writeCredits(env, address, updated)
-  return stateOf(updated)
-}
-
-export async function isSpent(env: Env, hash: string): Promise<boolean> {
-  return (await env.CAIRN.get(`spent:${hash}`)) !== null
-}
-
-export async function markSpent(env: Env, hash: string, address: string): Promise<void> {
-  await env.CAIRN.put(`spent:${hash}`, address)
+/** Verification precedes this call; receipt consumption and credit grant are atomic. */
+export function redeemCredits(env: Env, address: string, hash: string, amount: number): Promise<{
+  credits: CreditState; granted: number
+} | null> {
+  return ledger(env, { action: 'redeem', address, hash, amount })
 }

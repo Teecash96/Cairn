@@ -4,3 +4,6 @@ GEMINI_API_KEY="replace-with-a-local-key"
 GEMINI_MODEL="gemini-3.1-flash-lite"
 # Local Worker only. Never set this on the deployed Worker.
 DEV_TRUST_PAYMENTS="1"
+
+# Local ledger only: production requires the documented cutover first.
+CREDIT_LEDGER_READY="1"
