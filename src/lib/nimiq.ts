@@ -150,6 +150,52 @@ export interface BrowserSignedMessage extends SignedMessage {
 }
 
 /**
+ * Ask Hub which Nimiq address the user wants Cairn to use.
+ *
+ * Sign-message requests without a signer show Hub's account selector, but the
+ * selected account is not returned until after the signature. That makes it
+ * possible for authentication and checkout to use different accounts. The
+ * explicit choose-address step gives the caller a stable address to bind to
+ * both the challenge and the later payment.
+ */
+export async function chooseAddressInBrowser(minBalance?: number): Promise<string> {
+  let popup: Window | null = null
+  try {
+    // Preserve the original tap's user activation for the Hub popup.
+    popup = openHubPopup(HUB_SIGN_FEATURES)
+    const { default: HubApi } = await import('@nimiq/hub-api')
+    const PopupRequestBehavior = HubApi.PopupRequestBehavior
+    class PreopenedPopupBehavior extends PopupRequestBehavior {
+      readonly existing: Window
+
+      constructor(existing: Window) {
+        super(HUB_SIGN_FEATURES)
+        this.existing = existing
+      }
+
+      override createPopup(url: string): Window {
+        if (this.existing.closed) throw new Error('Nimiq Hub popup was closed.')
+        this.existing.location.href = url
+        return this.existing
+      }
+    }
+    const hub = new HubApi(HUB_ENDPOINT)
+    const selected = await hub.chooseAddress({
+      appName: HUB_APP_NAME,
+      ...(typeof minBalance === 'number' && minBalance > 0 ? { minBalance } : {}),
+    }, new PreopenedPopupBehavior(popup))
+    if (!selected || typeof selected.address !== 'string' || !selected.address) {
+      throw new Error('Nimiq Hub returned no address.')
+    }
+    return selected.address
+  } catch (error) {
+    throw hubError(error)
+  } finally {
+    if (popup && !popup.closed) popup.close()
+  }
+}
+
+/**
  * Open Hub while the original tap still has browser user activation.
  *
  * Chrome blocks window.open when it happens after a fetch or a lazy-import.
@@ -173,6 +219,7 @@ function openHubPopup(features: string): Window {
  */
 export async function signMessageInBrowser(
   message: string | PromiseLike<string>,
+  signer?: string,
 ): Promise<BrowserSignedMessage> {
   let popup: Window | null = null
   try {
@@ -200,7 +247,11 @@ export async function signMessageInBrowser(
     }
     const hub = new HubApi(HUB_ENDPOINT)
     const signed = await hub.signMessage(
-      { appName: HUB_APP_NAME, message: text },
+      {
+        appName: HUB_APP_NAME,
+        message: text,
+        ...(signer ? { signer } : {}),
+      },
       new PreopenedPopupBehavior(popup),
     )
     if (

@@ -14,6 +14,7 @@ import { computed, readonly, ref } from 'vue'
 import { clearAuthToken, getAuthChallenge, hasAuthToken, setAuthToken, verifyAuth } from './api'
 import {
   ProviderError,
+  chooseAddressInBrowser,
   connectWallet,
   detectLanguage,
   getChainStatus,
@@ -35,6 +36,13 @@ const language = ref('en')
 const blockHeight = ref<number | null>(null)
 const consensus = ref(false)
 const lastError = ref<string | null>(null)
+
+/**
+ * Browser Hub needs two user gestures: choose the address, then sign for it.
+ * Keep the selected address in memory between those gestures so the challenge
+ * cannot silently fall back to another Hub account.
+ */
+const browserSigner = ref<string | null>(null)
 
 let provider: NimiqProvider | null = null
 let bootPromise: Promise<void> | null = null
@@ -111,7 +119,7 @@ export function useSession() {
   }
 
   /** Establish a short lived server session by signing a one time challenge. */
-  async function authenticate(): Promise<string | null> {
+  async function authenticate(minBalance?: number): Promise<string | null> {
     if (mode.value === 'booting') {
       // Preserve the click's user activation for Hub. The browser path does
       // not need the provider poll, and waiting for it would block the popup.
@@ -140,13 +148,27 @@ export function useSession() {
       const compact = (value: string): string => value.replace(/\s+/g, '').toUpperCase()
 
       if (mode.value === 'preview') {
-        // Nimiq Hub is the standalone Chrome path. The signer address is
-        // returned by Hub before the server verifies the signature.
+        // Nimiq Hub is the standalone Chrome path. Choose the account in one
+        // request, then sign the challenge for that exact address on the next
+        // tap. Opening a second popup after an awaited Hub request is blocked
+        // by modern browsers, so this explicit two-step flow is intentional.
         lastError.value = null
-        const challengePromise = getAuthChallenge()
+        const signer = browserSigner.value ?? address.value
+        if (!signer) {
+          const selected = await chooseAddressInBrowser(minBalance)
+          browserSigner.value = selected
+          address.value = selected
+          lastError.value = 'Wallet selected. Tap the action again to verify it with Cairn.'
+          return null
+        }
+        const challengePromise = getAuthChallenge(signer)
         const signed = await signMessageInBrowser(
           challengePromise.then((challenge) => challenge.message),
+          signer,
         )
+        if (compact(signed.address) !== compact(signer)) {
+          throw new Error('The wallet returned a different address. Choose the funded account again.')
+        }
         const challenge = await challengePromise
         if (hasAuthToken(signed.address)) {
           address.value = signed.address
@@ -217,6 +239,11 @@ export function useSession() {
       lastError.value =
         error instanceof ProviderError && error.isDenied
           ? 'Payment cancelled.'
+          : error instanceof Error && /insufficient balance|address not found/i.test(error.message)
+            ? (() => {
+                disconnect()
+                return 'This Hub account cannot spend enough NIM. Reconnect the funded wallet account and try again.'
+              })()
           : error instanceof Error
             ? error.message
             : 'Payment failed.'
@@ -228,6 +255,7 @@ export function useSession() {
   function disconnect(): void {
     clearAuthToken()
     address.value = null
+    browserSigner.value = null
     lastError.value = null
   }
 

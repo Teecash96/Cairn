@@ -176,8 +176,8 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong.'
 }
 
-async function requireAuth(): Promise<string | null> {
-  const address = await session.authenticate()
+async function requireAuth(minBalance?: number): Promise<string | null> {
+  const address = await session.authenticate(minBalance)
   if (!address) notify(session.lastError.value ?? 'Sign in with your Nimiq wallet to continue.', 'error')
   return address
 }
@@ -692,8 +692,11 @@ function startPaymentPolling(address: string, receipt: string, quote: PriceQuote
 async function pay(): Promise<void> {
   const quote = price.value
   if (!quote || payState.value !== 'idle') return
-  const address = await requireAuth()
-  if (!address) return
+  const address = await requireAuth(quote.priceLuna)
+  if (!address) {
+    payError.value = session.lastError.value ?? 'Select your funded Nimiq wallet, then try again.'
+    return
+  }
 
   payError.value = null
   const pending = pendingReceipt.value
