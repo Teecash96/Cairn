@@ -21,6 +21,7 @@ import {
   type NimiqProvider,
   type ErrorResponse,
 } from '@nimiq/mini-app-sdk'
+import HubApi from '@nimiq/hub-api'
 
 export type { NimiqProvider }
 
@@ -163,7 +164,6 @@ export async function chooseAddressInBrowser(minBalance?: number): Promise<strin
   try {
     // Preserve the original tap's user activation for the Hub popup.
     popup = openHubPopup(HUB_SIGN_FEATURES)
-    const { default: HubApi } = await import('@nimiq/hub-api')
     const PopupRequestBehavior = HubApi.PopupRequestBehavior
     class PreopenedPopupBehavior extends PopupRequestBehavior {
       readonly existing: Window
@@ -215,7 +215,6 @@ function openHubPopup(features: string): Window {
 
 /**
  * Sign a server challenge through Nimiq Hub when Cairn is opened in Chrome.
- * The import is lazy so the Mini App path does not pay the Hub bundle cost.
  */
 export async function signMessageInBrowser(
   message: string | PromiseLike<string>,
@@ -223,13 +222,10 @@ export async function signMessageInBrowser(
 ): Promise<BrowserSignedMessage> {
   let popup: Window | null = null
   try {
-    // This must be the first operation. Awaiting either fetch or import before
+    // This must be the first operation. Awaiting the challenge fetch before
     // window.open loses Chrome's transient user activation.
     popup = openHubPopup(HUB_SIGN_FEATURES)
-    const [{ default: HubApi }, text] = await Promise.all([
-      import('@nimiq/hub-api'),
-      message,
-    ])
+    const text = await message
     const PopupRequestBehavior = HubApi.PopupRequestBehavior
     class PreopenedPopupBehavior extends PopupRequestBehavior {
       readonly existing: Window
@@ -286,7 +282,6 @@ export async function sendPaymentInBrowser(
   let popup: Window | null = null
   try {
     popup = openHubPopup(HUB_CHECKOUT_FEATURES)
-    const { default: HubApi } = await import('@nimiq/hub-api')
     const PopupRequestBehavior = HubApi.PopupRequestBehavior
     class PreopenedPopupBehavior extends PopupRequestBehavior {
       readonly existing: Window
