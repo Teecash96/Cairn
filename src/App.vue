@@ -58,6 +58,7 @@ import {
 } from './lib/plan'
 import type { TeamPanelState } from './components/Workspace.vue'
 import { useSession } from './lib/session'
+import { bindPayment } from './lib/payment-session'
 import { mergeRefinement } from './lib/refinement'
 import { createExamplePlan } from './lib/example'
 import { stubGenerate, stubRefinement } from './lib/stub'
@@ -91,6 +92,7 @@ const paymentPendingMessage = ref<string | null>(null)
 const paymentPollAttempt = ref(0)
 let paymentPollTimer: ReturnType<typeof setTimeout> | undefined
 let paymentPollRun = 0
+let pendingRequiresPayerAuth = false
 
 const PENDING_PAYMENT_KEY = 'cairn:pending-payment'
 function readPendingReceipt(): { address: string; receipt: string } | null {
@@ -690,16 +692,21 @@ function startPaymentPolling(address: string, receipt: string, quote: PriceQuote
 }
 
 async function pay(): Promise<void> {
+  // A direct button tap is allowed to resume a receipt that first needs the
+  // actual payer to authenticate. The pending-payment watcher is not.
+  pendingRequiresPayerAuth = false
   const quote = price.value
   if (!quote || payState.value !== 'idle') return
-  const address = await requireAuth(quote.priceLuna)
+  const pending = pendingReceipt.value
+  // A wallet that already paid may now hold less than the purchase amount.
+  // Let it authenticate so its saved receipt can still be recovered.
+  const address = await requireAuth(pending?.receipt ? undefined : quote.priceLuna)
   if (!address) {
     payError.value = session.lastError.value ?? 'Select your funded Nimiq wallet, then try again.'
     return
   }
 
   payError.value = null
-  const pending = pendingReceipt.value
   const storedReceipt = pending?.address === address ? pending.receipt : null
   if (storedReceipt) {
     startPaymentPolling(address, storedReceipt, quote)
@@ -728,19 +735,30 @@ async function pay(): Promise<void> {
   }
 
   payState.value = 'paying'
-  const receipt = await session.pay(quote.payTo, quote.priceLuna, 'Cairn AI credits')
-  if (!receipt) {
+  const payment = await session.pay(quote.payTo, quote.priceLuna, 'Cairn AI credits')
+  if (!payment) {
     payState.value = 'idle'
     payError.value = session.lastError.value ?? 'Payment was not completed.'
     return
   }
-  rememberPendingReceipt({ address, receipt })
-  startPaymentPolling(address, receipt, quote)
+  const boundPayment = bindPayment(address, payment)
+  if (boundPayment.requiresPayerAuth) {
+    pendingRequiresPayerAuth = true
+    rememberPendingReceipt(boundPayment.pending)
+    session.disconnect()
+    payState.value = 'idle'
+    paymentPendingMessage.value = null
+    payError.value = 'Payment was sent from another wallet. Sign in with that paying wallet to claim the credits. Do not pay again.'
+    return
+  }
+
+  rememberPendingReceipt(boundPayment.pending)
+  startPaymentPolling(address, payment.receipt, quote)
 }
 
 // Reopening a saved pending payment resumes checks without a second button tap.
 watch([payOpen, price, pendingReceipt], ([open, quote, pending]) => {
-  if (open && quote && pending && payState.value === 'idle') void pay()
+  if (open && quote && pending && payState.value === 'idle' && !pendingRequiresPayerAuth) void pay()
 })
 
 function closePay(): void {

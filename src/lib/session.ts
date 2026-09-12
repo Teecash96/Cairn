@@ -29,6 +29,11 @@ import {
 
 export type SessionMode = 'booting' | 'nimiq' | 'preview'
 
+export interface SessionPayment {
+  receipt: string
+  sender: string
+}
+
 const mode = ref<SessionMode>('booting')
 const address = ref<string | null>(null)
 const connecting = ref(false)
@@ -219,7 +224,7 @@ export function useSession() {
     }
   }
 
-  async function pay(recipient: string, valueLuna: number, note: string): Promise<string | null> {
+  async function pay(recipient: string, valueLuna: number, note: string): Promise<SessionPayment | null> {
     if (mode.value === 'booting') await boot()
     lastError.value = null
     try {
@@ -229,7 +234,10 @@ export function useSession() {
         if (address.value && canonical(connected) !== canonical(address.value)) {
           throw new ProviderError('The connected wallet changed. Sign in again before paying.', 'WalletChanged')
         }
-        return await sendPayment(provider, recipient, valueLuna, note)
+        return {
+          receipt: await sendPayment(provider, recipient, valueLuna, note),
+          sender: connected,
+        }
       }
       if (mode.value === 'preview' && !localPreview) {
         return await sendPaymentInBrowser(recipient, valueLuna, note, address.value ?? undefined)
@@ -239,11 +247,6 @@ export function useSession() {
       lastError.value =
         error instanceof ProviderError && error.isDenied
           ? 'Payment cancelled.'
-          : error instanceof Error && /insufficient balance|address not found/i.test(error.message)
-            ? (() => {
-                disconnect()
-                return 'This Hub account cannot spend enough NIM. Reconnect the funded wallet account and try again.'
-              })()
           : error instanceof Error
             ? error.message
             : 'Payment failed.'

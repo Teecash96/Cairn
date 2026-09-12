@@ -272,13 +272,18 @@ export async function signMessageInBrowser(
   }
 }
 
+export interface BrowserPayment {
+  receipt: string
+  sender: string
+}
+
 /** Send a real NIM payment through Nimiq Hub when Cairn is opened in Chrome. */
 export async function sendPaymentInBrowser(
   recipient: string,
   valueLuna: number,
   note?: string,
   sender?: string,
-): Promise<string> {
+): Promise<BrowserPayment> {
   let popup: Window | null = null
   try {
     popup = openHubPopup(HUB_CHECKOUT_FEATURES)
@@ -302,13 +307,23 @@ export async function sendPaymentInBrowser(
       appName: HUB_APP_NAME,
       recipient,
       value: valueLuna,
-      ...(sender ? { sender, forceSender: true } : {}),
+      // Hub can hold a stale local balance for an otherwise funded address.
+      // Keep the authenticated sender as the preferred account, but allow Hub
+      // to refresh its account selector instead of rejecting the checkout.
+      ...(sender ? { sender, forceSender: false } : {}),
       ...(note ? { extraData: note } : {}),
     }, new PreopenedPopupBehavior(popup))
-    if (!signed || typeof signed.hash !== 'string' || !signed.hash) {
-      throw new Error('Nimiq Hub returned no payment receipt.')
+    if (
+      !signed ||
+      typeof signed.hash !== 'string' ||
+      !signed.hash ||
+      !signed.raw ||
+      typeof signed.raw.sender !== 'string' ||
+      !signed.raw.sender
+    ) {
+      throw new Error('Nimiq Hub returned incomplete payment details.')
     }
-    return signed.hash
+    return { receipt: signed.hash, sender: signed.raw.sender }
   } catch (error) {
     throw hubError(error)
   } finally {
