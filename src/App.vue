@@ -58,7 +58,7 @@ import {
 } from './lib/plan'
 import type { TeamPanelState } from './components/Workspace.vue'
 import { useSession } from './lib/session'
-import { bindPayment } from './lib/payment-session'
+import { bindPayment, samePaymentAddress } from './lib/payment-session'
 import { mergeRefinement } from './lib/refinement'
 import { createExamplePlan } from './lib/example'
 import { stubGenerate, stubRefinement } from './lib/stub'
@@ -92,7 +92,6 @@ const paymentPendingMessage = ref<string | null>(null)
 const paymentPollAttempt = ref(0)
 let paymentPollTimer: ReturnType<typeof setTimeout> | undefined
 let paymentPollRun = 0
-let pendingRequiresPayerAuth = false
 
 const PENDING_PAYMENT_KEY = 'cairn:pending-payment'
 function readPendingReceipt(): { address: string; receipt: string } | null {
@@ -692,9 +691,6 @@ function startPaymentPolling(address: string, receipt: string, quote: PriceQuote
 }
 
 async function pay(): Promise<void> {
-  // A direct button tap is allowed to resume a receipt that first needs the
-  // actual payer to authenticate. The pending-payment watcher is not.
-  pendingRequiresPayerAuth = false
   const quote = price.value
   if (!quote || payState.value !== 'idle') return
   const pending = pendingReceipt.value
@@ -707,7 +703,9 @@ async function pay(): Promise<void> {
   }
 
   payError.value = null
-  const storedReceipt = pending?.address === address ? pending.receipt : null
+  const storedReceipt = pending && samePaymentAddress(pending.address, address)
+    ? pending.receipt
+    : null
   if (storedReceipt) {
     startPaymentPolling(address, storedReceipt, quote)
     return
@@ -743,7 +741,6 @@ async function pay(): Promise<void> {
   }
   const boundPayment = bindPayment(address, payment)
   if (boundPayment.requiresPayerAuth) {
-    pendingRequiresPayerAuth = true
     rememberPendingReceipt(boundPayment.pending)
     session.disconnect()
     payState.value = 'idle'
@@ -756,9 +753,18 @@ async function pay(): Promise<void> {
   startPaymentPolling(address, payment.receipt, quote)
 }
 
-// Reopening a saved pending payment resumes checks without a second button tap.
+// Resume without another tap only while the authenticated payer is still in
+// memory. A reload must wait for a user tap so Hub can open its auth popup.
 watch([payOpen, price, pendingReceipt], ([open, quote, pending]) => {
-  if (open && quote && pending && payState.value === 'idle' && !pendingRequiresPayerAuth) void pay()
+  const connected = session.address.value
+  if (
+    open &&
+    quote &&
+    pending &&
+    connected &&
+    samePaymentAddress(connected, pending.address) &&
+    payState.value === 'idle'
+  ) void pay()
 })
 
 function closePay(): void {

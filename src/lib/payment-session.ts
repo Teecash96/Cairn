@@ -12,6 +12,10 @@ function compactAddress(value: string): string {
   return value.replace(/\s+/g, '').toUpperCase()
 }
 
+export function samePaymentAddress(left: string, right: string): boolean {
+  return compactAddress(left) === compactAddress(right)
+}
+
 /** Bind a Hub receipt to the address that signed the actual transaction. */
 export function bindPayment(
   authenticatedAddress: string,
@@ -19,6 +23,6 @@ export function bindPayment(
 ): { pending: PendingPayment; requiresPayerAuth: boolean } {
   return {
     pending: { address: payment.sender, receipt: payment.receipt },
-    requiresPayerAuth: compactAddress(payment.sender) !== compactAddress(authenticatedAddress),
+    requiresPayerAuth: !samePaymentAddress(payment.sender, authenticatedAddress),
   }
 }

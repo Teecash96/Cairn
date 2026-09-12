@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { afterEach, describe, it } from 'node:test'
 import HubApi from '@nimiq/hub-api'
 import { sendPaymentInBrowser } from '../../src/lib/nimiq.ts'
-import { bindPayment } from '../../src/lib/payment-session.ts'
+import { bindPayment, samePaymentAddress } from '../../src/lib/payment-session.ts'
 
 const originalCheckout = HubApi.prototype.checkout
 const originalWindow = globalThis.window
@@ -82,5 +82,10 @@ describe('browser Nimiq checkout', () => {
       receipt: 'receipt-hash',
       sender: 'NQ123456',
     }).requiresPayerAuth, false)
+  })
+
+  it('only resumes automatically for the authenticated payer', () => {
+    assert.equal(samePaymentAddress('nq12 3456', 'NQ123456'), true)
+    assert.equal(samePaymentAddress('NQ payer', 'NQ another'), false)
   })
 })
