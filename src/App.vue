@@ -706,22 +706,24 @@ async function pay(): Promise<void> {
     return
   }
 
-  payState.value = 'verifying'
-  try {
-    // Keep the saved receipt when reconnecting a different wallet. A canonical
-    // receipt lets the Worker check one transaction directly and explain a
-    // wallet mismatch without scanning the whole recipient history.
-    const recovered = await redeemPayment(address, pending?.receipt)
-    if (recovered.credits.total > 0) {
-      await completePayment(quote)
-      return
-    }
-  } catch (error) {
-    if (!(error instanceof ApiError) || error.code !== 'payment_not_found') {
-      payState.value = 'idle'
-      payError.value = messageOf(error)
-      if (error instanceof ApiError && error.code === 'payment_wrong_wallet') session.disconnect()
-      return
+  if (pending?.receipt) {
+    payState.value = 'verifying'
+    try {
+      // Keep the saved receipt when reconnecting a different wallet. A canonical
+      // receipt lets the Worker check one transaction directly and explain a
+      // wallet mismatch without scanning the whole recipient history.
+      const recovered = await redeemPayment(address, pending.receipt)
+      if (recovered.credits.total > 0) {
+        await completePayment(quote)
+        return
+      }
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.code !== 'payment_not_found') {
+        payState.value = 'idle'
+        payError.value = messageOf(error)
+        if (error instanceof ApiError && error.code === 'payment_wrong_wallet') session.disconnect()
+        return
+      }
     }
   }
 
