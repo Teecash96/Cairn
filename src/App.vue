@@ -755,8 +755,7 @@ async function pay(): Promise<void> {
 
 // Resume without another tap only while the authenticated payer is still in
 // memory. A reload must wait for a user tap so Hub can open its auth popup.
-watch([payOpen, price, pendingReceipt], ([open, quote, pending]) => {
-  const connected = session.address.value
+watch([payOpen, price, pendingReceipt, session.address], ([open, quote, pending, connected]) => {
   if (
     open &&
     quote &&
