@@ -605,6 +605,10 @@ function onGenerateFailed(error: unknown, input: PlanInput, replaceId?: string):
       pendingGeneration.value = { input, ...(replaceId ? { replaceId } : {}) }
       payError.value = error.price ? null : 'Cairn payment is not configured yet.'
       payOpen.value = true
+      // If the payer is already authenticated, begin recovery after the
+      // sheet has rendered. This also covers a wallet sign-in completed just
+      // before the generation request returned payment_required.
+      void nextTick(resumePendingPayment)
       return
     }
     /**
@@ -694,10 +698,14 @@ async function pay(): Promise<void> {
   const quote = price.value
   if (!quote || payState.value !== 'idle') return
   const pending = pendingReceipt.value
+  // A saved receipt is a recovery flow, not a new checkout. Mark it busy
+  // before authentication so a second tap cannot start another attempt.
+  payState.value = pending?.receipt ? 'verifying' : 'paying'
   // A wallet that already paid may now hold less than the purchase amount.
   // Let it authenticate so its saved receipt can still be recovered.
   const address = await requireAuth(pending?.receipt ? undefined : quote.priceLuna)
   if (!address) {
+    payState.value = 'idle'
     payError.value = session.lastError.value ?? 'Select your funded Nimiq wallet, then try again.'
     return
   }
@@ -712,7 +720,6 @@ async function pay(): Promise<void> {
   }
 
   if (pending?.receipt) {
-    payState.value = 'verifying'
     try {
       // Keep the saved receipt when reconnecting a different wallet. A canonical
       // receipt lets the Worker check one transaction directly and explain a
@@ -722,6 +729,9 @@ async function pay(): Promise<void> {
         await completePayment(quote)
         return
       }
+      payState.value = 'idle'
+      payError.value = 'That payment is already claimed. Do not pay again.'
+      return
     } catch (error) {
       if (!(error instanceof ApiError) || error.code !== 'payment_not_found') {
         payState.value = 'idle'
@@ -729,10 +739,15 @@ async function pay(): Promise<void> {
         if (error instanceof ApiError && error.code === 'payment_wrong_wallet') session.disconnect()
         return
       }
+      // The receipt is still pending or not visible for this wallet. Keep it
+      // saved for a later retry, but never fall through to a new payment.
+      payState.value = 'idle'
+      paymentPendingMessage.value = PAYMENT_WAITING_MESSAGE
+      payError.value = 'Payment is still confirming. Resume checking in a moment. Do not pay again.'
+      return
     }
   }
 
-  payState.value = 'paying'
   const payment = await session.pay(quote.payTo, quote.priceLuna, 'Cairn AI credits')
   if (!payment) {
     payState.value = 'idle'
@@ -753,18 +768,22 @@ async function pay(): Promise<void> {
   startPaymentPolling(address, payment.receipt, quote)
 }
 
-// Resume without another tap only while the authenticated payer is still in
-// memory. A reload must wait for a user tap so Hub can open its auth popup.
-watch([payOpen, price, pendingReceipt, session.address], ([open, quote, pending, connected]) => {
+function resumePendingPayment(): void {
+  const connected = session.address.value
+  const pending = pendingReceipt.value
   if (
-    open &&
-    quote &&
+    payOpen.value &&
+    price.value &&
     pending &&
     connected &&
     samePaymentAddress(connected, pending.address) &&
     payState.value === 'idle'
   ) void pay()
-})
+}
+
+// Resume without another tap only while the authenticated payer is still in
+// memory. A reload must wait for a user tap so Hub can open its auth popup.
+watch([payOpen, price, pendingReceipt, session.address], resumePendingPayment)
 
 function closePay(): void {
   if (payState.value === 'paying' || (payState.value === 'verifying' && !pendingReceipt.value)) return
