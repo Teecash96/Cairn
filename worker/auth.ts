@@ -89,17 +89,40 @@ export async function verifyChallenge(
   if (record.address && record.address !== derivedAddress) return null
   if (address && address !== derivedAddress) return null
 
-  // KV has no compare-and-swap. Marking used before issuing the session makes a
-  // replay fail in the common case; a simultaneous duplicate can only create
-  // another session for the same wallet, never another wallet's session.
-  record.used = true
-  await env.CAIRN.put(challengeKey(challenge), JSON.stringify(record), { expirationTtl: CHALLENGE_TTL })
-
-  const session = token(48)
-  const expiresAt = Date.now() + SESSION_TTL * 1000
-  const sessionRecord: SessionRecord = { address: derivedAddress, createdAt: Date.now(), expiresAt }
-  await env.CAIRN.put(sessionKey(session), JSON.stringify(sessionRecord), { expirationTtl: SESSION_TTL })
-  return { token: session, address: derivedAddress, expiresAt }
+  // Atomically mark challenge as used and create session using optimistic locking
+  const challengeLockKey = `lock:challenge:${challenge}`
+  const existingLock = await env.CAIRN.get(challengeLockKey)
+  
+  if (existingLock !== null) {
+    // Another request is processing this challenge, wait briefly and check if already used
+    await new Promise(resolve => setTimeout(resolve, 100))
+    const updatedRecord = await env.CAIRN.get<AuthChallengeRecord>(challengeKey(challenge), 'json')
+    if (updatedRecord?.used) return null // Challenge was already consumed
+    // Retry acquiring lock once
+    const retryLock = await env.CAIRN.get(challengeLockKey)
+    if (retryLock !== null) return null
+  }
+  
+  // Set lock
+  await env.CAIRN.put(challengeLockKey, '1', { expirationTtl: 5 })
+  
+  try {
+    // Re-check record state after acquiring lock
+    const freshRecord = await env.CAIRN.get<AuthChallengeRecord>(challengeKey(challenge), 'json')
+    if (!freshRecord || freshRecord.used || freshRecord.expiresAt <= Date.now()) return null
+    
+    // Mark as used atomically within lock
+    freshRecord.used = true
+    await env.CAIRN.put(challengeKey(challenge), JSON.stringify(freshRecord), { expirationTtl: CHALLENGE_TTL })
+    
+    const session = token(48)
+    const expiresAt = Date.now() + SESSION_TTL * 1000
+    const sessionRecord: SessionRecord = { address: derivedAddress, createdAt: Date.now(), expiresAt }
+    await env.CAIRN.put(sessionKey(session), JSON.stringify(sessionRecord), { expirationTtl: SESSION_TTL })
+    return { token: session, address: derivedAddress, expiresAt }
+  } finally {
+    await env.CAIRN.delete(challengeLockKey)
+  }
 }
 
 export interface AuthSession {

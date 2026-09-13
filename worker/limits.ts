@@ -25,10 +25,31 @@ export async function tooFastByKey(
 ): Promise<boolean> {
   const minute = Math.floor(Date.now() / 60_000)
   const key = `rl:${scope}:${keyPart}:${minute}`
-  const used = (await env.CAIRN.get<number>(key, 'json')) ?? 0
-  if (used >= limit) return true
-  await env.CAIRN.put(key, JSON.stringify(used + 1), { expirationTtl: 120 })
-  return false
+  const lockKey = `lock:rl:${scope}:${keyPart}:${minute}`
+  
+  // Try to acquire lock with short TTL (3 seconds max)
+  const existingLock = await env.CAIRN.get(lockKey)
+  if (existingLock !== null) {
+    // Another request holds the lock, wait briefly and retry once
+    await new Promise(resolve => setTimeout(resolve, 50))
+    const retryLock = await env.CAIRN.get(lockKey)
+    if (retryLock !== null) {
+      // Conservative: assume rate limited if we can't get lock
+      return true
+    }
+  }
+  
+  // Set lock
+  await env.CAIRN.put(lockKey, '1', { expirationTtl: 3 })
+  
+  try {
+    const used = (await env.CAIRN.get<number>(key, 'json')) ?? 0
+    if (used >= limit) return true
+    await env.CAIRN.put(key, JSON.stringify(used + 1), { expirationTtl: 120 })
+    return false
+  } finally {
+    await env.CAIRN.delete(lockKey)
+  }
 }
 
 /** Remaining free AI attempts for the current UTC day. */
@@ -40,6 +61,28 @@ export async function budgetLeft(env: Env, config: Config): Promise<number> {
 /** Count an attempt because the provider can charge even when output fails. */
 export async function chargeBudget(env: Env): Promise<void> {
   const key = `budget:${today()}`
-  const used = (await env.CAIRN.get<number>(key, 'json')) ?? 0
-  await env.CAIRN.put(key, JSON.stringify(used + 1), { expirationTtl: KEEP_COUNTERS })
+  const lockKey = `lock:budget:${today()}`
+  
+  // Try to acquire lock with short TTL (3 seconds max)
+  const existingLock = await env.CAIRN.get(lockKey)
+  if (existingLock !== null) {
+    await new Promise(resolve => setTimeout(resolve, 50))
+    const retryLock = await env.CAIRN.get(lockKey)
+    if (retryLock !== null) {
+      // Fallback without lock - should rarely happen
+      const used = (await env.CAIRN.get<number>(key, 'json')) ?? 0
+      await env.CAIRN.put(key, JSON.stringify(used + 1), { expirationTtl: KEEP_COUNTERS })
+      return
+    }
+  }
+  
+  // Set lock
+  await env.CAIRN.put(lockKey, '1', { expirationTtl: 3 })
+  
+  try {
+    const used = (await env.CAIRN.get<number>(key, 'json')) ?? 0
+    await env.CAIRN.put(key, JSON.stringify(used + 1), { expirationTtl: KEEP_COUNTERS })
+  } finally {
+    await env.CAIRN.delete(lockKey)
+  }
 }

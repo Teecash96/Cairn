@@ -23,12 +23,6 @@ export interface Env {
   GEMINI_API_KEY: string
   GEMINI_MODEL?: string
 
-  PAY_TO: string
-  PRICE_LUNA: string
-  PLANS_PER_PAYMENT: string
-  NIMIQ_RPC_URL: string
-  DEV_TRUST_PAYMENTS?: string
-
   /** Numbers arrive as strings; the config parser validates them. */
   DAILY_BUDGET: string
   APP_URL: string
@@ -201,15 +195,7 @@ export interface CreditState {
   total: number
 }
 
-export interface PriceQuote {
-  priceLuna: number
-  plans: number
-  payTo: string
-}
-
 export type ApiErrorCode =
-  | 'payment_required'
-  | 'payment_not_found'
   | 'rate_limited'
   | 'budget_exhausted'
   | 'invalid_request'
