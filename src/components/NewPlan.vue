@@ -20,10 +20,12 @@ import { NIMIQ_TEMPLATE } from '../lib/example'
 
 const {
   busy = false,
+  supportBusy = false,
   initial,
   showDisclosure = true,
 } = defineProps<{
   busy?: boolean
+  supportBusy?: boolean
   initial?: PlanInput
   showDisclosure?: boolean
 }>()
@@ -31,6 +33,7 @@ const {
 const emit = defineEmits<{
   submit: [input: PlanInput]
   example: []
+  support: []
 }>()
 
 const name = ref(initial?.name ?? '')
@@ -128,7 +131,7 @@ function submit(): void {
       </div>
       <div class="atlas-meta mono">
         <span>Route 01</span>
-        <span class="atlas-meta__free">Pay with NIM</span>
+        <span class="atlas-meta__free">Free to use</span>
       </div>
       <h1 class="hero">Map the idea before you build it.</h1>
       <p class="hero-copy">
@@ -212,9 +215,18 @@ function submit(): void {
           A little more detail and it will have something to work with.
         </p>
         <p v-else class="foot muted">
-          1 NIM unlocks 10 successful AI actions. One generated plan or follow-up uses one action.
-          Editing, tracking, and exports use no credits. Your finished plan stays on this device.
+          Planning, refinements, editing, tracking, sharing, and exports are free.
+          Cairn uses your Nimiq wallet to verify your session and protect team access.
         </p>
+
+        <button
+          type="button"
+          class="btn btn--ghost btn--block support-link"
+          :disabled="busy || supportBusy"
+          @click="emit('support')"
+        >
+          {{ supportBusy ? 'Opening Nimiq Pay…' : 'Support Cairn with 1 NIM · optional' }}
+        </button>
       </div>
 
       <button
@@ -373,6 +385,11 @@ function submit(): void {
   font-size: var(--text-xs);
   line-height: var(--leading);
   text-align: center;
+}
+
+.support-link {
+  color: var(--accent);
+  font-size: var(--text-xs);
 }
 
 /* A single pulsing dot beside the phase text — motion enough to show life,

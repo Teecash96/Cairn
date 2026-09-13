@@ -3,6 +3,7 @@ import test from 'node:test'
 import worker from '../../worker/index.ts'
 import { addressFromPublicKey, normalizeAddress, readJson, securityHeaders } from '../../worker/http.ts'
 import type { Env } from '../../worker/types.ts'
+import { createExamplePlan } from '../../src/lib/example.ts'
 
 class MemoryKV {
   readonly values = new Map<string, string>()
@@ -34,6 +35,17 @@ function env(kv = new MemoryKV()): Env {
   }
 }
 
+const AUTH_ADDRESS = 'NQ19E39QY9EQ937EYQYC13D24LCCUPTN3VPS'
+const AUTH_TOKEN = 'a'.repeat(48)
+
+async function seedSession(kv: MemoryKV): Promise<void> {
+  await kv.put(`auth:session:${AUTH_TOKEN}`, JSON.stringify({
+    address: AUTH_ADDRESS,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 60_000,
+  }))
+}
+
 test('strictly validates checksummed Nimiq addresses', () => {
   const valid = 'NQ19 E39Q Y9EQ 937E YQYC 13D2 4LCC UPTN 3VPS'
   assert.equal(normalizeAddress(valid), 'NQ19E39QY9EQ937EYQYC13D24LCCUPTN3VPS')
@@ -63,6 +75,48 @@ test('remote HTTP is redirected and private routes reject missing sessions', asy
   assert.equal(response.status, 401)
   assert.equal((await response.json() as { error: string }).error, 'auth_required')
   assert.equal(response.headers.get('x-frame-options'), 'DENY')
+})
+
+test('free generation and refinement do not consult the credit ledger', async () => {
+  const kv = new MemoryKV()
+  await seedSession(kv)
+  const workerEnv = env(kv)
+  workerEnv.GEMINI_API_KEY = 'test-key'
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = (async () => new Response(JSON.stringify({ error: { message: 'Temporary provider failure' } }), { status: 503 })) as typeof fetch
+
+  try {
+    const headers = {
+      'content-type': 'application/json',
+      authorization: `Bearer ${AUTH_TOKEN}`,
+    }
+    const generateResponse = await worker.fetch(new Request('https://cairn.example/api/generate', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        address: AUTH_ADDRESS,
+        input: { name: 'Pothole report', idea: 'An app where cyclists report potholes and the council ranks streets.' },
+      }),
+    }), workerEnv)
+    assert.equal(generateResponse.status, 502)
+    assert.equal((await generateResponse.json() as { error: string }).error, 'generation_failed')
+
+    const refineResponse = await worker.fetch(new Request('https://cairn.example/api/refine', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        address: AUTH_ADDRESS,
+        action: 'cut_mvp_scope',
+        plan: createExamplePlan(),
+      }),
+    }), workerEnv)
+    assert.equal(refineResponse.status, 502)
+    assert.equal((await refineResponse.json() as { error: string }).error, 'generation_failed')
+  } finally {
+    globalThis.fetch = previousFetch
+  }
+
+  assert.equal([...kv.values.keys()].some((key) => key.startsWith('credit:')), false)
 })
 
 test('JSON input rejects non JSON content and oversized UTF 8 payloads', async () => {

@@ -1,8 +1,8 @@
 /**
  * Fair use limits for the free service.
  *
- * Cairn has no balance and no payment path. A short wallet rate limit stops
- * accidental loops. A global daily limit bounds the Gemini bill.
+ * Cairn does not use a balance to gate planning. A short wallet rate limit
+ * stops accidental loops. A global daily limit bounds the Gemini bill.
  */
 import { today } from './http'
 import type { Config } from './config'

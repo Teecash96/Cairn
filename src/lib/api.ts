@@ -23,7 +23,8 @@ export interface GenerateResult {
   flow: FlowStep[]
   build: BuildPlanDraft
   realityCheck: RealityCheckItem[]
-  credits: CreditState
+  /** Present only for legacy payment responses. New planning is free. */
+  credits?: CreditState
 }
 
 export interface CreditState {
@@ -112,7 +113,8 @@ export interface RefineResult {
   /** Short explanation of the proposed targeted changes. */
   explanation: string
   changes: PlanChanges
-  credits: CreditState
+  /** Present only for legacy payment responses. New planning is free. */
+  credits?: CreditState
 }
 
 /**
@@ -288,7 +290,7 @@ export interface GenerateRequest {
   input: PlanInput
 }
 
-/** Generate a plan using one paid credit. */
+/** Generate a plan after a signed Nimiq wallet session. Planning is free. */
 export function generatePlan(body: GenerateRequest): Promise<GenerateResult> {
   return request<GenerateResult>('/generate', {
     method: 'POST',
@@ -342,7 +344,7 @@ export function getSharedPlan(shareId: string): Promise<SharedPlanResult> {
   return request<SharedPlanResult>(`/share/${encodeURIComponent(shareId)}`)
 }
 
-/** Run a targeted planner action using one paid credit. */
+/** Run a targeted planner action after wallet authentication. Refinement is free. */
 export function refinePlan(body: RefineRequest): Promise<RefineResult> {
   return request<RefineResult>('/refine', {
     method: 'POST',

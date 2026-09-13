@@ -12,7 +12,8 @@ reconciled. Do not enable it during a gradual rollout alongside the old Worker.
    export process. Treat this export as private financial data.
 2. Deploy this version with `CREDIT_LEDGER_READY = "0"` to 100% of traffic.
    Stop or remove any other deployments that can write these legacy keys.
-   Local editing and saved plans remain available; paid AI actions do not.
+   Free planning and local editing remain available; payment operations stay
+   unavailable until reconciliation is complete.
 3. Drain requests from the old version. Verify the old version receives no
    traffic and that its outstanding generation and redemption requests have
    ended. Do not infer this merely from a successful deployment command.
@@ -26,9 +27,10 @@ reconciled. Do not enable it during a gradual rollout alongside the old Worker.
    `CREDIT_LEDGER` binding, `CreditLedger` class and `cairn-credits-v1` object name.
    Record this enabled setting in the deployment configuration so the next
    deployment does not accidentally return the service to maintenance mode.
-6. Verify balances with existing wallets. Check a new payment, a repeated
-   receipt, one successful AI action, and a failed generation before ending
-   the maintenance window. The wallet owner completes any real transfer.
+6. Verify balances with existing wallets. Check an optional NIM support
+   payment, a repeated receipt, one successful free AI action, and a failed
+   generation before ending the maintenance window. The wallet owner completes
+   any real transfer.
 
 The Wrangler migration `v1-credit-ledger` creates the object class. It does not
 copy existing KV values by itself. Each wallet's frozen balance is imported on
@@ -45,10 +47,10 @@ these legacy records; deleting them would make old receipts redeemable again.
 - Another wallet cannot reuse that receipt.
 - Previously spent legacy receipts are rejected; their historical grant cannot
   be safely inferred from their marker alone.
-- AI failures before spending still leave credits unchanged. This change keeps
-  the existing post-generation charging policy: concurrent requests may both
-  compute, but only available credits can be spent and an unpaid result is not
-  returned. It does not add AI-result caching or end-to-end request idempotency.
+- AI failures do not change the ledger because free planning does not spend
+  credits. Optional payment verification and ledger writes remain atomic. The
+  daily service budget still bounds provider usage, but it does not affect
+  existing paid balances.
 
 ## Recovery
 

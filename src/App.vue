@@ -1,14 +1,15 @@
 <script setup lang="ts">
 /**
  * Cairn's shell: the new plan screen, library, workspace, and protected team
- * route, plus the paid generate, refine, and share loop.
+ * route, plus the free generate, refine, and share loop.
  *
  * State lives here rather than in a store. There are three screens and one open
  * plan; a store would be indirection for its own sake, and keeping the sequence
  * in one file is what makes the ordering rules below checkable at a glance.
  *
  * The wallet prompt fires on the first generate tap, never at boot. It proves
- * identity before required NIM payment and protected team actions.
+ * identity for free planning and protected team actions. NIM payment remains an
+ * optional support path, never a prerequisite for using Cairn.
  *
  * Editing autosaves. There is no save button, and the deep watcher that does it
  * is guarded so that stamping `updatedAt` cannot retrigger itself.
@@ -26,6 +27,7 @@ import {
   ApiError,
   createTeam,
   generatePlan,
+  getCredits,
   getSharedPlan,
   getTeam,
   redeemPayment,
@@ -79,6 +81,7 @@ const formInitial = ref<PlanInput | undefined>(undefined)
 
 const generating = ref(false)
 const sharing = ref(false)
+const supportLoading = ref(false)
 const payOpen = ref(false)
 const payState = ref<'idle' | 'paying' | 'verifying'>('idle')
 const payError = ref<string | null>(null)
@@ -601,14 +604,7 @@ function apply(
 function onGenerateFailed(error: unknown, input: PlanInput, replaceId?: string): void {
   if (error instanceof ApiError) {
     if (error.needsPayment) {
-      price.value = error.price
-      pendingGeneration.value = { input, ...(replaceId ? { replaceId } : {}) }
-      payError.value = error.price ? null : 'Cairn payment is not configured yet.'
-      payOpen.value = true
-      // If the payer is already authenticated, begin recovery after the
-      // sheet has rendered. This also covers a wallet sign-in completed just
-      // before the generation request returned payment_required.
-      void nextTick(resumePendingPayment)
+      notify('This Cairn deployment still has the old payment gate. Refresh after the free version is deployed.', 'error')
       return
     }
     /**
@@ -627,7 +623,7 @@ function onGenerateFailed(error: unknown, input: PlanInput, replaceId?: string):
   notify(messageOf(error), 'error')
 }
 
-async function completePayment(quote: PriceQuote): Promise<void> {
+async function completePayment(): Promise<void> {
   stopPaymentPolling()
   forgetPendingReceipt()
   payOpen.value = false
@@ -635,12 +631,40 @@ async function completePayment(quote: PriceQuote): Promise<void> {
   const refinement = pendingRefinement.value
   pendingGeneration.value = null
   pendingRefinement.value = null
-  notify(String(quote.plans) + ' AI actions unlocked', 'success')
+  notify('Thank you. Your optional NIM support payment was verified.', 'success')
   if (generation) await generate(generation.input, generation.replaceId)
   else if (refinement) await runRefinement(refinement.action, refinement.question)
 }
 
-function startPaymentPolling(address: string, receipt: string, quote: PriceQuote): void {
+/** Open the voluntary NIM support path without gating any planner action. */
+async function openSupport(): Promise<void> {
+  if (supportLoading.value || payOpen.value) return
+  if (localPreview) {
+    notify('NIM support is available in the deployed Cairn app.', 'info')
+    return
+  }
+
+  supportLoading.value = true
+  try {
+    const address = await requireAuth()
+    if (!address) return
+    const result = await getCredits()
+    price.value = result.price
+    if (!result.price) {
+      notify('NIM support is temporarily unavailable.', 'error')
+      return
+    }
+    payError.value = null
+    paymentPendingMessage.value = pendingReceipt.value ? PAYMENT_WAITING_MESSAGE : null
+    payOpen.value = true
+  } catch (error) {
+    notify(messageOf(error), 'error')
+  } finally {
+    supportLoading.value = false
+  }
+}
+
+function startPaymentPolling(address: string, receipt: string): void {
   stopPaymentPolling()
   const run = paymentPollRun
   paymentPollAttempt.value = 0
@@ -659,7 +683,7 @@ function startPaymentPolling(address: string, receipt: string, quote: PriceQuote
     try {
       await redeemPayment(address, receipt)
       if (run !== paymentPollRun) return
-      await completePayment(quote)
+      await completePayment()
       return
     } catch (error) {
       if (run !== paymentPollRun) return
@@ -715,7 +739,7 @@ async function pay(): Promise<void> {
     ? pending.receipt
     : null
   if (storedReceipt) {
-    startPaymentPolling(address, storedReceipt, quote)
+    startPaymentPolling(address, storedReceipt)
     return
   }
 
@@ -726,7 +750,7 @@ async function pay(): Promise<void> {
       // wallet mismatch without scanning the whole recipient history.
       const recovered = await redeemPayment(address, pending.receipt)
       if (recovered.credits.total > 0) {
-        await completePayment(quote)
+        await completePayment()
         return
       }
       payState.value = 'idle'
@@ -765,7 +789,7 @@ async function pay(): Promise<void> {
   }
 
   rememberPendingReceipt(boundPayment.pending)
-  startPaymentPolling(address, payment.receipt, quote)
+  startPaymentPolling(address, payment.receipt)
 }
 
 function resumePendingPayment(): void {
@@ -836,10 +860,7 @@ async function runRefinement(action: RefineAction, question?: string): Promise<v
     refineChanges.value = result.changes
   } catch (error) {
     if (error instanceof ApiError && error.needsPayment) {
-      price.value = error.price
-      pendingRefinement.value = { action, ...(question ? { question } : {}) }
-      payError.value = error.price ? null : 'Cairn payment is not configured yet.'
-      payOpen.value = true
+      notify('This Cairn deployment still has the old payment gate. Refresh after the free version is deployed.', 'error')
       return
     }
     refineOpen.value = false
@@ -953,7 +974,7 @@ function ownIt(): void {
           {{ showingExample ? 'Sample plan · Meetup tickets' : 'Someone left this for you' }}
         </p>
         <p class="gifted__body">
-          {{ showingExample ? 'A curated illustration, not a customer project or a live AI result. Explore Plan, Flow, Build, and Track without connecting a wallet.' : 'Cairn turns an idea into a product map and a route to release. Explore this plan, then create your own. 1 NIM unlocks 10 AI actions.' }}
+          {{ showingExample ? 'A curated illustration, not a customer project or a live AI result. Explore Plan, Flow, Build, and Track without connecting a wallet.' : 'Cairn turns an idea into a product map and a route to release. Explore this plan, then create your own. Planning is free and Nimiq wallet support is built in.' }}
         </p>
         <button type="button" class="btn btn--primary btn--sm" @click="ownIt">
           Map my own idea
@@ -990,9 +1011,11 @@ function ownIt(): void {
       v-if="view === 'new'"
       :key="formKey"
       :busy="generating"
+      :support-busy="supportLoading"
       :initial="formInitial"
       @submit="generate"
       @example="openExample"
+      @support="openSupport"
     />
 
     <Workspace

@@ -19,9 +19,9 @@ a builder pack an indie builder can act on:
 - a **Reality check** — three prioritized concerns with the smallest test or fix
 
 Every field is editable. Your plan is local by default. Cairn uses practical MVP
-planning rather than Scrum process. Generation and refinements use paid AI credits;
-local editing, tracking, sharing, exports, and team workspaces are free. An optional protected team workspace lets the owner
-share only Track with named Nimiq wallets.
+planning rather than Scrum process. Plans and planner refinements are free. An
+optional protected team workspace lets the owner share only Track with named
+Nimiq wallets.
 
 A cairn is a stack of stones left to mark the route for whoever comes next. That
 is what a PRD is for.
@@ -35,7 +35,8 @@ Filling it properly takes a product manager twenty minutes of structured
 thinking, and most ideas never get those twenty minutes — so they either die or
 get built without a plan.
 
-Cairn brings that structured thinking to a phone: 1 NIM unlocks 10 successful AI actions.
+Cairn brings that structured thinking to a phone with a signed Nimiq wallet
+session and no payment wall.
 
 ## How it works
 
@@ -60,7 +61,7 @@ Cairn brings that structured thinking to a phone: 1 NIM unlocks 10 successful AI
 The Build tab has four quick actions: cut MVP scope, break work into smaller
 tasks, find missing risks, and improve acceptance tests. You can also ask a
 custom question. Cairn shows targeted changes in a preview before applying them.
-Each successful planner action spends one AI credit. Fair use rate limits and a daily service limit prevent
+Planner actions are free. Fair use rate limits and a daily service limit prevent
 unbounded AI cost. Task status, dates, labels, notes, and blockers stay on your
 device when a refinement keeps that task. Cairn sends only task text to Gemini.
 
@@ -96,7 +97,7 @@ The deployed Worker serves a small information layer beside the mini app:
 
 1. `/case-studies` contains illustrative examples. They are not customer
    claims.
-2. `/faq` answers product, timing, NIM payment, sharing, and privacy questions.
+2. `/faq` answers product, timing, free access, NIM support, sharing, and privacy questions.
 3. `/privacy` explains data handling in plain language.
 4. `/thank-you` is a simple completion page for links and demos.
 5. Unknown routes show a branded 404 page.
@@ -105,19 +106,17 @@ The app has a clear response promise: most plans are ready in under 30 seconds.
 The public pages use canonical URLs, Open Graph metadata, a social card,
 `robots.txt`, `sitemap.xml`, and `llms.txt`.
 
-## NIM payment
+## Nimiq support
 
-Cairn requires paid credits for AI generation and refinement. A payment of 1 NIM
-unlocks 10 successful AI actions. There is no subscription. Sharing, exports,
-local editing, and team workspaces do not spend AI credits.
+Cairn does not charge for plans or planner refinements. A signed Nimiq wallet
+session proves identity for AI requests and protected teams. The app also keeps
+an explicit **Support Cairn** path through Nimiq Pay for people who choose to
+send NIM. Support is voluntary and never unlocks access.
 
-The Worker verifies the payment on the Nimiq network before it grants credits.
-A SQLite-backed Durable Object records receipt redemption and its credit grant
-in one transaction. Balance deductions are atomic. Credits are spent only after
-Gemini returns a valid result. See [credit ledger cutover](docs/credit-ledger-cutover.md)
-before deploying this upgrade: existing balances must be frozen and reconciled
-before setting `CREDIT_LEDGER_READY=1`. The checked-in deployment configuration
-starts in credit-service maintenance mode.
+The Worker still verifies NIM receipts and preserves the SQLite-backed Durable
+Object ledger for existing balances and recovery. It never asks a user to pay
+again for a saved receipt. See [credit ledger cutover](docs/credit-ledger-cutover.md)
+before changing bindings or migrations.
 
 ## What leaves your phone
 
@@ -160,9 +159,9 @@ without weakening the production wallet path.
 
 When you open the deployed app in Chrome, tap **Generate plan** and complete the
 Nimiq Hub popup. Allow popups for the Cairn site. Hub returns the selected wallet
-address and signature to Cairn, which the Worker verifies before any AI action.
-When the wallet has no credits, Cairn opens Nimiq Hub checkout for the required
-NIM payment.
+address and signature to Cairn, which the Worker verifies before the free AI
+action. Choose **Support Cairn** only if you want to send an optional NIM
+payment.
 
 ### On a real device
 

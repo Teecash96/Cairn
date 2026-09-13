@@ -2,7 +2,7 @@ export { CreditLedger } from './credit-ledger'
 import { budgetLeft, chargeBudget, tooFast, tooFastByKey } from './limits'
 import { createChallenge, requireSession, verifyChallenge, type AuthSession } from './auth'
 import { quote, readConfig } from './config'
-import { CreditLedgerUnavailable, redeemCredits, readCredits, spendOne, stateOf } from './credits'
+import { CreditLedgerUnavailable, redeemCredits, readCredits, stateOf } from './credits'
 import { fail, corsHeaders, isLocalHost, json, normalizeAddress, readJson, securityHeaders } from './http'
 import { generateWithGemini, refineWithGemini } from './generate'
 import { inspectPayment, type PaymentInspection } from './payments'
@@ -121,22 +121,18 @@ async function handleGenerate(env: Env, request: Request, cors: Record<string, s
   const input = readPlanInput(raw.input)
   if (isInvalid(input)) return fail('invalid_request', input.message, 400, cors)
 
-  const { config, price } = paymentDetails(env)
-  const balance = stateOf(await readCredits(env, address))
-  if (balance.total < 1) {
-    return fail('payment_required', 'Payment is required to generate a plan.', 402, cors, { credits: balance, price })
-  }
+  // Planning is free. The wallet session proves identity and gives Cairn a
+  // stable abuse-limit key, but it never gates a successful generation.
+  const config = readConfig(env)
   if (await tooFast(env, address)) return fail('rate_limited', 'Please wait a moment before generating again.', 429, cors)
-  if (await budgetLeft(env, config) < 1) return fail('budget_exhausted', 'Today’s generation capacity has been reached. Try again tomorrow.', 429, cors)
+  if (await budgetLeft(env, config) < 1) return fail('budget_exhausted', 'Today’s free generation limit has been reached. Try again tomorrow.', 429, cors)
   const geminiKey = env.GEMINI_API_KEY?.trim()
   if (!geminiKey) return fail('server', 'Cairn is not configured with an AI key yet.', 503, cors)
 
   await chargeBudget(env)
   try {
     const result = await generateWithGemini(config, geminiKey, input as PlanInput)
-    const credits = await spendOne(env, address)
-    if (!credits) return fail('payment_required', 'Payment is required to generate a plan.', 402, cors, { price })
-    return json({ ...result, credits }, 200, cors)
+    return json(result, 200, cors)
   } catch (error) {
     return generationFailure(error, 'The AI returned an incomplete plan. Try again.', cors)
   }
@@ -167,22 +163,17 @@ async function handleRefine(env: Env, request: Request, cors: Record<string, str
   const plan = clampPlan(raw.plan, 'refine', Date.now())
   if (isInvalid(plan)) return fail('invalid_request', plan.message, 400, cors)
 
-  const { config, price } = paymentDetails(env)
-  const balance = stateOf(await readCredits(env, address))
-  if (balance.total < 1) {
-    return fail('payment_required', 'Payment is required to use planner actions.', 402, cors, { credits: balance, price })
-  }
+  // Refinements use the same free, wallet-authenticated path as generation.
+  const config = readConfig(env)
   if (await tooFast(env, address)) return fail('rate_limited', 'Please wait a moment before asking again.', 429, cors)
-  if (await budgetLeft(env, config) < 1) return fail('budget_exhausted', 'Today’s generation capacity has been reached. Try again tomorrow.', 429, cors)
+  if (await budgetLeft(env, config) < 1) return fail('budget_exhausted', 'Today’s free generation limit has been reached. Try again tomorrow.', 429, cors)
   const geminiKey = env.GEMINI_API_KEY?.trim()
   if (!geminiKey) return fail('server', 'Cairn is not configured with an AI key yet.', 503, cors)
 
   await chargeBudget(env)
   try {
     const result = await refineWithGemini(config, geminiKey, plan, action, question)
-    const credits = await spendOne(env, address)
-    if (!credits) return fail('payment_required', 'Payment is required to use planner actions.', 402, cors, { price })
-    return json({ ...result, credits }, 200, cors)
+    return json(result, 200, cors)
   } catch (error) {
     return generationFailure(error, 'The AI returned an incomplete follow up. Try again.', cors)
   }

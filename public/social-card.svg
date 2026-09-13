@@ -12,5 +12,5 @@
   <text x="76" y="382" fill="#151713" font-family="Georgia,'Times New Roman',serif" font-size="40">Map the idea before you build it.</text>
   <text x="76" y="460" fill="#2457d6" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="28" font-weight="700">01 PLAN   02 FLOW   03 BUILD   04 TRACK</text>
   <line x1="76" y1="520" x2="1124" y2="520" stroke="#b8b0a1" stroke-width="3" />
-  <text x="76" y="566" fill="#565d54" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif" font-size="23">A product atlas with native NIM payment</text>
+  <text x="76" y="566" fill="#565d54" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif" font-size="23">Free product planning with Nimiq wallet support</text>
 </svg>

@@ -1,11 +1,10 @@
 <script setup lang="ts">
 /**
- * The pay sheet. Appears only when a generation was actually refused for want of
- * credits, so it is never the first thing anyone sees.
+ * The optional NIM support sheet. Planning never opens this sheet as a gate.
  *
  * One payment buys a bundle, not a single plan, because every wallet call opens a
- * native confirmation dialog that an app cannot suppress — charging per plan would
- * mean a system prompt between every idea and its result.
+ * native confirmation dialog that an app cannot suppress. The same verified
+ * receipt path also recovers older Cairn payments without asking for a second one.
  *
  * The price comes from the server. Nothing here hardcodes an amount: NIM moves,
  * and the pitch is that a bundle costs about what the inference costs.
@@ -49,9 +48,6 @@ function dismiss(): void {
   if (canDismiss.value) emit('close')
 }
 
-function perPlan(quote: PriceQuote): string {
-  return formatNim(Math.round(quote.priceLuna / Math.max(quote.plans, 1)))
-}
 </script>
 
 <template>
@@ -63,11 +59,12 @@ function perPlan(quote: PriceQuote): string {
       <div class="grabber" aria-hidden="true"></div>
 
       <h2 id="pay-title" class="title">
-        Unlock Cairn
+        Support Cairn
       </h2>
 
       <p class="body muted">
-        Payment is required for AI planning. One NIM payment buys a bundle of planner actions. No subscription.
+        Cairn is free to use. If the planner helps, you can optionally send 1 NIM through Nimiq Pay.
+        Sending NIM is never required to generate or refine a plan.
       </p>
 
       <template v-if="price">
@@ -77,8 +74,8 @@ function perPlan(quote: PriceQuote): string {
             <span class="unit">NIM</span>
           </div>
           <p class="quote__for">
-            buys <strong>{{ price.plans }} AI actions</strong>
-            <span class="faint"> · about {{ perPlan(price) }} NIM per action</span>
+            optional contribution
+            <span class="faint"> · no access required</span>
           </p>
         </div>
 
@@ -128,7 +125,7 @@ function perPlan(quote: PriceQuote): string {
       </div>
 
       <p class="fine faint">
-        Credits are held against your wallet address. Payment goes straight from your wallet to Cairn’s receiving address.
+        Payment goes straight from your wallet to Cairn’s receiving address. Existing receipts are checked once and never charged twice.
       </p>
     </div>
   </div>
