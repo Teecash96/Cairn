@@ -85,30 +85,38 @@ onMounted(() => {
         <button id="refine-cancel" type="button" class="icon-btn" aria-label="Close" :disabled="busy" @click="dismiss">×</button>
       </header>
 
-      <div v-if="busy" class="refine-loading" role="status" aria-live="polite">
-        <span class="dot" aria-hidden="true" />
-        <p>Reading the current plan and finding the smallest useful change…</p>
-      </div>
+      <Transition name="refine-state" mode="out-in">
+        <div v-if="busy" key="loading" class="refine-loading" role="status" aria-live="polite">
+          <span class="dot" aria-hidden="true" />
+          <div>
+            <strong>Tracing the impact</strong>
+            <p>Reading the current plan and finding the smallest useful change…</p>
+          </div>
+        </div>
 
-      <form v-else-if="(action === 'custom' || action === 'change_plan') && !answer && !explanation" class="refine-question" @submit.prevent="submitQuestion">
-        <label class="field">
-          <span class="field__label">{{ isPlanChange ? 'What changed?' : 'What should Cairn look at?' }}</span>
-          <textarea
-            id="refine-question"
-            v-model="question"
-            class="textarea"
-            rows="4"
-            minlength="8"
-            maxlength="500"
-            :placeholder="isPlanChange ? 'For example: guests should be able to try the app before connecting a wallet.' : 'For example: what is the smallest way to test whether people will pay for this?'"
-          />
-        </label>
-        <button type="submit" class="btn btn--primary btn--block" :disabled="!questionReady || busy">
-          {{ busy ? 'Thinking…' : isPlanChange ? 'Preview update' : 'Ask Cairn' }}
-        </button>
-      </form>
+        <form v-else-if="(action === 'custom' || action === 'change_plan') && !answer && !explanation" key="question" class="refine-question" @submit.prevent="submitQuestion">
+          <div v-if="isPlanChange" class="change-promise">
+            <strong>One change, one connected update.</strong>
+            <p>Cairn will trace the affected requirements, build tasks, and saved tracker work before anything changes.</p>
+          </div>
+          <label class="field">
+            <span class="field__label">{{ isPlanChange ? 'What changed?' : 'What should Cairn look at?' }}</span>
+            <textarea
+              id="refine-question"
+              v-model="question"
+              class="textarea"
+              rows="4"
+              minlength="8"
+              maxlength="500"
+              :placeholder="isPlanChange ? 'For example: guests should be able to try the app before connecting a wallet.' : 'For example: what is the smallest way to test whether people will pay for this?'"
+            />
+          </label>
+          <button type="submit" class="btn btn--primary btn--block" :disabled="!questionReady || busy">
+            {{ busy ? 'Thinking…' : isPlanChange ? 'Preview update' : 'Ask Cairn' }}
+          </button>
+        </form>
 
-      <div v-else class="refine-result">
+        <div v-else key="result" class="refine-result">
         <p v-if="answer" class="answer">{{ answer }}</p>
         <p v-if="explanation" class="muted refine-result__intro">{{ explanation }}</p>
 
@@ -157,7 +165,8 @@ onMounted(() => {
           <button v-if="hasChanges" type="button" class="btn btn--primary btn--block" :disabled="!canApply" @click="applyChanges">Apply changes</button>
           <button v-else type="button" class="btn btn--primary btn--block" :disabled="busy" @click="emit('cancel')">Done</button>
         </div>
-      </div>
+        </div>
+      </Transition>
     </section>
   </div>
 </template>
@@ -179,10 +188,14 @@ onMounted(() => {
 .icon-btn { display: grid; flex: 0 0 40px; place-items: center; width: 40px; height: 40px; border-radius: 50%; color: var(--text-muted); font-size: 28px; line-height: 1; }
 .icon-btn:hover { background: var(--surface-sunken); color: var(--text); }
 .refine-question, .refine-result { display: flex; flex-direction: column; gap: var(--s4); }
-.refine-loading { display: flex; align-items: center; gap: var(--s3); min-height: 100px; color: var(--text-muted); font-size: var(--text-md); line-height: var(--leading); }
+.refine-loading { display: flex; align-items: center; gap: var(--s3); min-height: 112px; padding: var(--s4); border: 1px solid var(--accent-line); border-radius: var(--r-md); background: var(--accent-subtle); color: var(--text-muted); font-size: var(--text-md); line-height: var(--leading); }
+.refine-loading strong { display: block; margin-bottom: var(--s1); color: var(--text); }
 .dot { flex: 0 0 10px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { opacity: .35; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
 .refine-question .textarea { min-height: 112px; }
+.change-promise { display: grid; gap: var(--s1); padding: var(--s4); border: 1px solid var(--sage-line); border-radius: var(--r-md); background: var(--sage-subtle); }
+.change-promise strong { font-size: var(--text-md); }
+.change-promise p { color: var(--text-muted); font-size: var(--text-sm); line-height: var(--leading); }
 .answer { padding: var(--s4); border: 1px solid var(--accent-line); border-radius: var(--r-md); background: var(--accent-subtle); font-size: var(--text-md); line-height: var(--leading); }
 .refine-result__intro { font-size: var(--text-md); line-height: var(--leading); }
 .proposed { display: flex; flex-direction: column; gap: var(--s3); padding: var(--s4); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-sunken); }
@@ -195,6 +208,14 @@ onMounted(() => {
 .refine-result__note { font-size: var(--text-xs); line-height: var(--leading); }
 .empty-result { padding: var(--s4); border: 1px dashed var(--line-strong); border-radius: var(--r-md); font-size: var(--text-sm); line-height: var(--leading); }
 .sheet__actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
+.refine-state-enter-active { transition: opacity var(--duration-fast) var(--ease-smooth-out), transform var(--duration-fast) var(--ease-smooth-out), filter var(--duration-fast) var(--ease-smooth-out); }
+.refine-state-leave-active { transition: opacity var(--duration-quick) var(--ease-in-out), transform var(--duration-quick) var(--ease-in-out), filter var(--duration-quick) var(--ease-in-out); }
+.refine-state-enter-from { opacity: 0; transform: translateY(var(--distance-base)); filter: blur(var(--blur-small)); }
+.refine-state-leave-to { opacity: 0; transform: translateY(calc(var(--distance-micro) * -1)); filter: blur(var(--blur-small)); }
 @media (max-width: 24rem) { .sheet__actions { grid-template-columns: 1fr; } }
-@media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .dot { animation: none; }
+  .refine-state-enter-active,
+  .refine-state-leave-active { transition: none; }
+}
 </style>

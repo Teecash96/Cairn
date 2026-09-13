@@ -248,6 +248,25 @@ function newMilestone(): void {
       </div>
     </section>
 
+    <section v-if="!teamMode" class="next-work" aria-labelledby="next-work-heading">
+      <div class="next-work__heading">
+        <div>
+          <p class="eyebrow">Your next move</p>
+          <h3 id="next-work-heading">{{ recommendation ? 'Keep the momentum' : stats.totalTasks === 0 ? 'Add your first task' : stats.completedTasks === stats.totalTasks ? 'All tasks complete' : 'Resolve a blocker to continue' }}</h3>
+        </div>
+        <span v-if="recommendation" class="next-work__status">{{ TASK_STATUS_LABEL[recommendation.task.status] }}</span>
+      </div>
+      <template v-if="recommendation">
+        <p class="next-work__task">{{ recommendation.task.text }}</p>
+        <p class="muted next-work__reason">{{ recommendation.milestone.title }} · {{ recommendation.reason }}</p>
+        <div v-if="!readOnly && editing" class="next-work__actions">
+          <button type="button" class="btn btn--primary" @click="cycleStatus(recommendation.task)">{{ recommendation.task.status === 'todo' ? 'Start task' : 'Mark complete' }}</button>
+          <button type="button" class="btn btn--secondary" @click="openTask(recommendation.milestone.id, recommendation.task)">Edit details</button>
+        </div>
+      </template>
+      <p v-else class="muted">{{ stats.totalTasks === 0 ? 'Create a milestone and add the work needed for your first release.' : stats.completedTasks === stats.totalTasks ? 'Review your acceptance tests before releasing.' : 'Remaining tasks have unfinished dependencies or belong to a blocked milestone.' }}</p>
+    </section>
+
     <div class="stat-grid" aria-label="Project status">
       <div class="stat"><strong>{{ stats.totalTasks }}</strong><span>Tasks</span></div>
       <div class="stat"><strong>{{ stats.blockedTasks + stats.blockedMilestones }}</strong><span>Blocked</span></div>
@@ -256,16 +275,6 @@ function newMilestone(): void {
     <div class="progress-track" role="progressbar" :aria-valuenow="stats.progress" aria-valuemin="0" aria-valuemax="100" aria-label="Project progress">
       <span class="progress-track__fill" :style="{ width: `${stats.progress}%` }" />
     </div>
-
-    <section v-if="!teamMode" class="next-work" aria-labelledby="next-work-heading">
-      <h3 id="next-work-heading">{{ recommendation ? 'Next recommended task' : stats.totalTasks === 0 ? 'Add your first task' : stats.completedTasks === stats.totalTasks ? 'All tasks complete' : 'Resolve a blocker to continue' }}</h3>
-      <template v-if="recommendation">
-        <p>{{ recommendation.task.text }}</p>
-        <p class="muted">{{ recommendation.milestone.title }} · {{ recommendation.reason }}</p>
-        <button v-if="!readOnly && editing" type="button" class="btn btn--secondary" @click="openTask(recommendation.milestone.id, recommendation.task)">Open task</button>
-      </template>
-      <p v-else class="muted">{{ stats.totalTasks === 0 ? 'Create a milestone and add the work needed for your first release.' : stats.completedTasks === stats.totalTasks ? 'Review your acceptance tests before releasing.' : 'Remaining tasks have unfinished dependencies or belong to a blocked milestone.' }}</p>
-    </section>
 
     <div class="view-toggle" role="group" aria-label="Tracker view">
       <button type="button" class="toggle" :class="{ 'toggle--on': view === 'board' }" :aria-pressed="view === 'board'" @click="view = 'board'">Board</button>
@@ -401,11 +410,15 @@ function newMilestone(): void {
 </template>
 
 <style scoped>
-.next-work { display: grid; gap: var(--s3); padding: var(--s4); background: var(--accent-subtle); border: 1px solid var(--accent-line); border-radius: var(--r-md); overflow-wrap: anywhere; }
-.next-work h3 { font-size: 1rem; }
-.next-work p { font-size: 1rem; line-height: var(--leading); }
-.next-work .muted { font-size: .875rem; }
-.next-work button { justify-self: start; }
+.next-work { display: grid; gap: var(--s3); padding: clamp(var(--s4), 4vw, var(--s6)); background: var(--sage-subtle); border: 1px solid var(--sage-line); border-radius: var(--r-lg); box-shadow: var(--shadow-card); overflow-wrap: anywhere; }
+.next-work__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s3); }
+.next-work__heading .eyebrow { margin-bottom: var(--s1); color: var(--sage-strong); }
+.next-work h3 { font-size: clamp(var(--text-lg), 4vw, var(--text-xl)); letter-spacing: -.025em; }
+.next-work__status { flex: 0 0 auto; padding: 6px 10px; border: 1px solid var(--sage-line); border-radius: var(--r-full); background: var(--surface); color: var(--sage-strong); font-size: var(--text-xs); font-weight: 750; }
+.next-work__task { max-width: 46rem; font-size: clamp(var(--text-md), 3.5vw, 1.25rem); font-weight: 700; line-height: 1.42; }
+.next-work__reason { font-size: var(--text-sm); line-height: var(--leading); }
+.next-work__actions { display: flex; flex-wrap: wrap; gap: var(--s2); padding-top: var(--s1); }
+.next-work__actions .btn { min-width: 9rem; }
 .tracker { display: flex; flex-direction: column; gap: var(--s4); }
 .eyebrow { margin: 0 0 var(--s1); color: var(--accent); font-size: var(--text-xs); font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
 .tracker-summary { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s4); }
@@ -418,7 +431,7 @@ function newMilestone(): void {
 .stat strong { font-size: var(--text-lg); }
 .stat span { color: var(--text-muted); font-size: var(--text-xs); }
 .progress-track { height: 6px; overflow: hidden; border-radius: var(--r-full); background: var(--surface-sunken); }
-.progress-track__fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 220ms ease; }
+.progress-track__fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width var(--duration-fast) var(--ease-smooth-out); }
 .view-toggle { display: flex; gap: var(--s1); padding: 3px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-sunken); }
 .toggle { flex: 1; min-height: 38px; border-radius: var(--r-sm); color: var(--text-muted); font-size: var(--text-sm); font-weight: 650; }
 .toggle--on { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(16 18 27 / 7%); }

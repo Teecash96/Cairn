@@ -1007,52 +1007,64 @@ function ownIt(): void {
   </Workspace>
 
   <template v-else>
-    <NewPlan
-      v-if="view === 'new'"
-      :key="formKey"
-      :busy="generating"
-      :support-busy="supportLoading"
-      :initial="formInitial"
-      @submit="generate"
-      @example="openExample"
-      @support="openSupport"
-    />
+    <Transition name="app-page" mode="out-in">
+      <NewPlan
+        v-if="view === 'new'"
+        :key="`new-${formKey}`"
+        :busy="generating"
+        :support-busy="supportLoading"
+        :initial="formInitial"
+        @submit="generate"
+        @example="openExample"
+        @support="openSupport"
+      />
 
-    <Workspace
-      v-else-if="view === 'workspace' && current"
-      :plan="current"
-      :sharing="sharing"
-      :regenerating="generating"
-      :refining="refineBusy"
-      :team-panel="ownerTeamPanel"
-      :team-syncing="teamSyncing"
-      @back="back"
-      @share="share"
-      @regenerate="current && generate(current.input, current.id)"
-      @refine="openRefine"
-      @remove="current && remove(current.id)"
-      @team-open="openTeamPanel"
-      @team-create="createOwnerTeam"
-      @team-add="addOwnerMember"
-      @team-update="updateOwnerMember"
-      @team-remove="removeOwnerMember"
-      @team-copy="copyTeamInvite"
-      @track-change="onTrackChange"
-      @notify="notify"
-    />
+      <Workspace
+        v-else-if="view === 'workspace' && current"
+        :key="`workspace-${current.id}`"
+        :plan="current"
+        :sharing="sharing"
+        :regenerating="generating"
+        :refining="refineBusy"
+        :team-panel="ownerTeamPanel"
+        :team-syncing="teamSyncing"
+        @back="back"
+        @share="share"
+        @regenerate="current && generate(current.input, current.id)"
+        @refine="openRefine"
+        @remove="current && remove(current.id)"
+        @team-open="openTeamPanel"
+        @team-create="createOwnerTeam"
+        @team-add="addOwnerMember"
+        @team-update="updateOwnerMember"
+        @team-remove="removeOwnerMember"
+        @team-copy="copyTeamInvite"
+        @track-change="onTrackChange"
+        @notify="notify"
+      />
 
-    <Library
-      v-else
-      :plans="plans"
-      :persistent="persistent"
-      @open="open"
-      @create="goNew()"
-      @remove="remove"
-      @rename="rename"
-    />
+      <Library
+        v-else
+        key="library"
+        :plans="plans"
+        :persistent="persistent"
+        @open="open"
+        @create="goNew()"
+        @remove="remove"
+        @rename="rename"
+      />
+    </Transition>
   </template>
 
-  <nav class="nav" aria-label="Main">
+  <nav
+    class="nav"
+    :class="{
+      'nav--new': view === 'new' && !shared,
+      'nav--projects': !shared && (view === 'library' || view === 'workspace' || Boolean(teamPlan)),
+    }"
+    aria-label="Main"
+  >
+    <span class="nav__indicator" aria-hidden="true" />
     <button
       type="button"
       class="nav__item"
@@ -1069,14 +1081,14 @@ function ownIt(): void {
           stroke-linecap="round"
         />
       </svg>
-      Map
+      New
     </button>
 
     <button
       type="button"
       class="nav__item"
-      :class="{ 'nav__item--on': view === 'library' && !shared }"
-      :aria-current="view === 'library' && !shared ? 'page' : undefined"
+      :class="{ 'nav__item--on': !shared && (view === 'library' || view === 'workspace' || Boolean(teamPlan)) }"
+      :aria-current="!shared && (view === 'library' || view === 'workspace' || Boolean(teamPlan)) ? 'page' : undefined"
       @click="goLibrary"
     >
       <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" focusable="false">
@@ -1084,34 +1096,38 @@ function ownIt(): void {
           <path d="M4 6h12M4 10h12M4 14h8" />
         </g>
       </svg>
-      Routes
+      Projects
       <span v-if="plans.length" class="nav__count mono">{{ plans.length }}</span>
     </button>
   </nav>
 
-  <RefineSheet
-    v-if="refineOpen && current"
-    :plan="current"
-    :action="refineAction"
-    :explanation="refineExplanation"
-    :answer="refineAnswer"
-    :changes="refineChanges"
-    :busy="refineBusy"
-    @submit="submitRefinement"
-    @cancel="closeRefinement"
-  />
+  <Transition name="sheet-reveal">
+    <RefineSheet
+      v-if="refineOpen && current"
+      :plan="current"
+      :action="refineAction"
+      :explanation="refineExplanation"
+      :answer="refineAnswer"
+      :changes="refineChanges"
+      :busy="refineBusy"
+      @submit="submitRefinement"
+      @cancel="closeRefinement"
+    />
+  </Transition>
 
-  <PaySheet
-    v-if="payOpen"
-    :price="price"
-    :state="payState"
-    :error="payError"
-    :pending="Boolean(pendingReceipt)"
-    :pending-message="paymentPendingMessage"
-    :retrying="Boolean(pendingReceipt)"
-    @pay="pay"
-    @close="closePay"
-  />
+  <Transition name="sheet-reveal">
+    <PaySheet
+      v-if="payOpen"
+      :price="price"
+      :state="payState"
+      :error="payError"
+      :pending="Boolean(pendingReceipt)"
+      :pending-message="paymentPendingMessage"
+      :retrying="Boolean(pendingReceipt)"
+      @pay="pay"
+      @close="closePay"
+    />
+  </Transition>
 
   <Toast :message="toast" :tone="toastTone" />
 </template>
@@ -1121,39 +1137,62 @@ function ownIt(): void {
 
 .nav {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  left: 50%;
+  bottom: calc(var(--safe-bottom) + var(--s3));
   z-index: 40;
-  display: flex;
-  /* The bar is --nav-h tall; the inset is extra, below it. */
-  height: calc(var(--nav-h) + var(--safe-bottom));
-  padding-bottom: var(--safe-bottom);
-  background: var(--ink);
-  border-top: 3px solid var(--nim);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: min(18rem, calc(100vw - 2rem));
+  height: var(--nav-h);
+  padding: 4px;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  box-shadow: var(--shadow-float);
+  transform: translateX(-50%);
+  isolation: isolate;
 }
 
+.nav__indicator {
+  position: absolute;
+  z-index: -1;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 8px) / 2);
+  background: var(--accent);
+  border-radius: 14px;
+  opacity: 0;
+  transition: transform var(--tabs-dur) var(--tabs-ease), opacity var(--duration-quick) var(--ease-in-out);
+}
+
+.nav--new .nav__indicator { opacity: 1; transform: translateX(0); }
+.nav--projects .nav__indicator { opacity: 1; transform: translateX(100%); }
+
 .nav__item {
-  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--s2);
+  min-width: 0;
+  border-radius: 14px;
   font-size: var(--text-sm);
   font-weight: 700;
-  color: #b9beb5;
+  color: var(--text-muted);
+  transition: color var(--duration-quick) var(--ease-in-out), transform var(--duration-quick) var(--ease-smooth-out);
 }
 
 .nav__item--on {
-  color: #fffdf7;
-  background: #2457d6;
+  color: var(--accent-on);
 }
+
+.nav__item:active { transform: scale(.97); }
 
 .nav__count {
   padding: 1px var(--s2);
   border-radius: var(--r-full);
-  background: rgb(255 255 255 / .12);
-  border: 1px solid rgb(255 255 255 / .18);
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
   font-size: var(--text-xs);
   font-weight: 650;
   color: inherit;
