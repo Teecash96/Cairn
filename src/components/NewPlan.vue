@@ -139,7 +139,7 @@ function submit(): void {
         and the next useful move.
       </p>
 
-      <button type="button" class="btn btn--secondary" :disabled="busy" @click="emit('example')">Explore a sample plan · no wallet needed</button>
+      <button type="button" class="btn btn--secondary" :disabled="busy" @click="emit('example')">Explore a sample plan</button>
 
       <ol class="route-preview" aria-label="Cairn maps an idea into a plan, flow, build path, and tracker">
         <li class="route-preview__stop route-preview__stop--active"><span>01</span>Idea</li>
