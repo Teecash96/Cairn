@@ -51,7 +51,7 @@ describe('browser Nimiq checkout', () => {
     const payment = await sendPaymentInBrowser(
       'NQ recipient',
       100_000,
-      'Cairn AI credits',
+      'Optional support for Cairn',
       'NQ authenticated',
     )
 

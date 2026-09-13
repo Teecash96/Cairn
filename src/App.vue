@@ -772,7 +772,7 @@ async function pay(): Promise<void> {
     }
   }
 
-  const payment = await session.pay(quote.payTo, quote.priceLuna, 'Cairn AI credits')
+  const payment = await session.pay(quote.payTo, quote.priceLuna, 'Optional support for Cairn')
   if (!payment) {
     payState.value = 'idle'
     payError.value = session.lastError.value ?? 'Payment was not completed.'
