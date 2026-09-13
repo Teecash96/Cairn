@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createExamplePlan } from '../../src/lib/example.ts'
-import { refinementDifferences, removedRefinementTasks, mergeRefinement } from '../../src/lib/refinement.ts'
+import { refinementDifferences, refinementImpact, removedRefinementTasks, mergeRefinement } from '../../src/lib/refinement.ts'
 import { recommendedTask } from '../../src/lib/tracker.ts'
 import type { PlanChanges } from '../../src/lib/plan.ts'
 
@@ -72,4 +72,47 @@ test('unchanged proposals produce no differences and each sample has independent
   const second = createExamplePlan()
   assert.notEqual(first.id, second.id)
   assert.equal(second.build.milestones[0]!.tasks[0]!.status, 'todo')
+})
+
+test('change plan impact traces one requirement across the flow, build, and tracker', () => {
+  const plan = createExamplePlan()
+  const completed = plan.build.milestones[1]!.tasks[0]!
+  completed.status = 'done'
+  completed.notes = 'Keep this implementation note private'
+  const original = JSON.stringify(plan)
+  const requirement = 'Guests should be able to try the app before connecting a wallet.'
+  const changes: PlanChanges = {
+    prd: {
+      userStories: [...plan.prd.userStories, 'As a guest, I can try the app before connecting a wallet.'],
+      successCriteria: [...plan.prd.successCriteria, 'A guest can try the core path before wallet connection.'],
+    },
+    flow: plan.flow.map((step, index) => index === 1
+      ? { ...step, title: 'Try as a guest', action: requirement, result: 'The guest path is available before wallet connection.' }
+      : step),
+    build: {
+      mvpScope: [...plan.build.mvpScope, 'A guest path before wallet connection'],
+      milestones: plan.build.milestones.map((milestone, index) => index === 1
+        ? { title: milestone.title, outcome: milestone.outcome, tasks: [...milestone.tasks.map((task) => task.text), 'Add guest access before wallet connection.'] }
+        : { title: milestone.title, outcome: milestone.outcome, tasks: milestone.tasks.map((task) => task.text) }),
+      acceptanceTests: [...plan.build.acceptanceTests, 'A guest can try the core path before connecting a wallet.'],
+      nextAction: 'Test the guest path with one new user.',
+    },
+  }
+
+  const impact = refinementImpact(plan, changes)
+  assert.ok(impact.sections.includes('Product requirements'))
+  assert.ok(impact.sections.includes('User flow'))
+  assert.ok(impact.sections.includes('Build milestones and tasks'))
+  assert.ok(impact.sections.includes('Acceptance tests'))
+  assert.equal(impact.preservedTasks, 10)
+  assert.deepEqual(impact.addedTasks.map((task) => task.text), ['Add guest access before wallet connection.'])
+  assert.ok(!JSON.stringify(impact).includes(completed.notes))
+
+  const updated = mergeRefinement(plan, changes)
+  const retained = updated.build.milestones[1]!.tasks.find((task) => task.id === completed.id)
+  assert.equal(retained?.status, 'done')
+  assert.equal(retained?.notes, completed.notes)
+  assert.equal(updated.flow[1]?.title, 'Try as a guest')
+  assert.equal(updated.build.nextAction, 'Test the guest path with one new user.')
+  assert.equal(JSON.stringify(plan), original)
 })

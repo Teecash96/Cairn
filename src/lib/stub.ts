@@ -289,6 +289,48 @@ export function stubRefinement(plan: Plan, action: RefineAction, question?: stri
     }
   }
 
+  if (action === 'change_plan') {
+    const requirement = question?.trim() || 'the new product requirement'
+    const label = requirement.length > 100 ? `${requirement.slice(0, 97)}…` : requirement
+    const guestFeature = `Support this change: ${label}`
+    const nextFeatures = [...plan.prd.coreFeatures.filter((item) => item !== guestFeature), guestFeature].slice(-5)
+    const nextStories = [...plan.prd.userStories, `As a user, I can use the product after this change: ${label}`].slice(-5)
+    const nextCriteria = [...plan.prd.successCriteria, `The changed requirement works without breaking the core path: ${label}`].slice(-5)
+    const actionIndex = plan.flow.findIndex((step) => step.kind === 'action')
+    const nextFlow = plan.flow.map((step, index) => index === actionIndex
+      ? {
+          ...step,
+          title: 'Run the changed path',
+          action: `Use the product after this requirement changed: ${label}`,
+          result: 'The flow shows the new requirement before the user reaches the existing decision.',
+        }
+      : step)
+    const newTask = `Define and test the changed requirement: ${label}`
+    const nextMilestones = plan.build.milestones.map((milestone, index) => (
+      index === 0 && milestone.tasks.length < 4
+        ? { title: milestone.title, outcome: milestone.outcome, tasks: [...milestone.tasks.map((task) => task.text), newTask] }
+        : { title: milestone.title, outcome: milestone.outcome, tasks: milestone.tasks.map((task) => task.text) }
+    ))
+
+    return {
+      explanation: 'Local preview: the requirement is traced through the product brief, user flow, build work, and acceptance tests before you apply it.',
+      changes: {
+        prd: {
+          coreFeatures: nextFeatures,
+          userStories: nextStories,
+          successCriteria: nextCriteria,
+        },
+        flow: nextFlow,
+        build: {
+          mvpScope: [...plan.build.mvpScope, `Validate the changed requirement: ${label}`].slice(-5),
+          milestones: nextMilestones,
+          acceptanceTests: [...plan.build.acceptanceTests, `A user can complete the changed path: ${label}`].slice(-5),
+          nextAction: `Test the changed requirement with one real user: ${label}`,
+        },
+      },
+    }
+  }
+
   return {
     answer: `Local preview answer: test "${question?.trim() || 'the next decision'}" with one real person before adding more scope.`,
     explanation: 'This is a local preview. The deployed Worker will answer from the current plan only.',

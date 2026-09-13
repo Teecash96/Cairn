@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import type { RefineAction } from '../lib/api'
 import type { Plan, PlanChanges } from '../lib/plan'
-import { refinementDifferences, removedRefinementTasks } from '../lib/refinement'
+import { refinementDifferences, refinementImpact, removedRefinementTasks } from '../lib/refinement'
 
 const {
   action,
@@ -30,37 +30,25 @@ const acknowledgeRemoval = ref(false)
 watch(() => changes, () => { acknowledgeRemoval.value = false })
 const differences = computed(() => changes ? refinementDifferences(plan, changes) : [])
 const removedTasks = computed(() => changes ? removedRefinementTasks(plan, changes) : [])
+const impact = computed(() => changes ? refinementImpact(plan, changes) : null)
 const canApply = computed(() => !busy && (!removedTasks.value.length || acknowledgeRemoval.value))
 const labels: Record<RefineAction, string> = {
   cut_mvp_scope: 'Cut MVP scope',
   break_into_tasks: 'Break work into smaller tasks',
   find_missing_risks: 'Find missing risks',
   improve_acceptance_tests: 'Improve acceptance tests',
+  change_plan: 'Change the plan, update the build',
   custom: 'Ask Cairn a question',
 }
 
 const title = computed(() => labels[action])
-const hasChanges = computed(() => {
-  if (!changes) return false
-  return Boolean(
-    changes.prd ||
-      changes.flow ||
-      changes.build ||
-      changes.realityCheck,
-  )
-})
+const isPlanChange = computed(() => action === 'change_plan')
+const hasChanges = computed(() => differences.value.length > 0)
 
 const changeLabels = computed(() => {
   if (!changes) return []
   const labels: string[] = []
-  if (changes.prd) labels.push('PRD sections')
-  if (changes.flow) labels.push('User flow')
-  if (changes.build?.mvpScope) labels.push('MVP scope')
-  if (changes.build?.milestones) labels.push('Milestones and tasks')
-  if (changes.build?.risks) labels.push('Risks')
-  if (changes.build?.acceptanceTests) labels.push('Acceptance tests')
-  if (changes.build?.nextAction) labels.push('Next action')
-  if (changes.realityCheck) labels.push('Reality check')
+  for (const section of impact.value?.sections ?? []) labels.push(section)
   return labels
 })
 
@@ -80,7 +68,7 @@ function dismiss(): void {
 }
 
 onMounted(() => {
-  if (action === 'custom') document.getElementById('refine-question')?.focus()
+  if (action === 'custom' || action === 'change_plan') document.getElementById('refine-question')?.focus()
   else document.getElementById('refine-cancel')?.focus()
 })
 </script>
@@ -102,9 +90,9 @@ onMounted(() => {
         <p>Reading the current plan and finding the smallest useful change…</p>
       </div>
 
-      <form v-else-if="action === 'custom' && !answer && !explanation" class="refine-question" @submit.prevent="submitQuestion">
+      <form v-else-if="(action === 'custom' || action === 'change_plan') && !answer && !explanation" class="refine-question" @submit.prevent="submitQuestion">
         <label class="field">
-          <span class="field__label">What should Cairn look at?</span>
+          <span class="field__label">{{ isPlanChange ? 'What changed?' : 'What should Cairn look at?' }}</span>
           <textarea
             id="refine-question"
             v-model="question"
@@ -112,11 +100,11 @@ onMounted(() => {
             rows="4"
             minlength="8"
             maxlength="500"
-            placeholder="For example: what is the smallest way to test whether people will pay for this?"
+            :placeholder="isPlanChange ? 'For example: guests should be able to try the app before connecting a wallet.' : 'For example: what is the smallest way to test whether people will pay for this?'"
           />
         </label>
         <button type="submit" class="btn btn--primary btn--block" :disabled="!questionReady || busy">
-          {{ busy ? 'Thinking…' : 'Ask Cairn' }}
+          {{ busy ? 'Thinking…' : isPlanChange ? 'Preview update' : 'Ask Cairn' }}
         </button>
       </form>
 
@@ -126,10 +114,26 @@ onMounted(() => {
 
         <div v-if="hasChanges" class="proposed">
           <div class="section-heading">
-            <h3>Proposed changes</h3>
+            <h3>{{ isPlanChange ? 'Proposed plan update' : 'Proposed changes' }}</h3>
             <span class="badge badge--accent">Preview</span>
           </div>
-          <ul class="clean-list">
+          <div v-if="isPlanChange && impact" class="impact" aria-labelledby="impact-heading">
+            <div class="section-heading">
+              <h4 id="impact-heading">What will move together</h4>
+              <span class="badge">Impact</span>
+            </div>
+            <ul class="clean-list">
+              <li v-for="section in impact.sections" :key="section">{{ section }}</li>
+            </ul>
+            <p v-if="impact.preservedTasks" class="faint impact__note">{{ impact.preservedTasks }} existing task{{ impact.preservedTasks === 1 ? '' : 's' }} keep their IDs and saved tracker state.</p>
+            <div v-if="impact.addedTasks.length" class="impact__tasks">
+              <p class="eyebrow">New build work</p>
+              <ul class="clean-list clean-list--muted">
+                <li v-for="task in impact.addedTasks" :key="`added-${task.text}`">{{ task.text }}</li>
+              </ul>
+            </div>
+          </div>
+          <ul v-if="!isPlanChange" class="clean-list">
             <li v-for="label in changeLabels" :key="label">{{ label }}</li>
           </ul>
           <details v-for="difference in differences" :key="difference.label" class="change-detail">
@@ -183,6 +187,11 @@ onMounted(() => {
 .refine-result__intro { font-size: var(--text-md); line-height: var(--leading); }
 .proposed { display: flex; flex-direction: column; gap: var(--s3); padding: var(--s4); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-sunken); }
 .proposed h3 { font-size: var(--text-md); }
+.impact { display: flex; flex-direction: column; gap: var(--s3); padding: var(--s3); border: 1px solid var(--accent-line); border-radius: var(--r-md); background: var(--accent-subtle); }
+.impact h4 { font-size: var(--text-sm); }
+.impact__note { font-size: var(--text-xs); line-height: var(--leading); }
+.impact__tasks { display: flex; flex-direction: column; gap: var(--s2); padding-top: var(--s2); border-top: 1px solid var(--accent-line); }
+.impact__tasks .eyebrow { margin: 0; }
 .refine-result__note { font-size: var(--text-xs); line-height: var(--leading); }
 .empty-result { padding: var(--s4); border: 1px dashed var(--line-strong); border-radius: var(--r-md); font-size: var(--text-sm); line-height: var(--leading); }
 .sheet__actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }

@@ -271,6 +271,9 @@ function actionInstruction(action: RefineAction, question?: string): string {
   if (action === 'break_into_tasks') return 'Break the current milestones into smaller, observable tasks. Return replacement milestones only. Keep 8 to 12 total tasks.'
   if (action === 'find_missing_risks') return 'Find the most important untested risks. Return risks and exactly 3 realityCheck items. Do not rewrite unrelated fields.'
   if (action === 'improve_acceptance_tests') return 'Rewrite acceptance tests so they are observable and falsifiable. Return acceptanceTests only, with up to 5 items.'
+  if (action === 'change_plan') {
+    return `A product requirement or direction changed: "${question ?? ''}". Treat this as a cross-artifact update. Identify the affected product requirements, user flow steps, MVP scope, build milestones and tasks, acceptance tests, risks, and next action. Return every affected field together so the builder pack and tracker stay aligned. Keep unrelated fields out of changes. Preserve the exact text of every unchanged task and milestone. The explanation must name the affected artifacts and why.`
+  }
   return `Answer this question directly for the builder. If a change would materially help, include only that targeted change in changes. Question: ${question ?? ''}`
 }
 
@@ -283,7 +286,7 @@ Rules:
 3. Never return task ids or done/completion flags. The client owns both.
 4. Keep practical MVP planning. Do not add Scrum or enterprise process language.
 5. Return only valid JSON. No markdown fences and no commentary.
-6. When a requirement changes, consider its effects on the PRD, user flow, MVP scope, milestones, acceptance tests, and next action. Include affected fields together so the plan stays consistent; leave unrelated fields alone. Explain the impact.
+6. When a requirement changes, consider its effects on the PRD, user flow, MVP scope, milestones, acceptance tests, and next action. Include affected fields together so the plan stays consistent; leave unrelated fields alone. Explain the impact. For the change_plan action, this consistency check is the main task.
 7. Preserve the exact text of unchanged tasks and titles of unchanged milestones, even when moving them. Text is used to retain local progress. Rename or remove work only when the requested change requires it, and explain replacements.
 
 Action: ${action}

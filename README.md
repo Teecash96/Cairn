@@ -58,9 +58,15 @@ session and no payment wall.
 
 ### Planner follow ups
 
-The Build tab has four quick actions: cut MVP scope, break work into smaller
-tasks, find missing risks, and improve acceptance tests. You can also ask a
-custom question. Cairn shows targeted changes in a preview before applying them.
+The Build tab has a **Change the plan, update the build** action plus four quick
+actions: cut MVP scope, break work into smaller tasks, find missing risks, and
+improve acceptance tests. Describe a requirement change, such as allowing guests
+to try the product before wallet sign in. Cairn previews the affected product
+requirements, user flow, MVP scope, milestones, tasks, and acceptance tests before
+you apply it. The builder pack and Track board update together.
+
+Unchanged task text keeps its stable id and local progress. Replaced tasks are
+listed before application, and completed work requires explicit acknowledgement.
 Planner actions are free. Fair use rate limits and a daily service limit prevent
 unbounded AI cost. Task status, dates, labels, notes, and blockers stay on your
 device when a refinement keeps that task. Cairn sends only task text to Gemini.

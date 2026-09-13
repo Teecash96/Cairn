@@ -188,6 +188,10 @@ function onTabKey(event: KeyboardEvent): void {
         <button type="button" class="btn btn--ghost btn--sm" @click="actionsOpen = false">Close</button>
       </div>
       <div class="action-sheet__grid">
+        <button v-if="!readOnly" type="button" class="action-item action-item--accent" :disabled="refining" @click="emit('refine', 'change_plan'); actionsOpen = false">
+          <strong>{{ refining ? 'Preparing plan update…' : 'Change the plan, update the build' }}</strong>
+          <span>Describe a requirement change. Cairn will preview the affected flow, tasks, and tests.</span>
+        </button>
         <button v-if="!readOnly" type="button" class="action-item" :disabled="sharing" @click="emit('share'); actionsOpen = false">
           <strong>{{ sharing ? 'Sharing…' : plan.shareId ? 'Copy share link' : 'Share read only link' }}</strong>
           <span>Send a clean snapshot of this route.</span>
@@ -259,6 +263,11 @@ function onTabKey(event: KeyboardEvent): void {
             </div>
             <span v-if="refining" class="badge badge--accent">Working…</span>
           </div>
+          <button type="button" class="change-plan-card" :disabled="refining" @click="emit('refine', 'change_plan')">
+            <span class="change-plan-card__eyebrow">Signature move</span>
+            <strong>Change the plan, update the build</strong>
+            <span>Tell Cairn what changed. Review the affected requirements, flow, tasks, and acceptance tests before anything is saved.</span>
+          </button>
           <div class="quick-actions">
             <button type="button" class="btn btn--secondary btn--sm" :disabled="refining" @click="emit('refine', 'cut_mvp_scope')">Cut MVP scope</button>
             <button type="button" class="btn btn--secondary btn--sm" :disabled="refining" @click="emit('refine', 'break_into_tasks')">Break into tasks</button>
@@ -320,6 +329,7 @@ function onTabKey(event: KeyboardEvent): void {
 .action-sheet__grid { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); }
 .action-item { display: grid; gap: .25rem; padding: var(--s4); text-align: left; background: var(--surface); }
 .action-item:hover { background: var(--surface-hover); }
+.action-item--accent { border-left: 3px solid var(--accent); background: var(--accent-subtle); }
 .action-item strong { color: var(--text); font-size: var(--text-sm); }
 .action-item span { color: var(--text-muted); font-size: var(--text-xs); line-height: 1.45; }
 .titling { padding: clamp(2rem, 7vw, 4rem) var(--workspace-pad) var(--s5); }
@@ -351,6 +361,12 @@ function onTabKey(event: KeyboardEvent): void {
 .confirm__row { display: flex; gap: var(--s2); }
 .followups { display: flex; flex-direction: column; gap: var(--s3); margin-top: var(--s6); padding: var(--s4); border-left: 3px solid var(--accent); background: var(--accent-subtle); }
 .followups h3 { font-family: var(--font-display); font-size: var(--text-lg); }
+.change-plan-card { display: grid; gap: .3rem; padding: var(--s4); text-align: left; border: 1px solid var(--accent-line); border-radius: var(--r-md); background: var(--surface); }
+.change-plan-card:hover { background: var(--surface-hover); }
+.change-plan-card:disabled { cursor: wait; opacity: .65; }
+.change-plan-card strong { font-family: var(--font-display); font-size: var(--text-md); }
+.change-plan-card > span:last-child { color: var(--text-muted); font-size: var(--text-sm); line-height: var(--leading); }
+.change-plan-card__eyebrow { color: var(--accent); font-family: var(--font-mono); font-size: .65rem; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
 .quick-actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
 .quick-actions .btn { flex: 1 1 9rem; }
 .team-route-head { padding-bottom: var(--s4); border-bottom: 1px solid var(--line); }

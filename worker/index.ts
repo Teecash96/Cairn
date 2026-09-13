@@ -25,6 +25,7 @@ function refineAction(value: unknown): RefineAction | null {
     value === 'break_into_tasks' ||
     value === 'find_missing_risks' ||
     value === 'improve_acceptance_tests' ||
+    value === 'change_plan' ||
     value === 'custom'
   ) return value
   return null
@@ -156,8 +157,15 @@ async function handleRefine(env: Env, request: Request, cors: Record<string, str
     }
     question = raw.question.trim()
   }
-  if (action === 'custom' && !question) {
-    return fail('invalid_request', 'Ask a question with at least a few words.', 400, cors)
+  if ((action === 'custom' || action === 'change_plan') && !question) {
+    return fail(
+      'invalid_request',
+      action === 'change_plan'
+        ? 'Describe the requirement or direction that changed.'
+        : 'Ask a question with at least a few words.',
+      400,
+      cors,
+    )
   }
 
   const plan = clampPlan(raw.plan, 'refine', Date.now())

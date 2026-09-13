@@ -832,7 +832,7 @@ function openRefine(action: RefineAction): void {
   clearRefineResult()
   refineAction.value = action
   refineOpen.value = true
-  if (action !== 'custom') void runRefinement(action)
+  if (action !== 'custom' && action !== 'change_plan') void runRefinement(action)
 }
 
 async function runRefinement(action: RefineAction, question?: string): Promise<void> {
@@ -871,7 +871,7 @@ async function runRefinement(action: RefineAction, question?: string): Promise<v
 }
 
 function submitRefinement(question: string): void {
-  void runRefinement('custom', question)
+  void runRefinement(refineAction.value, question)
 }
 
 function applyRefinement(): void {

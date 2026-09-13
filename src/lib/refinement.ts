@@ -11,6 +11,7 @@ import {
   type Plan,
   type PlanChanges,
   type Prd,
+  type TaskStatus,
 } from './plan.ts'
 import { toRaw } from 'vue'
 
@@ -118,4 +119,98 @@ export function removedRefinementTasks(plan: Plan, changes: PlanChanges) {
   const merged = mergeRefinement(plan, changes)
   const retained = new Set(merged.build.milestones.flatMap((milestone) => milestone.tasks.map((task) => task.id)))
   return plan.build.milestones.flatMap((milestone) => milestone.tasks).filter((task) => !retained.has(task.id))
+}
+
+export interface RefinementTaskImpact {
+  text: string
+  kind: 'added' | 'removed'
+  id?: string
+  status?: TaskStatus
+}
+
+export interface RefinementImpact {
+  /** Human readable plan sections that will change together. */
+  sections: string[]
+  /** Existing task count that remains linked to its local tracker state. */
+  preservedTasks: number
+  addedTasks: RefinementTaskImpact[]
+  removedTasks: RefinementTaskImpact[]
+}
+
+function textKey(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase()
+}
+
+function differs(before: unknown, after: unknown): boolean {
+  return after !== undefined && JSON.stringify(before) !== JSON.stringify(after)
+}
+
+/**
+ * Explain the blast radius of a proposed change without sending tracker
+ * metadata to the model. Task ids, status, notes, dates, labels, and
+ * dependencies remain local; only task text is compared here.
+ */
+export function refinementImpact(plan: Plan, changes: PlanChanges): RefinementImpact {
+  const sections: string[] = []
+  const addSection = (section: string): void => {
+    if (!sections.includes(section)) sections.push(section)
+  }
+
+  const prdFields = Object.keys(changes.prd ?? {}) as (keyof Prd)[]
+  const changedPrdFields = prdFields.filter((field) => differs(plan.prd[field], changes.prd?.[field]))
+  if (changedPrdFields.some((field) => ['coreFeatures', 'userStories', 'successCriteria'].includes(field))) {
+    addSection('Product requirements')
+  }
+  if (changedPrdFields.some((field) => ['summary', 'problem', 'targetUser', 'userGoal'].includes(field))) {
+    addSection('Product brief')
+  }
+  if (changedPrdFields.some((field) => ['assumptions', 'outOfScope'].includes(field))) {
+    addSection('Constraints')
+  }
+  if (differs(plan.flow, changes.flow)) addSection('User flow')
+
+  const build = changes.build
+  if (build) {
+    if (differs(plan.build.mvpScope, build.mvpScope)) addSection('MVP scope')
+    if (differs(draftFromBuild(plan.build).milestones, build.milestones)) addSection('Build milestones and tasks')
+    if (differs(plan.build.risks, build.risks)) addSection('Risks')
+    if (differs(plan.build.acceptanceTests, build.acceptanceTests)) addSection('Acceptance tests')
+    if (differs(plan.build.nextAction, build.nextAction)) addSection('Next action')
+  }
+  if (differs(plan.realityCheck, changes.realityCheck)) addSection('Reality check')
+
+  const previousTasks = plan.build.milestones.flatMap((milestone) => milestone.tasks)
+  const addedTasks: RefinementTaskImpact[] = []
+  const removedTasks: RefinementTaskImpact[] = []
+  let preservedTasks = previousTasks.length
+
+  if (build?.milestones && differs(draftFromBuild(plan.build).milestones, build.milestones)) {
+    const oldByText = new Map<string, typeof previousTasks>()
+    for (const task of previousTasks) {
+      const bucket = oldByText.get(textKey(task.text)) ?? []
+      bucket.push(task)
+      oldByText.set(textKey(task.text), bucket)
+    }
+
+    const used = new Set<string>()
+    preservedTasks = 0
+    for (const milestone of build.milestones) {
+      for (const text of milestone.tasks) {
+        const match = (oldByText.get(textKey(text)) ?? []).find((task) => !used.has(task.id))
+        if (match) {
+          used.add(match.id)
+          preservedTasks += 1
+        } else {
+          addedTasks.push({ kind: 'added', text })
+        }
+      }
+    }
+
+    for (const task of previousTasks) {
+      if (used.has(task.id)) continue
+      removedTasks.push({ kind: 'removed', id: task.id, text: task.text, status: task.status })
+    }
+  }
+
+  return { sections, preservedTasks, addedTasks, removedTasks }
 }
