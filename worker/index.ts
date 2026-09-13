@@ -1,10 +1,9 @@
 import { budgetLeft, chargeBudget, tooFast, tooFastByKey } from './limits'
 import { createChallenge, requireSession, verifyChallenge, type AuthSession } from './auth'
-import { quote, readConfig } from './config'
-import { grantPaid, isSpent, markSpent, readCredits, spendOne, stateOf } from './credits'
+import { readConfig } from './config'
+import { readCredits, spendOne, stateOf } from './credits'
 import { fail, corsHeaders, isLocalHost, json, normalizeAddress, readJson, securityHeaders } from './http'
 import { generateWithGemini, refineWithGemini } from './generate'
-import { verifyPayment } from './payments'
 import { clampPlan, isInvalid, readPlanInput } from './shape'
 import { createShare, publicPlan, readShare } from './share'
 import { addMember, createTeam, getTeam, removeMember, TeamError, updateMember, updateTracker } from './team'
@@ -39,35 +38,7 @@ function authRequired(cors: Record<string, string>): Response {
   return fail('auth_required', 'Sign in with your Nimiq wallet first.', 401, cors)
 }
 
-function originIsLocal(request: Request): boolean {
-  try { return isLocalHost(new URL(request.url).hostname) } catch { return false }
-}
-
-async function localReceiptKey(receipt: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(receipt))
-  return `dev:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`
-}
-
-async function verifyPaymentEventually(
-  config: ReturnType<typeof readConfig>,
-  address: string,
-  receipt?: string,
-): Promise<string | null> {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const hash = await verifyPayment(config, address, config.priceLuna, receipt)
-    if (hash) return hash
-    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 1_500))
-  }
-  return null
-}
-
-function paymentDetails(env: Env) {
-  const config = readConfig(env)
-  return {
-    config,
-    price: config.payTo ? quote(config, config.payTo) : null,
-  }
-}
+// Payment functions removed - app is now free to use
 
 /**
  * Keep provider details on the Worker, but give the phone a useful next step.
@@ -115,11 +86,11 @@ async function handleAuthVerify(env: Env, request: Request, cors: Record<string,
   return json(result, 200, cors)
 }
 
-async function handleCredits(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
+async function handleCredits(_env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
   const session = await requireSession(env, request)
   if (!session) return authRequired(cors)
-  const { price } = paymentDetails(env)
-  return json({ credits: stateOf(await readCredits(env, session.address)), price }, 200, cors)
+  // Free tier: unlimited credits for all users
+  return json({ credits: stateOf(null) }, 200, cors)
 }
 
 async function handleGenerate(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
@@ -132,21 +103,18 @@ async function handleGenerate(env: Env, request: Request, cors: Record<string, s
   const input = readPlanInput(raw.input)
   if (isInvalid(input)) return fail('invalid_request', input.message, 400, cors)
 
-  const { config, price } = paymentDetails(env)
-  const balance = stateOf(await readCredits(env, address))
-  if (balance.total < 1) {
-    return fail('payment_required', 'Payment is required to generate a plan.', 402, cors, { credits: balance, price })
-  }
+  const config = readConfig(env)
+  // Free tier: no payment check needed
   if (await tooFast(env, address)) return fail('rate_limited', 'Please wait a moment before generating again.', 429, cors)
-  if (await budgetLeft(env, config) < 1) return fail('budget_exhausted', 'Today’s generation capacity has been reached. Try again tomorrow.', 429, cors)
+  if (await budgetLeft(env, config) < 1) return fail('budget_exhausted', 'Today's generation capacity has been reached. Try again tomorrow.', 429, cors)
   const geminiKey = env.GEMINI_API_KEY?.trim()
   if (!geminiKey) return fail('server', 'Cairn is not configured with an AI key yet.', 503, cors)
 
   await chargeBudget(env)
   try {
     const result = await generateWithGemini(config, geminiKey, input as PlanInput)
-    const credits = await spendOne(env, address)
-    if (!credits) return fail('payment_required', 'Payment is required to generate a plan.', 402, cors, { price })
+    const operationId = crypto.randomUUID()
+    const credits = await spendOne(env, address, operationId)
     return json({ ...result, credits }, 200, cors)
   } catch (error) {
     return generationFailure(error, 'The AI returned an incomplete plan. Try again.', cors)
@@ -178,54 +146,22 @@ async function handleRefine(env: Env, request: Request, cors: Record<string, str
   const plan = clampPlan(raw.plan, 'refine', Date.now())
   if (isInvalid(plan)) return fail('invalid_request', plan.message, 400, cors)
 
-  const { config, price } = paymentDetails(env)
-  const balance = stateOf(await readCredits(env, address))
-  if (balance.total < 1) {
-    return fail('payment_required', 'Payment is required to use planner actions.', 402, cors, { credits: balance, price })
-  }
+  const config = readConfig(env)
+  // Free tier: no payment check needed
   if (await tooFast(env, address)) return fail('rate_limited', 'Please wait a moment before asking again.', 429, cors)
-  if (await budgetLeft(env, config) < 1) return fail('budget_exhausted', 'Today’s generation capacity has been reached. Try again tomorrow.', 429, cors)
+  if (await budgetLeft(env, config) < 1) return fail('budget_exhausted', 'Today's generation capacity has been reached. Try again tomorrow.', 429, cors)
   const geminiKey = env.GEMINI_API_KEY?.trim()
   if (!geminiKey) return fail('server', 'Cairn is not configured with an AI key yet.', 503, cors)
 
   await chargeBudget(env)
   try {
     const result = await refineWithGemini(config, geminiKey, plan, action, question)
-    const credits = await spendOne(env, address)
-    if (!credits) return fail('payment_required', 'Payment is required to use planner actions.', 402, cors, { price })
+    const operationId = crypto.randomUUID()
+    const credits = await spendOne(env, address, operationId)
     return json({ ...result, credits }, 200, cors)
-  } catch (error) {
-    return generationFailure(error, 'The AI returned an incomplete follow up. Try again.', cors)
   }
 }
 
-async function handleRedeem(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
-  const raw = bodyRecord(await readJson(request))
-  if (!raw || (raw.receipt !== undefined && (typeof raw.receipt !== 'string' || raw.receipt.length < 1 || raw.receipt.length > 4096))) {
-    return fail('invalid_request', 'Payment details are invalid.', 400, cors)
-  }
-  const session = await requireSession(env, request)
-  if (!session) return authRequired(cors)
-  const address = authenticatedAddress(raw, session)
-  if (!address) return fail('invalid_request', 'Connect a valid Nimiq wallet.', 400, cors)
-  if (await tooFast(env, address, 'redeem')) return fail('rate_limited', 'Please wait before checking payment again.', 429, cors)
-
-  const { config } = paymentDetails(env)
-  const receipt = typeof raw.receipt === 'string' ? raw.receipt.trim() : ''
-  const keyHint = /^[0-9a-f]{64}$/i.test(receipt) ? receipt : null
-  if (keyHint && await isSpent(env, keyHint)) return fail('payment_not_found', 'That payment was already used.', 402, cors)
-  const trusted = config.trustPaymentsInDev && originIsLocal(request)
-  if (trusted && !receipt) return fail('payment_not_found', 'Payment details are required in local development.', 402, cors)
-  const verifiedHash = trusted
-    ? await localReceiptKey(receipt)
-    : await verifyPaymentEventually(config, address, receipt)
-  if (!verifiedHash || await isSpent(env, verifiedHash)) {
-    return fail('payment_not_found', 'Payment is not visible on the network yet.', 402, cors)
-  }
-  await markSpent(env, verifiedHash, address)
-  const credits = await grantPaid(env, address, config.plansPerPayment)
-  return json({ credits, granted: config.plansPerPayment }, 200, cors)
-}
 
 async function handleShare(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
   const raw = bodyRecord(await readJson(request))

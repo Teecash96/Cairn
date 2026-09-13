@@ -1,37 +1,54 @@
 import type { CreditRecord, CreditState, Env } from './types'
 
-export function stateOf(record: CreditRecord | null): CreditState {
-  const paid = record?.paid ?? 0
-  return { paid, total: paid }
+/**
+ * Free tier: all users have unlimited credits.
+ * Returns a sentinel value indicating unlimited access.
+ */
+export function stateOf(_record: CreditRecord | null): CreditState {
+  return { paid: Number.MAX_SAFE_INTEGER, total: Number.MAX_SAFE_INTEGER }
 }
 
-export async function readCredits(env: Env, address: string): Promise<CreditRecord | null> {
-  return env.CAIRN.get<CreditRecord>(`credit:${address}`, 'json')
+/**
+ * Credits are no longer stored - all users have unlimited free access.
+ * This function is kept for backward compatibility but always returns null.
+ */
+export async function readCredits(_env: Env, _address: string): Promise<CreditRecord | null> {
+  return null
 }
 
-async function writeCredits(env: Env, address: string, record: CreditRecord): Promise<void> {
-  await env.CAIRN.put(`credit:${address}`, JSON.stringify(record))
+/**
+ * Spend one credit - always succeeds in free tier.
+ * Returns unlimited credits to indicate success.
+ */
+export async function spendOne(_env: Env, _address: string, _operationId?: string): Promise<CreditState> {
+  return { paid: Number.MAX_SAFE_INTEGER, total: Number.MAX_SAFE_INTEGER }
 }
 
-export async function spendOne(env: Env, address: string): Promise<CreditState | null> {
-  const record = await readCredits(env, address)
-  if (!record || record.paid < 1) return null
-  const updated = { ...record, paid: record.paid - 1 }
-  await writeCredits(env, address, updated)
-  return stateOf(updated)
+/**
+ * Grant credits - no-op in free tier, returns unlimited credits.
+ */
+export async function grantPaid(_env: Env, _address: string, _amount: number, _operationId?: string): Promise<CreditState> {
+  return { paid: Number.MAX_SAFE_INTEGER, total: Number.MAX_SAFE_INTEGER }
 }
 
-export async function grantPaid(env: Env, address: string, amount: number): Promise<CreditState> {
-  const record = (await readCredits(env, address)) ?? { paid: 0, createdAt: Date.now() }
-  const updated = { ...record, paid: record.paid + amount }
-  await writeCredits(env, address, updated)
-  return stateOf(updated)
+/**
+ * Mark payment as spent - no-op in free tier.
+ * Always returns false (not spent) since there are no payments.
+ */
+export async function tryMarkSpent(_env: Env, _hash: string, _address: string): Promise<boolean> {
+  return false
 }
 
-export async function isSpent(env: Env, hash: string): Promise<boolean> {
-  return (await env.CAIRN.get(`spent:${hash}`)) !== null
+/**
+ * Check if payment hash was spent - always false in free tier.
+ */
+export async function isSpent(_env: Env, _hash: string): Promise<boolean> {
+  return false
 }
 
-export async function markSpent(env: Env, hash: string, address: string): Promise<void> {
-  await env.CAIRN.put(`spent:${hash}`, address)
+/**
+ * Mark payment as spent - no-op in free tier.
+ */
+export async function markSpent(_env: Env, _hash: string, _address: string): Promise<void> {
+  // No-op in free tier
 }

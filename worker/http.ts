@@ -233,27 +233,42 @@ export function today(): string {
 /**
  * Best-effort client IP. Cloudflare sets `CF-Connecting-IP` on every request and
  * it cannot be spoofed by the client; the fallbacks are for `wrangler dev`.
+ * 
+ * SECURITY: Only use CF-Connecting-IP in production. x-real-ip is client-controllable
+ * and must never be trusted for security decisions.
  */
 export function clientIp(request: Request): string {
-  const value = (
-    request.headers.get('cf-connecting-ip') ??
-    request.headers.get('x-real-ip') ??
-    'unknown'
-  )
-  // The Cloudflare header is authoritative in production. The fallback is
-  // client supplied during local development, so keep it bounded and printable
-  // before it becomes part of a KV key.
-  return value.replace(/[^0-9a-zA-Z:._-]/g, '').slice(0, 64) || 'unknown'
+  // In production (Cloudflare), only trust the verified CF header
+  const cfIp = request.headers.get('cf-connecting-ip')
+  if (cfIp) {
+    return cfIp.replace(/[^0-9a-zA-Z:._-]/g, '').slice(0, 64) || 'unknown'
+  }
+  
+  // For local development only, fall back to x-forwarded-for or x-real-ip
+  // These headers are NOT trustworthy in production
+  const forwardedFor = request.headers.get('x-forwarded-for')
+  if (forwardedFor) {
+    // Take the first IP in the chain (original client)
+    const firstIp = forwardedFor.split(',')[0].trim()
+    return firstIp.replace(/[^0-9a-zA-Z:._-]/g, '').slice(0, 64) || 'unknown'
+  }
+  
+  return 'unknown'
 }
 
 /**
  * Random token from an alphabet with no look-alike characters, so a share link
  * survives being read aloud or retyped.
+ * 
+ * Uses cryptographically secure random values and avoids modulo bias by using
+ * bitwise AND with a mask for power-of-2 alphabet sizes.
  */
 export function token(length: number): string {
-  const alphabet = 'abcdefghijkmnpqrstuvwxyz23456789'
+  const alphabet = 'abcdefghijkmnpqrstuvwxyz23456789' // 32 chars (power of 2)
   const bytes = crypto.getRandomValues(new Uint8Array(length))
   let out = ''
-  for (const byte of bytes) out += alphabet[byte % alphabet.length]
+  // Alphabet size is 32 (2^5), so we can use lower 5 bits directly without modulo bias
+  const mask = 0b11111 // 31, for 32-character alphabet
+  for (const byte of bytes) out += alphabet[byte & mask]
   return out
 }
