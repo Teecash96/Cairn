@@ -398,7 +398,11 @@ export function materializeBuildPlan(
               ? milestoneMatch.tasks[taskIndex]
               : undefined
             const match = exact ?? (
-              positional && !usedTasks.has(positional.id) ? positional : undefined
+              positional
+                && positional.status !== 'done'
+                && !usedTasks.has(positional.id)
+                ? positional
+                : undefined
             )
             if (match) {
               usedTasks.add(match.id)
