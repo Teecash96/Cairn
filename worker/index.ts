@@ -1,4 +1,5 @@
 export { CreditLedger } from './credit-ledger'
+export { TeamCoordinator } from './team'
 import { budgetLeft, chargeBudget, tooFast, tooFastByKey } from './limits'
 import { createChallenge, requireSession, verifyChallenge, type AuthSession } from './auth'
 import { quote, readConfig } from './config'
@@ -46,7 +47,7 @@ function originIsLocal(request: Request): boolean {
 
 async function localReceiptKey(receipt: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(receipt))
-  return `dev:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`
+  return `dev-${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`
 }
 
 function paymentDetails(env: Env) {

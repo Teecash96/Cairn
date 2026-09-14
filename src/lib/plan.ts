@@ -386,9 +386,19 @@ export function materializeBuildPlan(
         tasks: item.tasks
           .map((text) => text.trim())
           .filter(Boolean)
-          .map((text) => {
-            const match = (oldTasks.get(normalizeMatch(text)) ?? []).find(
+          .map((text, taskIndex, draftTasks) => {
+            const exact = (oldTasks.get(normalizeMatch(text)) ?? []).find(
               (candidate) => !usedTasks.has(candidate.id),
+            )
+            // When a refinement keeps the milestone and task count, its task
+            // positions are stable identity hints. This preserves status,
+            // notes, dates, and dependencies when the model merely renames a
+            // task, while avoiding positional guesses for insertions/deletions.
+            const positional = milestoneMatch && draftTasks.length === milestoneMatch.tasks.length
+              ? milestoneMatch.tasks[taskIndex]
+              : undefined
+            const match = exact ?? (
+              positional && !usedTasks.has(positional.id) ? positional : undefined
             )
             if (match) {
               usedTasks.add(match.id)

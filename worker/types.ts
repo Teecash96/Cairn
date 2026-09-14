@@ -17,6 +17,7 @@ export interface Env {
   /** Shares, wallet sessions, team records, rate limits, and budget counters. */
   CAIRN: KVNamespace
   CREDIT_LEDGER: DurableObjectNamespace
+  TEAM_COORDINATOR?: DurableObjectNamespace
   /** Explicit cutover gate; legacy KV must be frozen before enabling. */
   CREDIT_LEDGER_READY?: string
   /** The built app. Used for static asset fallback. */

@@ -249,3 +249,46 @@ test('preserves tracker metadata and drops dependencies to removed tasks during 
   }, old)
   assert.deepEqual(removed.milestones[0]?.tasks[0]?.dependsOn, [])
 })
+
+
+test('a same-shape refinement keeps task identity when task wording changes', () => {
+  const previous: BuildPlan = {
+    mvpScope: ['Core'],
+    milestones: [{
+      id: 'milestone-1',
+      title: 'Launch',
+      outcome: 'Ready',
+      blocked: false,
+      tasks: [{
+        id: 'task-1',
+        text: 'Publish the first version',
+        status: 'in_progress',
+        priority: 'high',
+        labels: ['release'],
+        notes: 'Keep rollout notes',
+        dueDate: '2026-09-30',
+        dependsOn: [],
+      }],
+    }],
+    risks: [],
+    acceptanceTests: [],
+    nextAction: 'Publish',
+  }
+
+  const next = materializeBuildPlan({
+    mvpScope: ['Core'],
+    milestones: [{
+      title: 'Launch',
+      outcome: 'Ready',
+      tasks: ['Publish the first production version'],
+    }],
+    risks: [],
+    acceptanceTests: [],
+    nextAction: 'Publish',
+  }, previous)
+
+  assert.equal(next.milestones[0]?.tasks[0]?.id, 'task-1')
+  assert.equal(next.milestones[0]?.tasks[0]?.status, 'in_progress')
+  assert.equal(next.milestones[0]?.tasks[0]?.notes, 'Keep rollout notes')
+  assert.equal(next.milestones[0]?.tasks[0]?.dueDate, '2026-09-30')
+})

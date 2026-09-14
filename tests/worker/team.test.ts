@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import worker from '../../worker/index.ts'
-import { addMember, createTeam, getTeam, removeMember, TeamError, updateMember, updateTracker } from '../../worker/team.ts'
+import { addMember, createTeam, getTeam, removeMember, TeamCoordinator, TeamError, updateMember, updateTracker } from '../../worker/team.ts'
 import { addressFromPublicKey } from '../../worker/http.ts'
 import type { Env } from '../../worker/types.ts'
 
@@ -178,4 +178,41 @@ test('team routes require a wallet session before checking membership', async ()
   }), env(kv))
   assert.equal(response.status, 200)
   assert.equal((await response.json() as { role: string }).role, 'owner')
+})
+
+
+test('the coordinator accepts only one concurrent update for a revision', async () => {
+  const kv = new MemoryKV()
+  const testEnv = env(kv)
+  const owner = address(9)
+  const created = await createTeam(testEnv, owner, {
+    planId: 'concurrent-plan',
+    name: 'Concurrent team',
+    build: build(),
+  }, 'https://cairn.example')
+  const coordinator = new TeamCoordinator({} as DurableObjectState, testEnv)
+
+  const command = (text: string) => {
+    const candidate = build()
+    candidate.milestones[0]!.tasks[0]!.text = text
+    return new Request('https://team.internal/', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'update-tracker',
+        teamId: created.teamId,
+        address: owner,
+        build: candidate,
+        revision: 1,
+        appUrl: 'https://cairn.example',
+      }),
+    })
+  }
+  const responses = await Promise.all([
+    coordinator.fetch(command('First edit')),
+    coordinator.fetch(command('Second edit')),
+  ])
+
+  assert.deepEqual(responses.map((response) => response.status).sort(), [200, 409])
+  const stored = await getTeam(testEnv, created.teamId, owner, 'https://cairn.example')
+  assert.equal(stored.revision, 2)
 })

@@ -63,6 +63,15 @@ CREDIT_LEDGER_READY = "1"
 name = "CREDIT_LEDGER"
 class_name = "CreditLedger"
 
+[[durable_objects.bindings]]
+name = "TEAM_COORDINATOR"
+class_name = "TeamCoordinator"
+
 [[migrations]]
 tag = "v1-credit-ledger"
 new_sqlite_classes = ["CreditLedger"]
+
+
+[[migrations]]
+tag = "v2-team-coordinator"
+new_sqlite_classes = ["TeamCoordinator"]

@@ -60,7 +60,7 @@ import {
 } from './lib/plan'
 import type { TeamPanelState } from './components/Workspace.vue'
 import { useSession } from './lib/session'
-import { bindPayment, samePaymentAddress } from './lib/payment-session'
+import { bindPayment, clearPendingPayment, loadPendingPayment, samePaymentAddress, savePendingPayment } from './lib/payment-session'
 import { mergeRefinement } from './lib/refinement'
 import { createExamplePlan } from './lib/example'
 import { stubGenerate, stubRefinement } from './lib/stub'
@@ -96,33 +96,19 @@ const paymentPollAttempt = ref(0)
 let paymentPollTimer: ReturnType<typeof setTimeout> | undefined
 let paymentPollRun = 0
 
-const PENDING_PAYMENT_KEY = 'cairn:pending-payment'
-function readPendingReceipt(): { address: string; receipt: string } | null {
-  try {
-    const raw = sessionStorage.getItem(PENDING_PAYMENT_KEY)
-    if (!raw) return null
-    const value = JSON.parse(raw) as { address?: unknown; receipt?: unknown }
-    return typeof value.address === 'string' && typeof value.receipt === 'string'
-      ? { address: value.address, receipt: value.receipt }
-      : null
-  } catch {
-    return null
-  }
-}
-
 function rememberPendingReceipt(value: { address: string; receipt: string }): void {
   pendingReceipt.value = value
   paymentPendingMessage.value = PAYMENT_WAITING_MESSAGE
-  try { sessionStorage.setItem(PENDING_PAYMENT_KEY, JSON.stringify(value)) } catch { /* best effort */ }
+  savePendingPayment(value)
 }
 
 function forgetPendingReceipt(): void {
   pendingReceipt.value = null
   paymentPendingMessage.value = null
-  try { sessionStorage.removeItem(PENDING_PAYMENT_KEY) } catch { /* best effort */ }
+  clearPendingPayment()
 }
 
-const pendingReceipt = ref<{ address: string; receipt: string } | null>(readPendingReceipt())
+const pendingReceipt = ref<{ address: string; receipt: string } | null>(loadPendingPayment())
 
 function stopPaymentPolling(): void {
   paymentPollRun += 1

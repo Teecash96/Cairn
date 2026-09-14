@@ -194,7 +194,7 @@ export async function createTeam(
   return viewOf(record, address, appUrl)
 }
 
-export async function getTeam(
+async function rawGetTeam(
   env: Env,
   teamId: string,
   addressValue: string,
@@ -206,7 +206,7 @@ export async function getTeam(
   return viewOf(record, address, appUrl)
 }
 
-export async function addMember(
+async function rawAddMember(
   env: Env,
   teamId: string,
   ownerValue: string,
@@ -233,7 +233,7 @@ export async function addMember(
   return viewOf(record, owner, appUrl)
 }
 
-export async function updateMember(
+async function rawUpdateMember(
   env: Env,
   teamId: string,
   ownerValue: string,
@@ -256,7 +256,7 @@ export async function updateMember(
   return viewOf(record, owner, appUrl)
 }
 
-export async function removeMember(
+async function rawRemoveMember(
   env: Env,
   teamId: string,
   ownerValue: string,
@@ -277,7 +277,7 @@ export async function removeMember(
   return viewOf(record, owner, appUrl)
 }
 
-export async function updateTracker(
+async function rawUpdateTracker(
   env: Env,
   teamId: string,
   addressValue: string,
@@ -301,4 +301,139 @@ export async function updateTracker(
   record.updatedAt = Date.now()
   await writeRecord(env, record)
   return viewOf(record, address, appUrl)
+}
+
+
+type TeamCommand =
+  | { action: 'get'; teamId: string; address: string; appUrl: string }
+  | { action: 'add'; teamId: string; owner: string; member: unknown; role: unknown; appUrl: string }
+  | { action: 'update-member'; teamId: string; owner: string; member: unknown; role: unknown; appUrl: string }
+  | { action: 'remove'; teamId: string; owner: string; member: unknown; appUrl: string }
+  | { action: 'update-tracker'; teamId: string; address: string; build: unknown; revision: unknown; appUrl: string }
+
+async function performTeamCommand(env: Env, command: TeamCommand): Promise<TeamView> {
+  switch (command.action) {
+    case 'get':
+      return rawGetTeam(env, command.teamId, command.address, command.appUrl)
+    case 'add':
+      return rawAddMember(env, command.teamId, command.owner, command.member, command.role, command.appUrl)
+    case 'update-member':
+      return rawUpdateMember(env, command.teamId, command.owner, command.member, command.role, command.appUrl)
+    case 'remove':
+      return rawRemoveMember(env, command.teamId, command.owner, command.member, command.appUrl)
+    case 'update-tracker':
+      return rawUpdateTracker(env, command.teamId, command.address, command.build, command.revision, command.appUrl)
+  }
+}
+
+/**
+ * Serialize every read/check/write sequence for a team. KV remains the durable
+ * record during rollout, while this object prevents two accepted revisions from
+ * overwriting one another.
+ */
+export class TeamCoordinator {
+  private tail: Promise<void> = Promise.resolve()
+
+  constructor(
+    private readonly state: DurableObjectState,
+    private readonly env: Env,
+  ) {
+    void this.state
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const previous = this.tail
+    let release: (() => void) | undefined
+    this.tail = new Promise<void>((resolve) => { release = resolve })
+    await previous
+    try {
+      const command = await request.json() as TeamCommand
+      const result = await performTeamCommand(this.env, command)
+      return Response.json({ ok: true, result })
+    } catch (error) {
+      if (error instanceof TeamError) {
+        return Response.json({
+          ok: false,
+          error: { code: error.code, message: error.message, status: error.status },
+        }, { status: error.status })
+      }
+      return Response.json({
+        ok: false,
+        error: { code: 'server', message: 'The team service is temporarily unavailable.', status: 503 },
+      }, { status: 503 })
+    } finally {
+      release?.()
+    }
+  }
+}
+
+async function coordinated(env: Env, command: TeamCommand): Promise<TeamView> {
+  if (!env.TEAM_COORDINATOR) return performTeamCommand(env, command)
+  const id = env.TEAM_COORDINATOR.idFromName(command.teamId)
+  const response = await env.TEAM_COORDINATOR.get(id).fetch('https://team.internal/', {
+    method: 'POST',
+    body: JSON.stringify(command),
+  })
+  const payload = await response.json() as {
+    ok?: boolean
+    result?: TeamView
+    error?: { code?: TeamErrorCode; message?: string; status?: number }
+  }
+  if (response.ok && payload.result) return payload.result
+  const code = payload.error?.code ?? 'not_found'
+  const message = payload.error?.message ?? 'The team service is temporarily unavailable.'
+  const status = payload.error?.status ?? response.status
+  throw new TeamError(code, message, status)
+}
+
+export async function getTeam(
+  env: Env,
+  teamId: string,
+  address: string,
+  appUrl: string,
+): Promise<TeamView> {
+  return coordinated(env, { action: 'get', teamId, address, appUrl })
+}
+
+export async function addMember(
+  env: Env,
+  teamId: string,
+  owner: string,
+  member: unknown,
+  memberRole: unknown,
+  appUrl: string,
+): Promise<TeamView> {
+  return coordinated(env, { action: 'add', teamId, owner, member, role: memberRole, appUrl })
+}
+
+export async function updateMember(
+  env: Env,
+  teamId: string,
+  owner: string,
+  member: unknown,
+  memberRole: unknown,
+  appUrl: string,
+): Promise<TeamView> {
+  return coordinated(env, { action: 'update-member', teamId, owner, member, role: memberRole, appUrl })
+}
+
+export async function removeMember(
+  env: Env,
+  teamId: string,
+  owner: string,
+  member: unknown,
+  appUrl: string,
+): Promise<TeamView> {
+  return coordinated(env, { action: 'remove', teamId, owner, member, appUrl })
+}
+
+export async function updateTracker(
+  env: Env,
+  teamId: string,
+  address: string,
+  build: unknown,
+  revision: unknown,
+  appUrl: string,
+): Promise<TeamView> {
+  return coordinated(env, { action: 'update-tracker', teamId, address, build, revision, appUrl })
 }
