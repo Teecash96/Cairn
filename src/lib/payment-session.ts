@@ -75,7 +75,7 @@ export function loadPendingPayment(storage = browserStorage(), now = Date.now())
       storage.removeItem(PENDING_PAYMENT_KEY)
       return null
     }
-    return { address: value.address, receipt: value.receipt }
+    return { address: value.address as string, receipt: value.receipt as string }
   } catch {
     return null
   }
