@@ -2,272 +2,207 @@
 
 **Map the idea before you build it.**
 
-Cairn is a Nimiq Pay mini app that turns a few sentences about a product idea into
-a builder pack an indie builder can act on:
+Cairn is a Nimiq mini app for turning a product idea into a practical builder
+pack. It connects the product brief, user flow, MVP scope, ordered tasks,
+acceptance tests, and progress tracker so a builder can move from an idea to a
+first release without rewriting the plan.
 
-- a **product requirements document** — summary, problem, target user, core
-  features, user stories, success criteria, and an explicit list of what it
-  assumed and what it left out
-- a **Visual PRD** — a one page canvas that shows the problem, user, promise,
-  first release, proof, and guardrails in one scan
-- a **user-flow diagram** — five to eight connected steps from first open to
-  finished task, including one real decision point with both outcomes
-- a **Build plan** — a small MVP scope, three milestones, risks, acceptance
-  tests, and the next action
-- a **Track workspace** — a local project board and timeline for milestones,
-  task status, due dates, labels, priorities, notes, and simple blockers
-- a **Builder standup** — a private daily progress log and build streak saved on
-  the current device
-- a **Reality check** — three prioritized concerns with the smallest test or fix
+Planning and planner refinements are free. Nimiq wallet authentication protects
+AI requests and team workspaces. NIM is used only when a user chooses an
+explicit product action such as anchoring a PRD or paying a milestone bounty.
 
-Every field is editable. Your plan is local by default. Cairn uses practical MVP
-planning rather than Scrum process. Plans and planner refinements are free. An
-optional protected team workspace lets the owner share only Track with named
-Nimiq wallets.
+## The problem
 
-A cairn is a stack of stones left to mark the route for whoever comes next. That
-is what a PRD is for.
+An idea is easy to describe and hard to build. A useful first release needs a
+clear user, a real problem, a small scope, a complete first flow, and tests that
+show when the work is done. These decisions are often spread across notes and
+documents. The builder then has to reconcile conflicting versions before work
+can start.
 
----
+Cairn keeps those decisions together and makes a plan change visible. If the
+requirement changes, Cairn shows the affected flow, requirements, tasks, and
+acceptance tests before the builder applies the update.
 
-## Why it exists
+## What Cairn produces
 
-The gap between "I have an idea" and "I can start building" is a blank page.
-Filling it properly takes a product manager twenty minutes of structured
-thinking, and most ideas never get those twenty minutes — so they either die or
-get built without a plan.
+* Product requirements document with the problem, target user, goal, features,
+  stories, success criteria, assumptions, and out of scope items.
+* Visual PRD that summarizes the problem, promise, first release, proof, and
+  guardrails.
+* User flow with five to eight connected steps and one explicit decision point.
+* MVP build plan with scope, three milestones, ordered tasks, risks, acceptance
+  tests, and a next action.
+* Local Track workspace with task status, dates, labels, priorities, notes,
+  dependencies, blockers, and progress.
+* Private builder standup log saved on the current device.
+* Reality check with three prioritized concerns and the smallest useful test or
+  fix.
 
-Cairn brings that structured thinking to a phone with a signed Nimiq wallet
-session and no payment wall.
+Every field is editable. The plan is local by default.
 
-## How it works
+## Product flow
 
-1. Describe the idea in your own words. One field is required.
-2. Tap **Generate plan**. In Nimiq Pay, Cairn asks the injected wallet to connect
-   and sign a short login challenge. In Chrome, Nimiq Hub opens the wallet for the
-   same signature flow. This creates a short lived server session. The prompt
-   happens on the action you already chose to take.
-3. Cairn writes the full builder pack. It takes about twenty seconds.
-4. Edit anything. It autosaves to your device.
-5. Open **Plan** and choose **Map** for a one page view of the problem, user,
-   promise, first release, proof, and guardrails.
-6. Open **Track** to update task status, dates, labels, blockers, and private
-   notes. Changes save on this device.
-7. Open **Build** for the builder pack summary, or ask Cairn to sharpen one part
-   of the plan.
-8. Copy it as Markdown, GitHub issue drafts, or a Notion task table. You can also
-   publish a public link that another builder can fork, or create a protected
-   team workspace for Track.
+1. Describe the idea. Only the idea field is required.
+2. Authenticate with a Nimiq wallet when you generate or refine a plan.
+3. Review the generated product map and builder pack.
+4. Edit the plan. Changes autosave to the device.
+5. Use **Change the plan, update the build** to submit a new requirement.
+6. Review affected outputs. Accept or reject the proposed changes.
+7. Use Track to execute tasks, record blockers, and follow the next useful move.
+8. Export Markdown or copy a GitHub issue draft. Share a read only snapshot or
+   create a protected Track workspace for named Nimiq wallets.
 
-### Planner follow ups
+The refinement flow preserves stable task IDs and local progress. Completed work
+is not silently replaced. Private tracker metadata stays on the device unless
+the owner explicitly shares the allowed Track projection.
 
-The Build tab has a **Change the plan, update the build** action plus four quick
-actions: cut MVP scope, break work into smaller tasks, find missing risks, and
-improve acceptance tests. Describe a requirement change, such as allowing guests
-to try the product before wallet sign in. Cairn previews the affected product
-requirements, user flow, MVP scope, milestones, tasks, and acceptance tests before
-you apply it. The builder pack and Track board update together.
+## Architecture
 
-Unchanged task text keeps its stable id and local progress. Replaced tasks are
-listed before application, and completed work requires explicit acknowledgement.
-Planner actions are free. Fair use rate limits and a daily service limit prevent
-unbounded AI cost. Task status, dates, labels, notes, and blockers stay on your
-device when a refinement keeps that task. Cairn sends only task text to its planning service.
+```mermaid
+flowchart LR
+  U[Builder] --> UI[Vue 3 and TypeScript<br/>Nimiq mini app UI]
+  UI --> W[Nimiq Pay or Nimiq Hub<br/>wallet and signatures]
+  UI --> API[Cloudflare Worker<br/>API and static asset entry]
+  API --> AUTH[Ed25519 session verification]
+  API --> VALID[Input and output shaping]
+  API --> PLAN[Planning service]
+  API --> KV[(CAIRN KV<br/>sessions, shares, teams, limits)]
+  API --> LEDGER[[CreditLedger Durable Object<br/>SQLite balances and receipts]]
+  API --> RPC[Nimiq RPC<br/>transaction checks]
+  API --> ASSETS[Cloudflare Assets<br/>built application]
+```
 
-### Track the work
+The detailed component map and request flows are in
+[docs/architecture.md](docs/architecture.md). Runtime contracts and the route
+table are in [docs/technical.md](docs/technical.md). The threat model and
+operational controls are in [docs/safety-model.md](docs/safety-model.md).
 
-The **Track** tab is a local owner workspace. Board view groups work into vertical
-milestone lanes. Timeline view shows milestone ranges and task due dates. Use the
-filters to see all, to do, in progress, done, or blocked work. A task becomes
-blocked when one of its selected dependencies is not done. A milestone is blocked
-only when you mark it blocked.
+## Setup
 
-The first click on a task opens its editor. Status can also change directly from
-the lane. Dates are never invented by AI. Notes, priorities, and dependency
-details remain private to this device.
+Prerequisites: Node.js 20 or newer and npm.
 
-### Team workspaces
+```bash
+npm ci
+npm run dev
+```
 
-The owner can create one protected team workspace for a plan. The owner adds
-Nimiq wallet addresses and chooses a **Viewer** or **Editor** role for each one.
-Members must open the protected link with the wallet that was added. The link is
-only a locator. The Worker checks the signed wallet session on every request.
+The Vite app runs at `http://localhost:5173`. For a local Worker, copy
+`.dev.vars.example` to `.dev.vars`, add the local provider secret, then run:
 
-Team members see and, when allowed, edit Track only. The shared snapshot contains
-milestones, task text, status, labels, dates, and the owner's milestone blocker
-flag. It does not contain the PRD, user flow, Build summary, private notes,
-priorities, or dependency details. Owner changes to the team board sync through a
-revision check, so a stale editor cannot overwrite a newer update. Public links
-remain separate. The published snapshot cannot be edited. A viewer can copy it
-into a new private local project. The fork starts with fresh task progress and
-keeps source attribution.
+```bash
+npm run build
+npm run worker:dev
+```
 
-### Nimiq builder tools
+Never commit `.dev.vars`. Production secrets belong in encrypted Cloudflare
+bindings. The repository does not contain a provider key or a wallet key.
 
-Cairn uses Nimiq for optional proof and direct builder support. None of these
-actions unlock planning access.
+## Technical documentation
 
-1. **PRD anchor:** Cairn hashes the current PRD with Blake2b and asks the wallet
-   to include that hash in a one Luna self transfer. The wallet shows the network
-   cost before approval. Cairn shows a verified badge only after the Worker finds
-   a confirmed transaction from and to the signed wallet with the exact hash.
-   Editing the PRD makes the old anchor stale.
-2. **Milestone bounty:** An owner can attach a recipient wallet and NIM amount to
-   a milestone. Payment is available after completion and goes straight from the
-   owner's wallet to the recipient. Cairn does not hold funds or decide disputes.
-3. **Builder tip:** A public plan can show a voluntary 0.1 NIM tip action for its
-   creator. The wallet must approve the transfer.
-4. **Wallet identity:** Signed workspaces show the official Nimiq identicon and a
-   shortened address to make the active account clear.
+* [Architecture](docs/architecture.md): components, boundaries, and request
+  flows.
+* [Technical reference](docs/technical.md): data model, API routes, storage,
+  local development, tests, and deployment configuration.
+* [Safety model](docs/safety-model.md): trust boundaries, controls, failure
+  handling, privacy, and release checks.
+* [Nimiq payment actions](docs/product/nim-payment.md): free planning, wallet
+  identity, anchors, bounties, and legacy receipt compatibility.
+* [Credit ledger cutover](docs/credit-ledger-cutover.md): the only procedure
+  for changing the production ledger.
+* [Security policy](SECURITY.md): reporting and repository controls.
 
-GitHub and Notion exports are portable text copied to the clipboard. They are
-not account integrations and Cairn does not write to either service.
+## Safety model in one page
 
-## Public pages
+* Planning requires a short lived wallet session, not a payment.
+* The Worker verifies a one time Ed25519 signature challenge and binds the
+  session to the signed wallet address.
+* User input and planning output are bounded and shaped before storage or use.
+* Free planning is protected by per wallet and IP rate limits plus a daily
+  service budget.
+* Private plans and detailed tracker metadata remain in browser storage unless
+  the user shares them.
+* Public shares expose an allowlisted read only projection.
+* Team links are locators, not credentials. Every team request needs a wallet
+  session and a matching member role.
+* Current credit balances and receipt consumption use one SQLite Durable Object
+  transaction. Legacy KV records remain a read only replay guard.
+* Production never enables `DEV_TRUST_PAYMENTS`.
 
-The deployed Worker serves a small information layer beside the mini app:
-
-1. `/case-studies` contains illustrative examples. They are not customer
-   claims.
-2. `/faq` answers product, timing, free access, Nimiq wallet use, sharing, and privacy questions.
-3. `/privacy` explains data handling in plain language.
-4. `/thank-you` is a simple completion page for links and demos.
-5. Unknown routes show a branded 404 page.
-
-The app has a clear response promise: most plans are ready in under 30 seconds.
-The public pages use canonical URLs, Open Graph metadata, a social card,
-`robots.txt`, `sitemap.xml`, and `llms.txt`.
+See the [full safety model](docs/safety-model.md) for assumptions and limits.
 
 ## Nimiq integration
 
-Cairn does not charge for plans or planner refinements. A signed Nimiq wallet
-session proves identity for AI requests and protected teams. Nimiq Pay also
-handles explicit product actions such as PRD anchors, milestone bounties, and
-builder tips. None of these actions is required for access.
+Cairn uses Nimiq for wallet identity and explicit builder actions. Nimiq Pay
+handles the native mini app flow. A normal browser uses Nimiq Hub. The wallet
+signs the authentication challenge and approves any optional NIM transfer.
 
-The Worker still verifies NIM receipts and preserves the SQLite-backed Durable
-Object ledger for existing balances and recovery. It never asks a user to pay
-again for a saved receipt. See [credit ledger cutover](docs/credit-ledger-cutover.md)
-before changing bindings or migrations.
+The current explicit actions are:
 
-## What leaves your phone
+1. PRD anchor: write a Blake2b hash of the current PRD into a one Luna self
+   transfer, then verify the confirmed transaction.
+2. Milestone bounty: send NIM directly from the owner wallet to a collaborator
+   after the owner marks the milestone complete.
+3. Builder tip: an optional transfer on a shared plan. Cairn never holds these
+   funds or decides a dispute.
 
-Stated plainly, because it matters:
+None of these actions is required to generate or refine a plan.
 
-| Data | Where it goes |
-| --- | --- |
-| The idea you type | Cairn's planning service, via Cairn's server, to write the plan |
-| The finished plan and private Track data | Your device's local storage. **Nothing else**, unless you use a planner follow up, public Share, or a protected team workspace |
-| A plan you refine | Cairn's server and planning service for that one follow up. The PRD, flow, and text only builder pack are sent so the change can be targeted. Private tracker metadata is not sent |
-| A plan you tap **Share** on | Cairn's server, so the link can be opened. Progress, milestone dates, task due dates, and labels are shared. Notes, priorities, and dependencies are not shared |
-| A protected team workspace | Cairn's server, so named wallet members can use Track. Milestones, task text, status, labels, dates, and milestone blocker flags are shared. The PRD, flow, Build summary, notes, priorities, and dependencies are not shared |
-| A PRD you anchor | A Blake2b hash of the PRD is written into a Nimiq transaction that your wallet approves. The readable PRD is not written on chain |
-| A milestone bounty or builder tip | The recipient address, amount, and short payment note go through your Nimiq wallet. Cairn does not custody the payment |
-| Your wallet address | Cairn's server, as the identity bound to your short lived wallet session and protected team access |
-| A request network address | A short lived abuse counter in Cairn's server. It is not used for analytics |
+## Data and privacy
 
-There is no analytics, no tracking, and no third-party script. The app loads no
-external fonts. The browser talks only to Cairn's API. Cairn's Worker handles
-generation requests on the server side.
+The finished plan, private notes, dates, priorities, and dependency details are
+stored in the browser's local storage. A generation sends the idea and optional
+context to Cairn's server and planning service. A refinement sends only the
+plan fields needed for that change. An explicit public share or team workspace
+sends only its documented Track projection.
 
-Plans are stored per device by design. Clearing the app's storage deletes them,
-and there is no private copy on a server to restore from. A protected team
-snapshot is a separate server record for the Track fields only. Copy anything
-you need to keep. Cairn does not claim encrypted cloud backup. Wallet signature
-based encryption needs a separate security design before it can be trusted.
+Cairn does not receive a private key, password, payment card, uploaded file, or
+wallet seed phrase. It does not use analytics, third party scripts, or external
+fonts. Clearing browser storage removes private local plans. Cairn does not claim
+encrypted cloud backup.
 
-## Running it locally
+## Commands
 
 ```bash
-npm install
-npm run dev          # http://localhost:5173
+npm test                 # unit and Worker tests
+npm run typecheck        # client and Worker type checks
+npm run build            # production client build
+npm run security:deps    # production dependency audit
+npm run security:secrets # credential-shaped value scan
+npm run worker:deploy    # build and deploy the Worker
 ```
 
-To run the full local Worker, copy `.dev.vars.example` to `.dev.vars` and add a local AI
-key. Then run `npm run build` and `npm run worker:dev`. The Worker uses its local KV store.
-Never commit `.dev.vars`.
+Run the first five checks before a deployment. Do not use a real payment for
+automated testing. A wallet owner must approve any real NIM transfer.
 
-In a production build, Chrome uses Nimiq Hub for real wallet authentication.
-Only a local Vite preview with no `VITE_API_BASE` uses a synthetic wallet
-and an obviously-labelled placeholder plan. This keeps local UI work walkable
-without weakening the production wallet path.
+## Repository layout
 
-When you open the deployed app in Chrome, tap **Generate plan** and complete the
-Nimiq Hub popup. Allow popups for the Cairn site. Hub returns the selected wallet
-address and signature to Cairn, which the Worker verifies before the free AI
-action.
-
-### On a real device
-
-The only form factor that matters is a portrait phone inside the Nimiq Pay
-WebView.
-
-```bash
-npm run dev -- --host
-```
-
-Then in Nimiq Pay: **Mini Apps → open URL → `http://<your-lan-ip>:5173`**.
-
-Note that LAN HTTP is not a secure context, so `navigator.clipboard` and
-`crypto.randomUUID` are absent there. Both have fallbacks
-(`src/lib/clipboard.ts`, `src/lib/plan.ts`) — which is the whole reason to test
-this way rather than only on `localhost`.
-
-### Build
-
-```bash
-npm run build        # vue-tsc -b && vite build
-npm test              # Node's built-in test runner
-```
-
-## Layout
-
-```
+```text
 src/
-  lib/
-    nimiq.ts       Nimiq Pay SDK wrapper. Provider methods RESOLVE with
-                   `T | ErrorResponse` rather than throwing, so every call goes
-                   through unwrap().
-    session.ts     Which mode are we in, and whose wallet is this
-    plan.ts        The data model, migration, and on-device library
-    tracker.ts     Progress, dates, blocker, and dependency calculations
-    api.ts         Typed client for the server
-    markdown.ts    Plan → Markdown / plain text
-    clipboard.ts   Copy, with a non-secure-context fallback
-    stub.ts        Offline placeholder generator, dev only
-  components/
-    NewPlan.vue      Screen one: the description
-    Workspace.vue    One route: Plan, Flow, Build, and Track
-    PrdView.vue      The PRD, readable and editable
-    VisualPrd.vue    A visual, editable PRD canvas
-    FlowDiagram.vue  The flow diagram
-    BuildView.vue    Read only builder pack summary
-    MilestoneTracker.vue  Owner board and timeline tracker
-    TrackerEditorSheet.vue  Task and milestone editor
-    TeamPanel.vue    Owner member and permission controls
-    RefineSheet.vue  Preview and apply targeted planner follow ups
-    Library.vue      Everything you have made
-  tests/
-    client/          Migration, tracker calculations, and targeted merge tests
-    worker/          Auth, budget, shape, share, and team permission tests
+  App.vue                 App state and orchestration
+  components/             Plan, Build, Flow, Track, team, and payment UI
+  lib/                    Plan model, tracker, API, wallet, and exports
+tests/                    Client and Worker regression tests
+worker/
+  index.ts                Worker routes and static asset fallback
+  auth.ts                 Wallet challenge and session verification
+  generate.ts             Planning service adapter and schema
+  shape.ts                Request and response validation
+  credit-ledger.ts        SQLite Durable Object balance owner
+  payments.ts             Nimiq transaction inspection
+  team.ts and share.ts    Protected Track and public share records
+docs/                     Architecture, technical, safety, and cutover guides
+public/                   Static public pages and metadata
+wrangler.toml             Worker bindings and non secret deployment settings
 ```
 
-## Stack
+## Current limits
 
-Vue 3 + TypeScript + Vite on the front, a Cloudflare Worker with KV behind it.
-No component library, no CSS framework, no webfont, no analytics. Type checking
-is strict, including `erasableSyntaxOnly` and `verbatimModuleSyntax`.
+Cairn produces a structured draft, not a guarantee that a product will succeed.
+The reality check is not legal, financial, security, or market advice. Dates are
+not invented by the planning service. Local plans have no private server backup.
+Payment verification depends on the Nimiq network and RPC availability. Free
+planning can be rate limited or paused when the daily service budget is reached.
 
-Google Analytics is intentionally not included. Cairn is a privacy first mini
-app, and adding third party tracking would contradict the disclosure shown
-before generation. Local business schema, maps, and directions are also not
-included because Cairn has no physical business location.
+## License
 
-No API key, secret, or credential is committed to this repository. The AI service
-key lives only in an encrypted Cloudflare secret binding.
-
-## Licence
-
-MIT — see [LICENSE](LICENSE).
-
-Built for the [Nimiq Mini Apps Competition](https://miniappscompetition.com).
+See [LICENSE](LICENSE).

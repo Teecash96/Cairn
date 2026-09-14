@@ -2,9 +2,15 @@
 
 ## Scope
 
-Cairn is a Vue mini app served by a Cloudflare Worker. The Worker stores credit
-records and explicit share snapshots in Cloudflare KV. The browser never receives
-the Gemini key, a KV credential, or a private wallet key.
+Cairn is a Vue mini app served by a Cloudflare Worker. The Worker stores wallet
+sessions, share snapshots, team Track projections, fair use counters, and legacy
+payment markers in Cloudflare KV. Current paid balances and new receipt
+consumption use the SQLite backed `CreditLedger` Durable Object. The browser
+never receives the provider key, a KV credential, or a private wallet key.
+
+For the full threat model, trust boundaries, failure states, and operational
+checklist, see [docs/safety-model.md](docs/safety-model.md). For implementation
+details, see [docs/technical.md](docs/technical.md).
 
 ## Controls in this repository
 
@@ -13,13 +19,14 @@ the Gemini key, a KV credential, or a private wallet key.
 | API keys | `GEMINI_API_KEY` is a Cloudflare encrypted secret binding. It is never in client code, `wrangler.toml`, or Git. |
 | Git secrets | `.env`, `.dev.vars`, Wrangler state, and local strategy files are ignored. Run `npm run security:secrets` before a push. |
 | Server auth | Private routes require a short lived bearer session created by an Ed25519 signature over a one time Nimiq challenge. |
-| Record access | Credit, payment, refinement, and share writes use the address in the verified session. A body address must match it. |
+| Record access | Credit, payment, refinement, share, and team writes use the address in the verified session. A body address must match it. |
 | Field tampering | Request bodies are bounded and shaped. Plans, flow steps, milestones, tasks, and model output are clamped before use or storage. |
-| Bot protection | Challenge, verification, generation, refinement, redemption, and sharing have rate limits. Free grants use the device identifier only as a usability cap and always enforce a server observed IP cap. A daily model budget is enforced. |
-| Input limits | JSON bodies, ideas, questions, receipts, plan fields, RPC responses, and Gemini responses have size limits. |
+| Bot protection | Challenge, verification, generation, refinement, redemption, sharing, and team writes have rate limits. Free planning uses wallet and server observed IP limits. A daily provider budget is enforced. |
+| Input limits | JSON bodies, ideas, questions, receipts, plan fields, RPC responses, and provider responses have size limits. |
 | Output limits | Public plans expose a read only allowlist. JSON responses have a 256 KiB ceiling. |
 | Browser security | The Worker sends CSP, HSTS on HTTPS, frame denial, no sniffing, referrer, permissions, opener, and resource policy headers. `assets.run_worker_first` keeps the same policy on static app files. |
 | Transport | Non local HTTP requests receive a 301 redirect to HTTPS. Local HTTP remains available for handset testing. |
+| Payment ledger | Verified receipts are consumed once inside one SQLite Durable Object transaction. Legacy `spent:*` KV records remain a read only replay guard after cutover. |
 | Dependencies | `npm run security:deps` runs the production dependency audit. |
 
 ## Wallet sessions
@@ -38,10 +45,12 @@ cannot change the wallet identity.
 
 ## Data and storage
 
-Cloudflare manages encryption at rest for KV. Cairn does not store passwords,
-private keys, API keys, payment card data, or uploaded files. A shared plan is
-intentionally readable by anyone holding its bearer link because sharing is an
-explicit product action. Private plans remain in the browser's local storage.
+Cloudflare manages encryption at rest for KV and Durable Object storage. Cairn
+does not store passwords, private keys, API keys, payment card data, or uploaded
+files. A shared plan is intentionally readable by anyone holding its bearer link
+because sharing is an explicit product action. Private plans remain in the
+browser's local storage. Current credit balances are not owned by KV after the
+ledger cutover; the Durable Object is the single balance authority.
 The app does not expose a database key, so row level security is not applicable.
 There is no SQL query layer, so parameterized queries are not applicable.
 
@@ -60,8 +69,11 @@ only authored content.
 4. Run `npm run security:deps`.
 5. Run `npm run typecheck`, `npm test`, `npm run build`, and `git diff --check`.
 6. Confirm the deployed response has HTTPS, CSP, HSTS, and `x-frame-options`.
-7. Review Cloudflare KV access and Worker secrets after every change to the
-   deployment account.
+7. Confirm `DEV_TRUST_PAYMENTS` is absent or off in production.
+8. For ledger changes, follow [docs/credit-ledger-cutover.md](docs/credit-ledger-cutover.md)
+   and verify reconciliation before enabling `CREDIT_LEDGER_READY`.
+9. Review Cloudflare KV, Durable Object access, and Worker secrets after every
+   change to the deployment account.
 
 Report a suspected vulnerability through a private GitHub security advisory or
 by opening an issue without including wallet keys, API keys, or confidential
