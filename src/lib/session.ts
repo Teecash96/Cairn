@@ -8,8 +8,8 @@
  *                the synthetic wallet and offline generator.
  *
  * Nothing here prompts at boot. Wallet sign in starts on the first action that
- * needs identity. Planning never requires a payment. The optional NIM support
- * path uses the same wallet bridge when the user explicitly chooses it.
+ * needs identity. Planning never requires a payment. NIM transfers are used
+ * for explicit product actions such as anchors, bounties, and builder tips.
  */
 import { computed, readonly, ref } from 'vue'
 import { clearAuthToken, getAuthChallenge, hasAuthToken, setAuthToken, verifyAuth } from './api'

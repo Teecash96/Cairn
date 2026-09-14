@@ -20,12 +20,14 @@ import { NIMIQ_TEMPLATE } from '../lib/example'
 
 const {
   busy = false,
-  supportBusy = false,
+  recoveryBusy = false,
+  hasPendingPayment = false,
   initial,
   showDisclosure = true,
 } = defineProps<{
   busy?: boolean
-  supportBusy?: boolean
+  recoveryBusy?: boolean
+  hasPendingPayment?: boolean
   initial?: PlanInput
   showDisclosure?: boolean
 }>()
@@ -33,7 +35,7 @@ const {
 const emit = defineEmits<{
   submit: [input: PlanInput]
   example: []
-  support: []
+  recoverPayment: []
 }>()
 
 const name = ref(initial?.name ?? '')
@@ -300,12 +302,15 @@ function submit(): void {
           <p v-if="busy" class="foot faint" aria-live="polite">Most plans are ready in under 30 seconds.</p>
           <p v-else-if="!ready && idea.trim()" class="foot faint">Add a little more detail so Cairn has something useful to work with.</p>
           <p v-else class="foot muted">Your first wallet sign in protects the plan. Planning and updates stay free.</p>
-        </div>
 
-        <div class="wallet-row">
-          <span><i aria-hidden="true" />Nimiq wallet identity</span>
-          <button type="button" :disabled="busy || supportBusy" @click="emit('support')">
-            {{ supportBusy ? 'Opening Nimiq Pay…' : 'Support with 1 NIM' }}
+          <button
+            v-if="hasPendingPayment"
+            type="button"
+            class="recovery-link"
+            :disabled="busy || recoveryBusy"
+            @click="emit('recoverPayment')"
+          >
+            {{ recoveryBusy ? 'Checking previous payment…' : 'Check a previous NIM payment' }}
           </button>
         </div>
       </form>
@@ -313,7 +318,7 @@ function submit(): void {
 
     <div class="home-foot">
       <p v-if="showDisclosure" class="disclosure faint">
-        Your description goes to Google Gemini to create the plan. The finished plan stays on this device until you choose to share it.
+        Cairn uses your description to create the plan. The finished plan stays on this device until you choose to share it.
       </p>
       <footer class="site-footer" aria-label="Cairn information">
         <a href="/case-studies">Examples</a>
@@ -333,7 +338,7 @@ function submit(): void {
 .home-brand strong { font-family: var(--font-display); font-size: var(--text-lg); letter-spacing: -.025em; }
 .home-brand small { color: var(--text-muted); font-size: var(--text-xs); }
 .home-status { display: inline-flex; align-items: center; gap: var(--s2); padding: .5rem .75rem; color: var(--moss); background: var(--sage-subtle); border: 1px solid var(--sage-line); border-radius: var(--r-full); font-size: var(--text-xs); font-weight: 750; }
-.home-status i, .wallet-row i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.home-status i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 
 .home-grid { display: grid; grid-template-columns: minmax(0, .88fr) minmax(30rem, 1.12fr); align-items: start; gap: clamp(2rem, 6vw, 5.5rem); }
 .welcome { position: sticky; top: var(--s8); display: flex; flex-direction: column; gap: var(--s5); padding-top: var(--s4); }
@@ -386,6 +391,9 @@ function submit(): void {
 .context-fields { display: grid; gap: var(--s4); padding: var(--s4); background: var(--surface-sunken); border-radius: var(--r-md); overflow: hidden; }
 
 .submit { display: flex; flex-direction: column; gap: var(--s3); }
+.recovery-link { align-self: center; color: var(--text-muted); font-size: var(--text-xs); font-weight: 700; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.recovery-link:hover { color: var(--accent); }
+.recovery-link:disabled { cursor: wait; opacity: .58; }
 .generate-button { position: relative; min-height: 54px; overflow: hidden; }
 .generate-button__icon { display: grid; flex: 0 0 24px; place-items: center; width: 24px; height: 24px; }
 .generate-button__label { display: grid; place-items: center; min-width: 12rem; }
@@ -397,12 +405,6 @@ function submit(): void {
 .cairn-loading i:nth-child(2) { bottom: 7px; width: 16px; animation-delay: 180ms; }
 .cairn-loading i:nth-child(3) { bottom: 13px; width: 10px; animation-delay: 360ms; }
 @keyframes stack-stone { 0%, 18% { opacity: 0; transform: translate(-50%, -8px) scale(.72); } 36%, 78% { opacity: 1; transform: translate(-50%, 0) scale(1); } 100% { opacity: 0; transform: translate(-50%, 2px) scale(.96); } }
-.wallet-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); padding-top: var(--s4); border-top: 1px solid var(--line); color: var(--text-muted); font-size: var(--text-xs); }
-.wallet-row > span { display: inline-flex; align-items: center; gap: var(--s2); }
-.wallet-row i { color: var(--nim); }
-.wallet-row button { min-height: 36px; color: var(--accent); font-size: var(--text-xs); font-weight: 750; }
-.wallet-row button:hover { color: var(--accent-hover); }
-
 .home-foot { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s6); padding-top: var(--s5); border-top: 1px solid var(--line); }
 .disclosure { max-width: 46rem; font-size: var(--text-xs); line-height: var(--leading); }
 .site-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--s4); font-size: var(--text-xs); }
@@ -432,7 +434,8 @@ function submit(): void {
   .home-brand small { display: none; }
   .home-status { padding: .4rem .6rem; }
   .welcome { display: none; }
-  .composer { margin: 0 calc(var(--s4) * -1); padding: var(--s5) var(--s4); border-right: 0; border-left: 0; border-radius: 0; box-shadow: none; }
+  .home-grid { width: calc(100% + (2 * var(--s4))); margin-inline: calc(var(--s4) * -1); min-width: 0; }
+  .composer { margin: 0; min-width: 0; padding: var(--s5) var(--s4); border-right: 0; border-left: 0; border-radius: 0; box-shadow: none; }
   .composer__head { align-items: center; }
   .composer__head h2 { font-size: 1.65rem; }
   .local-chip { display: none; }

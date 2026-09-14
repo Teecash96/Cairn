@@ -230,23 +230,25 @@ function commitRename(id: string): void {
 .project-card { display: flex; flex-direction: column; gap: var(--s3); width: 100%; height: 100%; min-height: 260px; padding: var(--s5); text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: 0 1px 2px rgb(35 40 32 / 3%); transition: transform var(--duration-fast) var(--ease-smooth-out), box-shadow var(--duration-fast) var(--ease-smooth-out), border-color var(--duration-fast) var(--ease-smooth-out); }
 .project-card:hover { transform: translateY(-3px); border-color: var(--line-strong); box-shadow: var(--shadow-card); }
 .project-card__top, .project-card__progress, .project-card__foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
-.project-card__kind { display: inline-flex; align-items: center; gap: var(--s2); color: var(--text-muted); font-size: var(--text-xs); font-weight: 700; }
+.project-card__top { min-width: 0; padding-right: calc(44px + var(--s3)); }
+.project-card__kind { display: inline-flex; align-items: center; gap: var(--s2); min-width: 0; overflow: hidden; color: var(--text-muted); font-size: var(--text-xs); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .project-card__kind i { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; }
 .project-item--tone-1 .project-card__kind i { background: var(--moss); }
 .project-item--tone-2 .project-card__kind i { background: var(--clay); }
-.project-card__time { color: var(--text-faint); font-size: var(--text-xs); }
+.project-card__time { flex: 0 1 auto; min-width: 0; max-width: 42%; overflow: hidden; color: var(--text-faint); font-size: var(--text-xs); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 
 .name {
   font-family: var(--font-display);
   font-size: 1.35rem;
   font-weight: 700;
   letter-spacing: -.035em;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .next-label { margin-top: var(--s2); color: var(--accent); font-size: .68rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
-.next-value { flex: 1; color: var(--text-muted); font-size: var(--text-sm); line-height: var(--leading); display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.next-value { flex: 1; min-width: 0; color: var(--text-muted); font-size: var(--text-sm); line-height: var(--leading); display: -webkit-box; overflow: hidden; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .project-card__progress { color: var(--text-muted); font-size: var(--text-xs); }
 .project-card__progress strong { color: var(--text); font-size: var(--text-xs); }
 .progress-track { height: 5px; overflow: hidden; background: var(--surface-sunken); border-radius: var(--r-full); }
@@ -255,6 +257,7 @@ function commitRename(id: string): void {
 
 .more {
   position: absolute;
+  z-index: 2;
   top: var(--s3);
   right: var(--s3);
   display: grid;
@@ -328,6 +331,9 @@ function commitRename(id: string): void {
 @media (max-width: 480px) {
   .library-screen { gap: var(--s6); }
   .library-title .screen__title { font-size: 2.35rem; }
+  .library-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); overflow-x: visible; padding-bottom: 0; }
+  .library-stats > div { min-width: 0; padding: var(--s3); }
+  .library-stats span { overflow-wrap: anywhere; }
   .project-card { min-height: 238px; padding: var(--s4); }
 }
 </style>

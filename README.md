@@ -47,7 +47,7 @@ session and no payment wall.
    and sign a short login challenge. In Chrome, Nimiq Hub opens the wallet for the
    same signature flow. This creates a short lived server session. The prompt
    happens on the action you already chose to take.
-3. Gemini writes the full builder pack. It takes about twenty seconds.
+3. Cairn writes the full builder pack. It takes about twenty seconds.
 4. Edit anything. It autosaves to your device.
 5. Open **Plan** and choose **Map** for a one page view of the problem, user,
    promise, first release, proof, and guardrails.
@@ -72,7 +72,7 @@ Unchanged task text keeps its stable id and local progress. Replaced tasks are
 listed before application, and completed work requires explicit acknowledgement.
 Planner actions are free. Fair use rate limits and a daily service limit prevent
 unbounded AI cost. Task status, dates, labels, notes, and blockers stay on your
-device when a refinement keeps that task. Cairn sends only task text to Gemini.
+device when a refinement keeps that task. Cairn sends only task text to its planning service.
 
 ### Track the work
 
@@ -129,7 +129,7 @@ The deployed Worker serves a small information layer beside the mini app:
 
 1. `/case-studies` contains illustrative examples. They are not customer
    claims.
-2. `/faq` answers product, timing, free access, NIM support, sharing, and privacy questions.
+2. `/faq` answers product, timing, free access, Nimiq wallet use, sharing, and privacy questions.
 3. `/privacy` explains data handling in plain language.
 4. `/thank-you` is a simple completion page for links and demos.
 5. Unknown routes show a branded 404 page.
@@ -138,12 +138,12 @@ The app has a clear response promise: most plans are ready in under 30 seconds.
 The public pages use canonical URLs, Open Graph metadata, a social card,
 `robots.txt`, `sitemap.xml`, and `llms.txt`.
 
-## Nimiq support
+## Nimiq integration
 
 Cairn does not charge for plans or planner refinements. A signed Nimiq wallet
-session proves identity for AI requests and protected teams. The app also keeps
-an explicit **Support Cairn** path through Nimiq Pay for people who choose to
-send NIM. Support is voluntary and never unlocks access.
+session proves identity for AI requests and protected teams. Nimiq Pay also
+handles explicit product actions such as PRD anchors, milestone bounties, and
+builder tips. None of these actions is required for access.
 
 The Worker still verifies NIM receipts and preserves the SQLite-backed Durable
 Object ledger for existing balances and recovery. It never asks a user to pay
@@ -156,9 +156,9 @@ Stated plainly, because it matters:
 
 | Data | Where it goes |
 | --- | --- |
-| The idea you type | Google's Gemini API, via Cairn's server, to write the plan |
+| The idea you type | Cairn's planning service, via Cairn's server, to write the plan |
 | The finished plan and private Track data | Your device's local storage. **Nothing else**, unless you use a planner follow up, public Share, or a protected team workspace |
-| A plan you refine | Cairn's server and Google's Gemini API for that one follow up. The PRD, flow, and text only builder pack are sent so the change can be targeted. Private tracker metadata is not sent |
+| A plan you refine | Cairn's server and planning service for that one follow up. The PRD, flow, and text only builder pack are sent so the change can be targeted. Private tracker metadata is not sent |
 | A plan you tap **Share** on | Cairn's server, so the link can be opened. Progress, milestone dates, task due dates, and labels are shared. Notes, priorities, and dependencies are not shared |
 | A protected team workspace | Cairn's server, so named wallet members can use Track. Milestones, task text, status, labels, dates, and milestone blocker flags are shared. The PRD, flow, Build summary, notes, priorities, and dependencies are not shared |
 | A PRD you anchor | A Blake2b hash of the PRD is written into a Nimiq transaction that your wallet approves. The readable PRD is not written on chain |
@@ -167,8 +167,8 @@ Stated plainly, because it matters:
 | A request network address | A short lived abuse counter in Cairn's server. It is not used for analytics |
 
 There is no analytics, no tracking, and no third-party script. The app loads no
-external fonts. The browser talks only to Cairn's API. Cairn's Worker sends
-generation requests to Gemini on the server side.
+external fonts. The browser talks only to Cairn's API. Cairn's Worker handles
+generation requests on the server side.
 
 Plans are stored per device by design. Clearing the app's storage deletes them,
 and there is no private copy on a server to restore from. A protected team
@@ -183,7 +183,7 @@ npm install
 npm run dev          # http://localhost:5173
 ```
 
-To run the full local Worker, copy `.dev.vars.example` to `.dev.vars` and add a local Gemini
+To run the full local Worker, copy `.dev.vars.example` to `.dev.vars` and add a local AI
 key. Then run `npm run build` and `npm run worker:dev`. The Worker uses its local KV store.
 Never commit `.dev.vars`.
 
@@ -195,8 +195,7 @@ without weakening the production wallet path.
 When you open the deployed app in Chrome, tap **Generate plan** and complete the
 Nimiq Hub popup. Allow popups for the Cairn site. Hub returns the selected wallet
 address and signature to Cairn, which the Worker verifies before the free AI
-action. Choose **Support Cairn** only if you want to send an optional NIM
-payment.
+action.
 
 ### On a real device
 
@@ -264,7 +263,7 @@ app, and adding third party tracking would contradict the disclosure shown
 before generation. Local business schema, maps, and directions are also not
 included because Cairn has no physical business location.
 
-No API key, secret, or credential is committed to this repository. The Gemini
+No API key, secret, or credential is committed to this repository. The AI service
 key lives only in an encrypted Cloudflare secret binding.
 
 ## Licence

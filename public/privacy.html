@@ -56,17 +56,17 @@
 
         <section class="card">
           <h2>What is sent for generation</h2>
-          <p>When you generate or refine a plan, the text you submit is sent to Cairn's Cloudflare Worker. The Worker sends the request to Google Gemini to produce the response. Cairn does not put an API key in the app.</p>
+          <p>When you generate or refine a plan, the text you submit is sent to Cairn's Cloudflare Worker. Cairn's planning service produces the response on the server. Cairn does not put an API key in the app.</p>
         </section>
 
         <section class="card">
           <h2>Wallet information</h2>
-          <p>Cairn receives the connected Nimiq wallet address to verify your identity and protect team access. Your wallet signs a short lived login challenge. Cairn does not receive or store your private key. If you choose optional NIM support, the payment goes from your wallet to Cairn's receiving address. The Worker checks the network transaction and rejects reused receipts.</p>
+          <p>Cairn receives the connected Nimiq wallet address to verify your identity and protect team access. Your wallet signs a short lived login challenge. Cairn does not receive or store your private key. If you use a PRD anchor, milestone bounty, or builder tip, the payment goes directly from your wallet. The Worker checks network transactions and rejects reused receipts.</p>
         </section>
 
         <section class="card">
           <h2>Refinement and network limits</h2>
-          <p>A planner follow up sends the PRD, flow, and text only builder pack to Cairn's Worker and Google Gemini for that one response. Private tracker notes, labels, dates, priorities, status, and dependencies stay on your device. Cairn uses a short lived, sanitized network address during wallet sign in and abuse checks. It is not used for analytics or advertising.</p>
+          <p>A planner follow up sends the PRD, flow, and text only builder pack to Cairn's Worker and planning service for that one response. Private tracker notes, labels, dates, priorities, status, and dependencies stay on your device. Cairn uses a short lived, sanitized network address during wallet sign in and abuse checks. It is not used for analytics or advertising.</p>
         </section>
 
         <section class="card">

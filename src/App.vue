@@ -8,8 +8,8 @@
  * in one file is what makes the ordering rules below checkable at a glance.
  *
  * The wallet prompt fires on the first generate tap, never at boot. It proves
- * identity for free planning and protected team actions. NIM payment remains an
- * optional support path, never a prerequisite for using Cairn.
+ * identity for free planning and protected team actions. NIM payments support
+ * anchors, bounties, builder tips, and recovery of legacy receipts.
  *
  * Editing autosaves. There is no save button, and the deep watcher that does it
  * is guarded so that stamping `updatedAt` cannot retrigger itself.
@@ -63,7 +63,7 @@ import {
 } from './lib/plan'
 import type { TeamPanelState } from './components/Workspace.vue'
 import { useSession } from './lib/session'
-import { bindPayment, samePaymentAddress } from './lib/payment-session'
+import { samePaymentAddress } from './lib/payment-session'
 import { mergeRefinement } from './lib/refinement'
 import { createExamplePlan } from './lib/example'
 import { stubGenerate, stubRefinement } from './lib/stub'
@@ -85,15 +85,13 @@ const formInitial = ref<PlanInput | undefined>(undefined)
 
 const generating = ref(false)
 const sharing = ref(false)
-const supportLoading = ref(false)
+const recoveryLoading = ref(false)
 const anchoring = ref(false)
 const payingBountyId = ref<string | null>(null)
 const payOpen = ref(false)
 const payState = ref<'idle' | 'paying' | 'verifying'>('idle')
 const payError = ref<string | null>(null)
 const price = ref<PriceQuote | null>(null)
-const pendingGeneration = ref<{ input: PlanInput; replaceId?: string } | null>(null)
-const pendingRefinement = ref<{ action: RefineAction; question?: string } | null>(null)
 
 const PAYMENT_POLL_DELAYS_MS = [3_000, 5_000, 8_000, 10_000, 15_000]
 const PAYMENT_WAITING_MESSAGE = 'Payment sent. Cairn is checking for one network confirmation. Do not pay again.'
@@ -114,12 +112,6 @@ function readPendingReceipt(): { address: string; receipt: string } | null {
   } catch {
     return null
   }
-}
-
-function rememberPendingReceipt(value: { address: string; receipt: string }): void {
-  pendingReceipt.value = value
-  paymentPendingMessage.value = PAYMENT_WAITING_MESSAGE
-  try { sessionStorage.setItem(PENDING_PAYMENT_KEY, JSON.stringify(value)) } catch { /* best effort */ }
 }
 
 function forgetPendingReceipt(): void {
@@ -643,31 +635,25 @@ async function completePayment(): Promise<void> {
   stopPaymentPolling()
   forgetPendingReceipt()
   payOpen.value = false
-  const generation = pendingGeneration.value
-  const refinement = pendingRefinement.value
-  pendingGeneration.value = null
-  pendingRefinement.value = null
-  notify('Thank you. Your optional NIM support payment was verified.', 'success')
-  if (generation) await generate(generation.input, generation.replaceId)
-  else if (refinement) await runRefinement(refinement.action, refinement.question)
+  notify('Previous NIM payment verified. Your credits are ready.', 'success')
 }
 
-/** Open the voluntary NIM support path without gating any planner action. */
-async function openSupport(): Promise<void> {
-  if (supportLoading.value || payOpen.value) return
-  if (localPreview) {
-    notify('NIM support is available in the deployed Cairn app.', 'info')
+/** Recover a receipt from the old paid flow without opening a new checkout. */
+async function recoverPayment(): Promise<void> {
+  if (recoveryLoading.value || payOpen.value) return
+  if (!pendingReceipt.value) {
+    notify('There is no previous NIM payment to check.', 'info')
     return
   }
 
-  supportLoading.value = true
+  recoveryLoading.value = true
   try {
     const address = await requireAuth()
     if (!address) return
     const result = await getCredits()
     price.value = result.price
     if (!result.price) {
-      notify('NIM support is temporarily unavailable.', 'error')
+      notify('Payment recovery is temporarily unavailable.', 'error')
       return
     }
     payError.value = null
@@ -676,7 +662,7 @@ async function openSupport(): Promise<void> {
   } catch (error) {
     notify(messageOf(error), 'error')
   } finally {
-    supportLoading.value = false
+    recoveryLoading.value = false
   }
 }
 
@@ -735,15 +721,18 @@ function startPaymentPolling(address: string, receipt: string): void {
 }
 
 async function pay(): Promise<void> {
-  const quote = price.value
-  if (!quote || payState.value !== 'idle') return
+  if (!price.value || payState.value !== 'idle') return
   const pending = pendingReceipt.value
+  if (!pending?.receipt) {
+    payError.value = 'There is no previous NIM payment to check.'
+    return
+  }
   // A saved receipt is a recovery flow, not a new checkout. Mark it busy
   // before authentication so a second tap cannot start another attempt.
-  payState.value = pending?.receipt ? 'verifying' : 'paying'
+  payState.value = 'verifying'
   // A wallet that already paid may now hold less than the purchase amount.
   // Let it authenticate so its saved receipt can still be recovered.
-  const address = await requireAuth(pending?.receipt ? undefined : quote.priceLuna)
+  const address = await requireAuth()
   if (!address) {
     payState.value = 'idle'
     payError.value = session.lastError.value ?? 'Select your funded Nimiq wallet, then try again.'
@@ -788,24 +777,8 @@ async function pay(): Promise<void> {
     }
   }
 
-  const payment = await session.pay(quote.payTo, quote.priceLuna, 'Optional support for Cairn')
-  if (!payment) {
-    payState.value = 'idle'
-    payError.value = session.lastError.value ?? 'Payment was not completed.'
-    return
-  }
-  const boundPayment = bindPayment(address, payment)
-  if (boundPayment.requiresPayerAuth) {
-    rememberPendingReceipt(boundPayment.pending)
-    session.disconnect()
-    payState.value = 'idle'
-    paymentPendingMessage.value = null
-    payError.value = 'Payment was sent from another wallet. Sign in with that paying wallet to claim the credits. Do not pay again.'
-    return
-  }
-
-  rememberPendingReceipt(boundPayment.pending)
-  startPaymentPolling(address, payment.receipt)
+  payState.value = 'idle'
+  payError.value = 'Cairn no longer accepts support payments. Plans and refinements are free.'
 }
 
 function resumePendingPayment(): void {
@@ -830,8 +803,6 @@ function closePay(): void {
   stopPaymentPolling()
   payState.value = 'idle'
   payOpen.value = false
-  pendingGeneration.value = null
-  pendingRefinement.value = null
   if (pendingReceipt.value) paymentPendingMessage.value = PAYMENT_WAITING_MESSAGE
 }
 
@@ -1131,11 +1102,12 @@ async function tipSharedCreator(): Promise<void> {
         v-if="view === 'new'"
         :key="`new-${formKey}`"
         :busy="generating"
-        :support-busy="supportLoading"
+        :recovery-busy="recoveryLoading"
+        :has-pending-payment="Boolean(pendingReceipt)"
         :initial="formInitial"
         @submit="generate"
         @example="openExample"
-        @support="openSupport"
+        @recover-payment="recoverPayment"
       />
 
       <Workspace

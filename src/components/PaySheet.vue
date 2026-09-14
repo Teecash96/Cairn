@@ -1,10 +1,9 @@
 <script setup lang="ts">
 /**
- * The optional NIM support sheet. Planning never opens this sheet as a gate.
+ * The legacy NIM payment recovery sheet. New planning is free and does not
+ * open this sheet as a checkout.
  *
- * One payment buys a bundle, not a single plan, because every wallet call opens a
- * native confirmation dialog that an app cannot suppress. The same verified
- * receipt path also recovers older Cairn payments without asking for a second one.
+ * Existing receipts can be checked without asking for a second payment.
  *
  * The price comes from the server. Nothing here hardcodes an amount: NIM moves,
  * and the pitch is that a bundle costs about what the inference costs.
@@ -59,12 +58,12 @@ function dismiss(): void {
       <div class="grabber" aria-hidden="true"></div>
 
       <h2 id="pay-title" class="title">
-        Support Cairn
+        Check previous payment
       </h2>
 
       <p class="body muted">
-        Cairn is free to use. If the planner helps, you can optionally send 1 NIM through Nimiq Pay.
-        Sending NIM is never required to generate or refine a plan.
+        Cairn plans and refinements are free. This screen checks a NIM payment
+        that was already sent and never asks you to pay again.
       </p>
 
       <template v-if="price">
@@ -74,8 +73,8 @@ function dismiss(): void {
             <span class="unit">NIM</span>
           </div>
           <p class="quote__for">
-            optional contribution
-            <span class="faint"> · no access required</span>
+            previous payment
+            <span class="faint"> · no new payment</span>
           </p>
         </div>
 
@@ -103,15 +102,15 @@ function dismiss(): void {
           class="btn btn--primary btn--block payment-button"
           :class="{ 'payment-button--processing': busy }"
           :aria-busy="busy"
-          :disabled="!price || busy"
+          :disabled="!price || busy || !pending"
           @click="emit('pay')"
         >
           <span v-if="busy" class="payment-spinner" aria-hidden="true"></span>
           <template v-if="state === 'paying'">Confirm in Nimiq Pay…</template>
           <template v-else-if="state === 'verifying'">Processing payment…</template>
-          <template v-else-if="price && retrying">Resume automatic checking</template>
-          <template v-else-if="price">Pay {{ formatNim(price.priceLuna) }} NIM</template>
-          <template v-else>Pay</template>
+          <template v-else-if="pending && price && retrying">Resume automatic checking</template>
+          <template v-else-if="pending && price">Check payment</template>
+          <template v-else>Payments are disabled</template>
         </button>
 
         <button
@@ -125,7 +124,7 @@ function dismiss(): void {
       </div>
 
       <p class="fine faint">
-        Payment goes straight from your wallet to Cairn’s receiving address. Existing receipts are checked once and never charged twice.
+        Existing receipts are checked once and never charged twice.
       </p>
     </div>
   </div>

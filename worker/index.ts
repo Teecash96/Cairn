@@ -72,15 +72,15 @@ function generationFailure(error: unknown, fallback: string, cors: Record<string
   const status = /Gemini returned (\d{3})/i.exec(detail)?.[1]
   const keyDetail = /api[\s_-]?key|key\s+(?:is\s+)?(?:not\s+valid|invalid|rejected|not\s+found)|key.{0,40}(?:invalid|rejected|leaked)|standard key|authorization key/i.test(detail)
   const message = status === '401' || status === '403' || (status === '400' && keyDetail)
-    ? 'Cairn’s Gemini key was rejected. Create a new authorization key in Google AI Studio, then update GEMINI_API_KEY in Cloudflare.'
+    ? 'Cairn could not authorize its planning service. Try again later.'
     : status === '404'
-      ? 'Cairn’s configured AI model is unavailable. Check GEMINI_MODEL in Cloudflare.'
+      ? 'Cairn’s planning service is unavailable. Try again shortly.'
       : status === '400'
-        ? 'Cairn’s AI request was rejected. Check the Gemini model and key configuration.'
+        ? 'Cairn could not process this planning request. Try again with more detail.'
       : status === '429'
-        ? 'The AI provider is out of quota or rate limited. Try again shortly.'
+        ? 'Cairn’s planning service is busy or rate limited. Try again shortly.'
         : /timed out|abort/i.test(detail)
-          ? 'The AI provider took too long to respond. Try again.'
+          ? 'Cairn’s planning service took too long to respond. Try again.'
           : fallback
 
   return fail('generation_failed', message, 502, cors)

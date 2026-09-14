@@ -27,8 +27,8 @@ reconciled. Do not enable it during a gradual rollout alongside the old Worker.
    `CREDIT_LEDGER` binding, `CreditLedger` class and `cairn-credits-v1` object name.
    Record this enabled setting in the deployment configuration so the next
    deployment does not accidentally return the service to maintenance mode.
-6. Verify balances with existing wallets. Check an optional NIM support
-   payment, a repeated receipt, one successful free AI action, and a failed
+6. Verify balances with existing wallets. Check one legacy NIM receipt
+   recovery, a repeated receipt, one successful free AI action, and a failed
    generation before ending the maintenance window. The wallet owner completes
    any real transfer.
 

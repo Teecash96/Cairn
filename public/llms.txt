@@ -8,14 +8,15 @@ Cairn is a mobile first web app designed for the Nimiq Pay mini app environment.
 
 ## Privacy
 
-Saved plans stay in browser local storage until the person chooses to share. Generation sends the submitted description through Cairn's server to Google Gemini. Cairn uses signed Nimiq wallet identity. It does not require an email account and does not run Google Analytics or advertising tracking.
+Saved plans stay in browser local storage until the person chooses to share. Generation sends the submitted description through Cairn's server to create the plan. Cairn uses signed Nimiq wallet identity. It does not require an email account and does not run Google Analytics or advertising tracking.
 
 ## Access
 
-Cairn plans and refinements are free after a signed Nimiq wallet session. The
-app has an optional Nimiq Pay support path for users who choose to send 1 NIM.
-Payment never unlocks access. The Worker verifies receipts and rejects reused
-receipts. Sharing, exports, local editing, and team workspaces are free.
+Cairn plans and refinements are free after a signed Nimiq wallet session. Nimiq
+Pay is used for explicit product actions such as PRD anchors, milestone
+bounties, and builder tips. Payment never unlocks access. The Worker verifies
+receipts and rejects reused receipts. Sharing, exports, local editing, and team
+workspaces are free.
 
 ## Links
 
