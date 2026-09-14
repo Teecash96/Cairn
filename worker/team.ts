@@ -334,10 +334,12 @@ async function performTeamCommand(env: Env, command: TeamCommand): Promise<TeamV
 export class TeamCoordinator {
   private tail: Promise<void> = Promise.resolve()
 
-  constructor(
-    private readonly state: DurableObjectState,
-    private readonly env: Env,
-  ) {
+  private readonly state: DurableObjectState
+  private readonly env: Env
+
+  constructor(state: DurableObjectState, env: Env) {
+    this.state = state
+    this.env = env
     void this.state
   }
 
