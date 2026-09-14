@@ -255,6 +255,38 @@ export function useSession() {
     }
   }
 
+  /** Submit a self transfer whose data field is the 32 byte PRD hash in hex. */
+  async function anchor(hash: string): Promise<SessionPayment | null> {
+    if (!/^[a-f0-9]{64}$/i.test(hash)) {
+      lastError.value = 'The plan hash is invalid.'
+      return null
+    }
+    if (mode.value === 'booting') await boot()
+    lastError.value = null
+    try {
+      const wallet = address.value ?? await authenticate()
+      if (!wallet) return null
+      if (mode.value === 'nimiq' && provider) {
+        return {
+          receipt: await sendPayment(provider, wallet, 1, hash.toLowerCase()),
+          sender: wallet,
+        }
+      }
+      if (mode.value === 'preview' && !localPreview) {
+        return await sendPaymentInBrowser(wallet, 1, hash.toLowerCase(), wallet)
+      }
+      return null
+    } catch (error) {
+      lastError.value =
+        error instanceof ProviderError && error.isDenied
+          ? 'Anchor transaction cancelled.'
+          : error instanceof Error
+            ? error.message
+            : 'Anchor transaction failed.'
+      return null
+    }
+  }
+
   /** Clear the in memory wallet session so a different wallet can reconnect. */
   function disconnect(): void {
     clearAuthToken()
@@ -276,6 +308,7 @@ export function useSession() {
     boot,
     connect,
     authenticate,
+    anchor,
     pay,
     disconnect,
     refreshChain,

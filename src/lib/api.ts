@@ -48,6 +48,11 @@ export interface RedeemResult {
   granted: number
 }
 
+export interface AnchorVerificationResult {
+  verified: boolean
+  transactionHash: string | null
+}
+
 export interface ShareResult {
   shareId: string
   /** Absolute URL for the read only snapshot. */
@@ -56,6 +61,7 @@ export interface ShareResult {
 
 export interface SharedPlanResult {
   plan: Plan
+  creator: string
 }
 
 export interface AuthChallenge {
@@ -328,6 +334,15 @@ export function redeemPayment(address: string, receipt?: string): Promise<Redeem
   return request<RedeemResult>('/redeem', {
     method: 'POST',
     body: JSON.stringify({ address, ...(receipt ? { receipt } : {}) }),
+    timeoutMs: TIMEOUT_MS.payment,
+    auth: true,
+  })
+}
+
+export function verifyPlanAnchor(hash: string, receipt: string): Promise<AnchorVerificationResult> {
+  return request<AnchorVerificationResult>('/anchor/verify', {
+    method: 'POST',
+    body: JSON.stringify({ hash, receipt }),
     timeoutMs: TIMEOUT_MS.payment,
     auth: true,
   })

@@ -40,6 +40,8 @@ const milestoneDraft = reactive<Milestone>(copyMilestone(milestone ?? {
 }))
 
 const labelsText = ref(taskDraft.labels.join(', '))
+const bountyRecipient = ref(milestoneDraft.bounty?.recipient ?? '')
+const bountyAmountNim = ref(milestoneDraft.bounty ? String(milestoneDraft.bounty.amountLuna / 100_000) : '')
 const error = ref('')
 
 const statusOptions: TaskStatus[] = ['todo', 'in_progress', 'done']
@@ -68,6 +70,7 @@ function copyMilestone(value: Milestone): Milestone {
     ...(value.startDate ? { startDate: value.startDate } : {}),
     ...(value.dueDate ? { dueDate: value.dueDate } : {}),
     blocked: value.blocked,
+    ...(value.bounty ? { bounty: { ...value.bounty } } : {}),
   }
 }
 
@@ -136,13 +139,28 @@ function saveMilestone(): void {
     error.value = 'The start date must be before the due date.'
     return
   }
-  emit('save-milestone', {
+  const recipient = bountyRecipient.value.replace(/\s+/g, '').toUpperCase()
+  const amountNim = Number(bountyAmountNim.value)
+  if (!publicOnly && (recipient || bountyAmountNim.value)) {
+    if (!/^NQ[0-9A-HJ-NP-VXY]{34}$/.test(recipient)) {
+      error.value = 'Enter a complete Nimiq bounty address.'
+      return
+    }
+    if (!Number.isFinite(amountNim) || amountNim <= 0 || amountNim > 1_000_000 || Math.round(amountNim * 100_000) !== amountNim * 100_000) {
+      error.value = 'Enter a bounty with no more than 5 decimal places.'
+      return
+    }
+  }
+  const next: Milestone = {
     ...copyMilestone(milestoneDraft),
     title,
     outcome: milestoneDraft.outcome.replace(/\s+/g, ' ').trim().slice(0, 260),
     ...(startDate ? { startDate } : {}),
     ...(dueDate ? { dueDate } : {}),
-  })
+    ...(!publicOnly && recipient && amountNim ? { bounty: { recipient, amountLuna: Math.round(amountNim * 100_000) } } : {}),
+  }
+  if (!recipient || !amountNim || publicOnly) delete next.bounty
+  emit('save-milestone', next)
 }
 
 function save(): void {
@@ -269,6 +287,18 @@ onMounted(() => {
           <span>Mark this milestone blocked</span>
         </label>
         <p class="faint field-help">This is your manual flag. Task blockers are calculated separately.</p>
+        <fieldset v-if="!publicOnly" class="dependency-fieldset">
+          <legend class="field__label">NIM milestone bounty <span class="faint">Optional</span></legend>
+          <label class="field">
+            <span class="field__label">Recipient wallet</span>
+            <input v-model="bountyRecipient" class="input" maxlength="44" placeholder="NQ…" autocomplete="off" />
+          </label>
+          <label class="field">
+            <span class="field__label">Amount in NIM</span>
+            <input v-model="bountyAmountNim" class="input" type="number" min="0.00001" max="1000000" step="0.00001" inputmode="decimal" placeholder="1" />
+          </label>
+          <p class="faint field-help">Cairn never holds this money. When the milestone is complete, your wallet creates a direct payment to this address.</p>
+        </fieldset>
         <p v-if="error" id="tracker-editor-error" class="form-error" role="alert">{{ error }}</p>
         <div class="sheet__actions tracker-actions">
           <button v-if="milestone" type="button" class="btn btn--danger btn--sm" @click="emit('remove-milestone', milestone.id)">Remove</button>

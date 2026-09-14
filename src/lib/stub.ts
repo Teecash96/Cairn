@@ -62,7 +62,7 @@ export function stubPrd(input: PlanInput): Prd {
       'Structured output the user can edit in place',
       'A saved library, browsable without an account',
       'One-tap copy of the finished result',
-      'Shareable read-only link',
+      'Forkable public project link',
     ],
     userStories: [
       `As ${who}, I can describe the problem in my own words and get something structured back.`,

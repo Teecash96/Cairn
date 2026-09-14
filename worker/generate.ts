@@ -189,6 +189,16 @@ function text(value: unknown, max: number): string {
 }
 
 function prompt(input: PlanInput): string {
+  const nimiqProject = /\bnimiq\b|\bmini[ -]?app\b|\bweb3\b|\bwallet\b|\bnim\b/i.test([
+    input.name,
+    input.idea,
+    input.targetUser,
+    input.problem,
+    input.goal,
+  ].filter(Boolean).join(' '))
+  const nimiqGuidance = nimiqProject
+    ? `\nThis is a Nimiq or Web3 project. Keep the MVP self-custodial and include only relevant Nimiq architecture. Consider @nimiq/mini-app-sdk initialization inside Nimiq Pay, Nimiq Hub as the desktop browser fallback, wallet rejection and network synchronization states, explicit user approval for every transaction, mobile WebView constraints, and server-side verification for any outcome that depends on a transaction. Never invent smart contracts, custody, token economics, or payment requirements that the idea does not need.\n`
+    : ''
   return `You are Cairn, a direct product mentor for indie builders. Turn this rough idea into a practical MVP builder pack.
 
 Rules:
@@ -198,6 +208,7 @@ Rules:
 4. Keep the first release narrow. Return exactly 3 milestones and 8 to 12 total tasks.
 5. Produce five to eight flow steps and exactly one decision step with exactly two branches.
 6. Return only valid JSON. No markdown fences and no commentary.
+${nimiqGuidance}
 
 Return this exact shape:
 {

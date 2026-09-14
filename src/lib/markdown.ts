@@ -212,3 +212,34 @@ export function planToMarkdown(plan: Plan): string {
     `_Generated with Cairn._`,
   ])}\n`
 }
+
+/** Issue drafts grouped by milestone for pasting into GitHub. */
+export function githubIssuesText(plan: Plan): string {
+  return plan.build.milestones.map((milestone) => {
+    const tasks = milestone.tasks.map((task) => `- [${task.status === 'done' ? 'x' : ' '}] ${clean(task.text)}`).join('\n')
+    const acceptance = present(plan.build.acceptanceTests).map((item) => `- [ ] ${item}`).join('\n')
+    return join([
+      `# ${clean(milestone.title)}`,
+      clean(milestone.outcome) ? `## Outcome\n\n${clean(milestone.outcome)}` : '',
+      tasks ? `## Tasks\n\n${tasks}` : '',
+      acceptance ? `## Acceptance checks\n\n${acceptance}` : '',
+    ])
+  }).join('\n\n---\n\n')
+}
+
+/** Portable task table that pastes cleanly into Notion and similar tools. */
+export function notionTaskTable(plan: Plan): string {
+  const escape = (value: string): string => clean(value).replace(/\|/g, '\\|').replace(/\n/g, ' ')
+  const rows = plan.build.milestones.flatMap((milestone) => milestone.tasks.map((task) => [
+    escape(task.text),
+    escape(milestone.title),
+    TASK_STATUS_LABEL[task.status],
+    task.dueDate ?? '',
+    escape(task.labels.join(', ')),
+  ]))
+  return [
+    '| Task | Milestone | Status | Due | Labels |',
+    '| --- | --- | --- | --- | --- |',
+    ...rows.map((row) => `| ${row.join(' | ')} |`),
+  ].join('\n')
+}

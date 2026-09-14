@@ -94,6 +94,13 @@ export interface Milestone {
   dueDate?: string
   /** Owner supplied blocker flag. Task dependencies do not set this flag. */
   blocked: boolean
+  /** Optional direct payment request. It stays private until the owner pays it. */
+  bounty?: MilestoneBounty
+}
+
+export interface MilestoneBounty {
+  recipient: string
+  amountLuna: number
 }
 
 export interface BuildPlan {
@@ -155,6 +162,26 @@ export interface RealityCheckItem {
   fix: string
 }
 
+export interface BuilderLogEntry {
+  id: string
+  date: string
+  text: string
+  createdAt: number
+}
+
+export interface PlanAnchor {
+  hash: string
+  receipt: string
+  address: string
+  createdAt: number
+  status: 'pending' | 'verified'
+}
+
+export interface ForkSource {
+  shareId: string
+  creator?: string
+}
+
 export interface BuildPlanChanges {
   mvpScope?: string[]
   milestones?: BuildMilestoneDraft[]
@@ -187,6 +214,12 @@ export interface Plan {
   flow: FlowStep[]
   build: BuildPlan
   realityCheck: RealityCheckItem[]
+  /** Private daily progress notes. Never included in public or team projections. */
+  builderLog: BuilderLogEntry[]
+  /** Local proof metadata written only after the wallet accepts an anchor transaction. */
+  anchor?: PlanAnchor
+  /** Attribution retained when this plan started from a public Cairn. */
+  forkedFrom?: ForkSource
   /** Set once the plan has been shared. Absent means it has never left the device. */
   shareId?: string
   /** Set when the owner creates a protected team workspace. */
@@ -383,6 +416,7 @@ export function materializeBuildPlan(
         ...(milestoneMatch?.startDate ? { startDate: milestoneMatch.startDate } : {}),
         ...(milestoneMatch?.dueDate ? { dueDate: milestoneMatch.dueDate } : {}),
         blocked: milestoneMatch?.blocked === true,
+        ...(milestoneMatch?.bounty ? { bounty: { ...milestoneMatch.bounty } } : {}),
         tasks: item.tasks
           .map((text) => text.trim())
           .filter(Boolean)
@@ -586,6 +620,50 @@ function normalizeRealityCheck(value: unknown): RealityCheckItem[] {
   })
 }
 
+function normalizeBuilderLog(value: unknown): BuilderLogEntry[] {
+  if (!Array.isArray(value)) return []
+  return value.slice(0, 180).flatMap((item) => {
+    if (typeof item !== 'object' || item === null) return []
+    const raw = item as Partial<BuilderLogEntry>
+    const text = typeof raw.text === 'string' ? raw.text.replace(/\s+/g, ' ').trim().slice(0, 280) : ''
+    if (!text || !isValidDate(raw.date) || !Number.isFinite(raw.createdAt)) return []
+    return [{
+      id: typeof raw.id === 'string' && raw.id ? raw.id : newId(),
+      date: raw.date,
+      text,
+      createdAt: raw.createdAt as number,
+    }]
+  })
+}
+
+function normalizeAnchor(value: unknown): PlanAnchor | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const raw = value as Partial<PlanAnchor>
+  if (
+    typeof raw.hash !== 'string' || !/^[a-f0-9]{64}$/i.test(raw.hash) ||
+    typeof raw.receipt !== 'string' || !raw.receipt || raw.receipt.length > 512 ||
+    typeof raw.address !== 'string' || !raw.address ||
+    !Number.isFinite(raw.createdAt)
+  ) return undefined
+  return {
+    hash: raw.hash.toLowerCase(),
+    receipt: raw.receipt,
+    address: raw.address,
+    createdAt: raw.createdAt as number,
+    status: raw.status === 'verified' ? 'verified' : 'pending',
+  }
+}
+
+function normalizeForkSource(value: unknown): ForkSource | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const raw = value as Partial<ForkSource>
+  if (typeof raw.shareId !== 'string' || !/^[a-z0-9]{8,32}$/i.test(raw.shareId)) return undefined
+  return {
+    shareId: raw.shareId,
+    ...(typeof raw.creator === 'string' && raw.creator ? { creator: raw.creator } : {}),
+  }
+}
+
 function normalizeBuild(value: unknown): BuildPlan {
   if (typeof value !== 'object' || value === null) return emptyBuildPlan()
   const raw = value as Record<string, unknown>
@@ -602,6 +680,18 @@ function normalizeBuild(value: unknown): BuildPlan {
       : []
     const startDate = optionalDate(record.startDate)
     const dueDate = optionalDate(record.dueDate)
+    const rawBounty = typeof record.bounty === 'object' && record.bounty !== null
+      ? record.bounty as Partial<MilestoneBounty>
+      : null
+    const bountyRecipient = typeof rawBounty?.recipient === 'string'
+      ? rawBounty.recipient.replace(/\s+/g, '').toUpperCase()
+      : ''
+    const bountyAmount = typeof rawBounty?.amountLuna === 'number' && Number.isInteger(rawBounty.amountLuna)
+      ? rawBounty.amountLuna
+      : 0
+    const bounty = /^NQ[0-9A-HJ-NP-VXY]{34}$/.test(bountyRecipient) && bountyAmount >= 1 && bountyAmount <= 100_000_000_000
+      ? { recipient: bountyRecipient, amountLuna: bountyAmount }
+      : undefined
     const milestone = {
       id: typeof record.id === 'string' && record.id ? record.id : newId(),
       title: typeof record.title === 'string' ? record.title.slice(0, 100) : '',
@@ -609,6 +699,7 @@ function normalizeBuild(value: unknown): BuildPlan {
       ...(startDate ? { startDate } : {}),
       ...(dueDate ? { dueDate } : {}),
       blocked: record.blocked === true,
+      ...(bounty ? { bounty } : {}),
       tasks,
     }
     if (milestone.startDate && milestone.dueDate && milestone.startDate > milestone.dueDate) {
@@ -707,11 +798,16 @@ function normalizePlan(value: unknown): Plan | null {
   const { teamId, ...withoutTeamId } = copied
   const safeTeamId = typeof teamId === 'string' && /^[a-z2-9]{16,32}$/i.test(teamId) ? teamId : undefined
 
+  const anchor = normalizeAnchor(plan.anchor)
+  const forkedFrom = normalizeForkSource(plan.forkedFrom)
   return {
     ...withoutTeamId,
     ...(safeTeamId ? { teamId: safeTeamId } : {}),
     build: normalizeBuild(plan.build),
     realityCheck: normalizeRealityCheck(plan.realityCheck),
+    builderLog: normalizeBuilderLog(plan.builderLog),
+    ...(anchor ? { anchor } : {}),
+    ...(forkedFrom ? { forkedFrom } : {}),
   }
 }
 
@@ -793,7 +889,32 @@ export function createPlan(
     flow: clone(flow),
     build: materializeBuildPlan(buildDraft),
     realityCheck: clone(realityCheck),
+    builderLog: [],
   }
+}
+
+/** Start a private local project from a public Cairn while resetting its execution state. */
+export function forkPlan(source: Plan, shareId: string, creator?: string): Plan {
+  const draft: BuildPlanDraft = {
+    mvpScope: [...source.build.mvpScope],
+    milestones: source.build.milestones.map((milestone) => ({
+      title: milestone.title,
+      outcome: milestone.outcome,
+      tasks: milestone.tasks.map((task) => task.text),
+    })),
+    risks: [...source.build.risks],
+    acceptanceTests: [...source.build.acceptanceTests],
+    nextAction: source.build.nextAction,
+  }
+  const fork = createPlan(
+    { ...clone(source.input), name: `${titleOf(source)} fork`.slice(0, 80) },
+    clone(source.prd),
+    clone(source.flow),
+    draft,
+    clone(source.realityCheck),
+  )
+  fork.forkedFrom = { shareId, ...(creator ? { creator } : {}) }
+  return fork
 }
 
 /**
@@ -808,6 +929,7 @@ export function savePlan(plan: Plan): boolean {
   const stamped: Plan = {
     ...copyOfPlan,
     build: normalizeBuild(copyOfPlan.build),
+    builderLog: normalizeBuilderLog(copyOfPlan.builderLog),
     updatedAt: Date.now(),
   }
   const plans = read()

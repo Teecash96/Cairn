@@ -285,7 +285,7 @@ function submit(): void {
         <div class="submit">
           <button type="submit" class="btn btn--primary btn--block generate-button" :disabled="!ready || busy">
             <span class="generate-button__icon" aria-hidden="true">
-              <span v-if="busy" class="dot" />
+              <span v-if="busy" class="cairn-loading"><i /><i /><i /></span>
               <svg v-else viewBox="0 0 20 20" width="18" height="18">
                 <path d="M10 3.5v13M4.5 10H15.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
               </svg>
@@ -391,8 +391,12 @@ function submit(): void {
 .generate-button__label { display: grid; place-items: center; min-width: 12rem; }
 .generate-button__label > span { grid-area: 1 / 1; }
 .foot { min-height: 1.2em; font-size: var(--text-xs); line-height: var(--leading); text-align: center; }
-.dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulse 1200ms var(--ease-in-out) infinite; }
-@keyframes pulse { 0%, 100% { opacity: .35; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
+.cairn-loading { position: relative; display: block; width: 23px; height: 22px; }
+.cairn-loading i { position: absolute; left: 50%; display: block; height: 4px; border-radius: var(--r-full); background: currentColor; opacity: 0; transform: translate(-50%, 8px) scale(.72); animation: stack-stone 1500ms var(--ease-smooth-out) infinite; }
+.cairn-loading i:nth-child(1) { bottom: 1px; width: 22px; animation-delay: 0ms; }
+.cairn-loading i:nth-child(2) { bottom: 7px; width: 16px; animation-delay: 180ms; }
+.cairn-loading i:nth-child(3) { bottom: 13px; width: 10px; animation-delay: 360ms; }
+@keyframes stack-stone { 0%, 18% { opacity: 0; transform: translate(-50%, -8px) scale(.72); } 36%, 78% { opacity: 1; transform: translate(-50%, 0) scale(1); } 100% { opacity: 0; transform: translate(-50%, 2px) scale(.96); } }
 .wallet-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); padding-top: var(--s4); border-top: 1px solid var(--line); color: var(--text-muted); font-size: var(--text-xs); }
 .wallet-row > span { display: inline-flex; align-items: center; gap: var(--s2); }
 .wallet-row i { color: var(--nim); }
@@ -438,4 +442,5 @@ function submit(): void {
   .home-foot { flex-direction: column; }
   .site-footer { justify-content: flex-start; }
 }
+@media (prefers-reduced-motion: reduce) { .cairn-loading i { opacity: 1; transform: translate(-50%, 0); animation: none; } }
 </style>

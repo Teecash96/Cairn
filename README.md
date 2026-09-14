@@ -16,6 +16,8 @@ a builder pack an indie builder can act on:
   tests, and the next action
 - a **Track workspace** — a local project board and timeline for milestones,
   task status, due dates, labels, priorities, notes, and simple blockers
+- a **Builder standup** — a private daily progress log and build streak saved on
+  the current device
 - a **Reality check** — three prioritized concerns with the smallest test or fix
 
 Every field is editable. Your plan is local by default. Cairn uses practical MVP
@@ -53,7 +55,8 @@ session and no payment wall.
    notes. Changes save on this device.
 7. Open **Build** for the builder pack summary, or ask Cairn to sharpen one part
    of the plan.
-8. Copy it out as Markdown, share a public read only link, or create a protected
+8. Copy it as Markdown, GitHub issue drafts, or a Notion task table. You can also
+   publish a public link that another builder can fork, or create a protected
    team workspace for Track.
 
 ### Planner follow ups
@@ -94,8 +97,31 @@ Team members see and, when allowed, edit Track only. The shared snapshot contain
 milestones, task text, status, labels, dates, and the owner's milestone blocker
 flag. It does not contain the PRD, user flow, Build summary, private notes,
 priorities, or dependency details. Owner changes to the team board sync through a
-revision check, so a stale editor cannot overwrite a newer update. Public Share
-links remain separate and read only.
+revision check, so a stale editor cannot overwrite a newer update. Public links
+remain separate. The published snapshot cannot be edited. A viewer can copy it
+into a new private local project. The fork starts with fresh task progress and
+keeps source attribution.
+
+### Nimiq builder tools
+
+Cairn uses Nimiq for optional proof and direct builder support. None of these
+actions unlock planning access.
+
+1. **PRD anchor:** Cairn hashes the current PRD with Blake2b and asks the wallet
+   to include that hash in a one Luna self transfer. The wallet shows the network
+   cost before approval. Cairn shows a verified badge only after the Worker finds
+   a confirmed transaction from and to the signed wallet with the exact hash.
+   Editing the PRD makes the old anchor stale.
+2. **Milestone bounty:** An owner can attach a recipient wallet and NIM amount to
+   a milestone. Payment is available after completion and goes straight from the
+   owner's wallet to the recipient. Cairn does not hold funds or decide disputes.
+3. **Builder tip:** A public plan can show a voluntary 0.1 NIM tip action for its
+   creator. The wallet must approve the transfer.
+4. **Wallet identity:** Signed workspaces show the official Nimiq identicon and a
+   shortened address to make the active account clear.
+
+GitHub and Notion exports are portable text copied to the clipboard. They are
+not account integrations and Cairn does not write to either service.
 
 ## Public pages
 
@@ -135,6 +161,8 @@ Stated plainly, because it matters:
 | A plan you refine | Cairn's server and Google's Gemini API for that one follow up. The PRD, flow, and text only builder pack are sent so the change can be targeted. Private tracker metadata is not sent |
 | A plan you tap **Share** on | Cairn's server, so the link can be opened. Progress, milestone dates, task due dates, and labels are shared. Notes, priorities, and dependencies are not shared |
 | A protected team workspace | Cairn's server, so named wallet members can use Track. Milestones, task text, status, labels, dates, and milestone blocker flags are shared. The PRD, flow, Build summary, notes, priorities, and dependencies are not shared |
+| A PRD you anchor | A Blake2b hash of the PRD is written into a Nimiq transaction that your wallet approves. The readable PRD is not written on chain |
+| A milestone bounty or builder tip | The recipient address, amount, and short payment note go through your Nimiq wallet. Cairn does not custody the payment |
 | Your wallet address | Cairn's server, as the identity bound to your short lived wallet session and protected team access |
 | A request network address | A short lived abuse counter in Cairn's server. It is not used for analytics |
 
@@ -145,7 +173,8 @@ generation requests to Gemini on the server side.
 Plans are stored per device by design. Clearing the app's storage deletes them,
 and there is no private copy on a server to restore from. A protected team
 snapshot is a separate server record for the Track fields only. Copy anything
-you need to keep.
+you need to keep. Cairn does not claim encrypted cloud backup. Wallet signature
+based encryption needs a separate security design before it can be trusted.
 
 ## Running it locally
 

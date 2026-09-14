@@ -4,6 +4,7 @@ import {
   getPlan,
   listPlans,
   materializeBuildPlan,
+  forkPlan,
   savePlan,
   type BuildPlan,
   type Plan,
@@ -57,6 +58,7 @@ function legacyPlan(): Omit<Plan, 'build' | 'realityCheck'> {
       outOfScope: ['One exclusion'],
     },
     flow: [],
+    builderLog: [],
   }
 }
 
@@ -103,6 +105,7 @@ test('migrates a v1 library into v3 without deleting the source data', () => {
     nextAction: '',
   })
   assert.deepEqual(plans[0]?.realityCheck, [])
+  assert.deepEqual(plans[0]?.builderLog, [])
   assert.ok(storage.getItem('cairn.library.v1'))
   assert.equal(JSON.parse(storage.getItem('cairn.library.v3') ?? '{}').version, 3)
 })
@@ -248,4 +251,20 @@ test('preserves tracker metadata and drops dependencies to removed tasks during 
     risks: [], acceptanceTests: [], nextAction: '',
   }, old)
   assert.deepEqual(removed.milestones[0]?.tasks[0]?.dependsOn, [])
+})
+
+test('forks a public Cairn into private work with fresh progress and attribution', () => {
+  const source: Plan = {
+    ...legacyPlan(),
+    build: buildWithCompletedTask(),
+    realityCheck: [],
+    builderLog: [{ id: 'private-log', date: '2026-09-14', text: 'Private progress', createdAt: 1 }],
+  }
+  const creator = 'NQ01AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+  const fork = forkPlan(source, 'share12345', creator)
+
+  assert.equal(fork.name, 'Legacy idea fork')
+  assert.equal(fork.build.milestones[0]?.tasks[0]?.status, 'todo')
+  assert.deepEqual(fork.builderLog, [])
+  assert.deepEqual(fork.forkedFrom, { shareId: 'share12345', creator })
 })

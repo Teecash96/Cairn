@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { inspectPayment, verifyPayment } from '../../worker/payments.ts'
+import { inspectPayment, verifyAnchor, verifyPayment } from '../../worker/payments.ts'
 import type { Config } from '../../worker/config.ts'
 
 const sender = 'NQ01AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
@@ -137,4 +137,23 @@ test('direct lookup never grants for a missing, unconfirmed, mismatched or under
       assert.deepEqual(calls, ['getTransactionByHash'])
     }
   } finally { globalThis.fetch = originalFetch }
+})
+
+test('verifies only a confirmed self anchor with the exact PRD hash', async () => {
+  const receipt = 'd'.repeat(64)
+  const prdHash = 'e'.repeat(64)
+  const originalFetch = globalThis.fetch
+  try {
+    for (const [transaction, expected] of [
+      [{ hash: receipt, from: sender, to: sender, value: 1, confirmations: 1, data: prdHash }, receipt],
+      [{ hash: receipt, from: sender, to: payTo, value: 1, confirmations: 1, data: prdHash }, null],
+      [{ hash: receipt, from: sender, to: sender, value: 1, confirmations: 0, data: prdHash }, null],
+      [{ hash: receipt, from: sender, to: sender, value: 1, confirmations: 1, data: 'f'.repeat(64) }, null],
+    ] as const) {
+      globalThis.fetch = async () => new Response(JSON.stringify({ result: { data: transaction } }))
+      assert.equal(await verifyAnchor(config, sender, prdHash, receipt), expected)
+    }
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })

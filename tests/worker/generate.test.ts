@@ -86,3 +86,25 @@ test('retries Gemini 3 structured output as plain JSON text after a 400', async 
   assert.equal('responseMimeType' in secondConfig, false)
   assert.equal('responseSchema' in secondConfig, false)
 })
+
+test('adds Nimiq architecture guidance only for relevant projects', async () => {
+  const prompts: string[] = []
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const payload = JSON.parse(String(init?.body)) as Record<string, unknown>
+    const text = (((payload.contents as Array<Record<string, unknown>>)?.[0]?.parts as Array<Record<string, unknown>>)?.[0]?.text as string)
+    prompts.push(text)
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(generatedPlan) }] } }] }), { status: 200 })
+  }) as typeof fetch
+
+  try {
+    await generateWithGemini(config, 'test-key', { name: 'Nimiq merchant app', idea: 'A useful wallet tool for local merchants accepting direct payments.' })
+    await generateWithGemini(config, 'test-key', { name: 'Shopping list', idea: 'A voice note becomes a shopping list grouped by aisle.' })
+  } finally {
+    globalThis.fetch = previousFetch
+  }
+
+  assert.match(prompts[0] ?? '', /@nimiq\/mini-app-sdk/)
+  assert.match(prompts[0] ?? '', /Nimiq Hub/)
+  assert.doesNotMatch(prompts[1] ?? '', /@nimiq\/mini-app-sdk/)
+})

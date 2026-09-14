@@ -20,11 +20,15 @@ import {
 } from '../lib/tracker'
 
 const build = defineModel<BuildPlan>({ required: true })
-const { readOnly = false, editing = false, teamMode = false } = defineProps<{
+const { readOnly = false, editing = false, teamMode = false, payingBountyId = null } = defineProps<{
   readOnly?: boolean
   editing?: boolean
   /** Team workspaces expose only the public tracker fields. */
   teamMode?: boolean
+  payingBountyId?: string | null
+}>()
+const emit = defineEmits<{
+  'pay-bounty': [milestone: Milestone]
 }>()
 
 type View = 'board' | 'timeline'
@@ -72,6 +76,7 @@ function cloneMilestone(milestone: Milestone): Milestone {
     ...(milestone.startDate ? { startDate: milestone.startDate } : {}),
     ...(milestone.dueDate ? { dueDate: milestone.dueDate } : {}),
     blocked: milestone.blocked,
+    ...(milestone.bounty ? { bounty: { ...milestone.bounty } } : {}),
   }
 }
 
@@ -304,6 +309,7 @@ function newMilestone(): void {
             </div>
           </div>
           <div v-if="editing && !readOnly" class="lane__controls">
+            <button v-if="milestone.bounty && statusFor(milestone) === 'done'" type="button" class="btn btn--secondary btn--sm" :disabled="payingBountyId === milestone.id" @click="emit('pay-bounty', milestone)">{{ payingBountyId === milestone.id ? 'Opening wallet…' : `Pay ${milestone.bounty.amountLuna / 100_000} NIM` }}</button>
             <button type="button" class="icon-btn icon-btn--small" aria-label="Edit milestone" @click="openMilestone(milestone)">✎</button>
             <button type="button" class="icon-btn icon-btn--small" :disabled="milestoneIndex === 0" aria-label="Move milestone up" @click="moveMilestone(milestoneIndex, -1)">↑</button>
             <button type="button" class="icon-btn icon-btn--small" :disabled="milestoneIndex === build.milestones.length - 1" aria-label="Move milestone down" @click="moveMilestone(milestoneIndex, 1)">↓</button>

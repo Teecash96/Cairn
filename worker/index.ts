@@ -5,7 +5,7 @@ import { quote, readConfig } from './config'
 import { CreditLedgerUnavailable, redeemCredits, readCredits, stateOf } from './credits'
 import { fail, corsHeaders, isLocalHost, json, normalizeAddress, readJson, securityHeaders } from './http'
 import { generateWithGemini, refineWithGemini } from './generate'
-import { inspectPayment, type PaymentInspection } from './payments'
+import { inspectPayment, verifyAnchor, type PaymentInspection } from './payments'
 import { clampPlan, isInvalid, readPlanInput } from './shape'
 import { createShare, publicPlan, readShare } from './share'
 import { addMember, createTeam, getTeam, removeMember, TeamError, updateMember, updateTracker } from './team'
@@ -222,6 +222,21 @@ async function handleRedeem(env: Env, request: Request, cors: Record<string, str
   return json(redeemed, 200, cors)
 }
 
+async function handleAnchorVerify(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
+  const raw = bodyRecord(await readJson(request))
+  if (
+    !raw || typeof raw.hash !== 'string' || !/^[a-f0-9]{64}$/i.test(raw.hash) ||
+    typeof raw.receipt !== 'string' || raw.receipt.length < 1 || raw.receipt.length > 4096
+  ) return fail('invalid_request', 'Anchor details are invalid.', 400, cors)
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  if (await tooFastByKey(env, session.address, 'anchor-verify', 10)) {
+    return fail('rate_limited', 'Please wait before checking the anchor again.', 429, cors)
+  }
+  const transactionHash = await verifyAnchor(readConfig(env), session.address, raw.hash, raw.receipt)
+  return json({ verified: Boolean(transactionHash), transactionHash }, 200, cors)
+}
+
 async function handleShare(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
   const raw = bodyRecord(await readJson(request))
   if (!raw) return fail('invalid_request', 'The request body is invalid.', 400, cors)
@@ -349,6 +364,7 @@ async function route(env: Env, request: Request): Promise<Response> {
   if (url.pathname === '/api/generate' && request.method === 'POST') return handleGenerate(env, request, cors)
   if (url.pathname === '/api/refine' && request.method === 'POST') return handleRefine(env, request, cors)
   if (url.pathname === '/api/redeem' && request.method === 'POST') return handleRedeem(env, request, cors)
+  if (url.pathname === '/api/anchor/verify' && request.method === 'POST') return handleAnchorVerify(env, request, cors)
   if (url.pathname === '/api/share' && request.method === 'POST') return handleShare(env, request, cors)
   if (url.pathname === '/api/team' && request.method === 'POST') return handleTeamCreate(env, request, cors)
   const teamMatch = /^\/api\/team\/([a-z2-9]{16,32})$/i.exec(url.pathname)
@@ -364,7 +380,7 @@ async function route(env: Env, request: Request): Promise<Response> {
     const id = url.pathname.slice('/api/share/'.length).replace(/[^a-z0-9]/gi, '').slice(0, 32)
     const record = id ? await readShare(env, id) : null
     if (!record) return fail('not_found', 'That share link has expired.', 404, cors)
-    return json({ plan: publicPlan(record) }, 200, cors)
+    return json({ plan: publicPlan(record), creator: record.by }, 200, cors)
   }
   const asset = await env.ASSETS.fetch(request)
   if (asset.status !== 404 || url.pathname === '/404.html') {

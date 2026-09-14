@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createExamplePlan } from '../../src/lib/example.ts'
+import { githubIssuesText, notionTaskTable } from '../../src/lib/markdown.ts'
 import { refinementDifferences, refinementImpact, removedRefinementTasks, mergeRefinement } from '../../src/lib/refinement.ts'
 import { recommendedTask } from '../../src/lib/tracker.ts'
 import type { PlanChanges } from '../../src/lib/plan.ts'
@@ -115,4 +116,21 @@ test('change plan impact traces one requirement across the flow, build, and trac
   assert.equal(updated.flow[1]?.title, 'Try as a guest')
   assert.equal(updated.build.nextAction, 'Test the guest path with one new user.')
   assert.equal(JSON.stringify(plan), original)
+})
+
+test('portable exports preserve tasks as actionable checklists and rows', () => {
+  const plan = createExamplePlan()
+  const firstTask = plan.build.milestones[0]!.tasks[0]!
+  firstTask.status = 'done'
+  firstTask.labels = ['wallet', 'mobile']
+  firstTask.dueDate = '2026-09-20'
+
+  const issues = githubIssuesText(plan)
+  assert.match(issues, new RegExp(`- \\[x\\] ${firstTask.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
+  assert.match(issues, /## Acceptance checks/)
+
+  const notion = notionTaskTable(plan)
+  assert.match(notion, /\| Task \| Milestone \| Status \| Due \| Labels \|/)
+  assert.match(notion, /2026-09-20/)
+  assert.match(notion, /wallet, mobile/)
 })

@@ -7,6 +7,8 @@ interface ChainTransaction {
   value?: number | string
   confirmations?: number
   blockNumber?: number
+  data?: unknown
+  extraData?: unknown
 }
 
 interface RpcEnvelope<T> {
@@ -26,6 +28,18 @@ function numberValue(value: unknown): number {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value)
   return 0
+}
+
+function dataMatches(value: unknown, expected: string): boolean {
+  const encoded = Array.from(new TextEncoder().encode(expected), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  if (typeof value === 'string') {
+    const normalized = value.replace(/^0x/i, '').toLowerCase()
+    return normalized === expected.toLowerCase() || normalized === encoded
+  }
+  if (Array.isArray(value) && value.every((item) => Number.isInteger(item) && item >= 0 && item <= 255)) {
+    return new TextDecoder().decode(Uint8Array.from(value as number[])) === expected
+  }
+  return false
 }
 
 function collect(value: unknown): ChainTransaction[] {
@@ -166,4 +180,31 @@ export async function inspectPayment(
     return { status: 'verified', hash }
   }
   return wrongWallet ? { status: 'wrong_wallet', hash: null } : null
+}
+
+/** Verify a confirmed self transfer carrying the exact PRD hash in its data field. */
+export async function verifyAnchor(
+  config: Config,
+  address: string,
+  hash: string,
+  receipt?: string,
+): Promise<string | null> {
+  if (!/^[a-f0-9]{64}$/i.test(hash) || !config.rpcUrl) return null
+  const canonicalReceipt = receipt && /^[a-f0-9]{64}$/i.test(receipt) ? receipt.toLowerCase() : null
+  const direct = canonicalReceipt
+    ? await rpcCall<ChainTransaction>(config.rpcUrl.replace(/\/+$/, ''), 'getTransactionByHash', [canonicalReceipt])
+    : null
+  const transactions = canonicalReceipt ? (direct ? [direct] : []) : await loadTransactions(config.rpcUrl, address)
+  const wallet = compact(address)
+
+  for (const transaction of transactions) {
+    const transactionHash = hashOf(transaction)
+    if (!transactionHash) continue
+    if (canonicalReceipt && transactionHash.toLowerCase() !== canonicalReceipt) continue
+    if (compact(transaction.from ?? '') !== wallet || compact(transaction.to ?? '') !== wallet) continue
+    if (numberValue(transaction.confirmations) < 1 && numberValue(transaction.blockNumber) <= 0) continue
+    if (!dataMatches(transaction.data ?? transaction.extraData, hash.toLowerCase())) continue
+    return transactionHash
+  }
+  return null
 }

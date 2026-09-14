@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import BuildView from './BuildView.vue'
+import BuilderStandup from './BuilderStandup.vue'
 import CairnMark from './CairnMark.vue'
 import FlowDiagram from './FlowDiagram.vue'
 import MilestoneTracker from './MilestoneTracker.vue'
 import PrdView from './PrdView.vue'
 import TeamPanel from './TeamPanel.vue'
 import VisualPrd from './VisualPrd.vue'
+import WalletIdentity from './WalletIdentity.vue'
 import { copyText, canDownload, downloadText } from '../lib/clipboard'
-import { buildToText, flowToText, planToMarkdown, prdToText, trackToText } from '../lib/markdown'
+import { buildToText, flowToText, githubIssuesText, notionTaskTable, planToMarkdown, prdToText, trackToText } from '../lib/markdown'
 import type { RefineAction, TeamMember, TeamRole } from '../lib/api'
 import { relativeTime, slugOf, titleOf, type BuildPlan, type Plan } from '../lib/plan'
 import { projectStats } from '../lib/tracker'
+import { explorerTransactionUrl, hashPrd } from '../lib/anchor'
 
 export interface TeamPanelState {
   teamId: string | null
@@ -32,6 +35,9 @@ const {
   teamOnly = false,
   teamPanel,
   teamSyncing = false,
+  walletAddress,
+  anchoring = false,
+  payingBountyId = null,
 } = defineProps<{
   plan: Plan
   readOnly?: boolean
@@ -41,6 +47,9 @@ const {
   teamOnly?: boolean
   teamPanel?: TeamPanelState
   teamSyncing?: boolean
+  walletAddress?: string | null
+  anchoring?: boolean
+  payingBountyId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -57,6 +66,8 @@ const emit = defineEmits<{
   'team-remove': [address: string]
   'team-copy': [url: string]
   'track-change': [build: BuildPlan]
+  anchor: []
+  'pay-bounty': [milestone: import('../lib/plan').Milestone]
 }>()
 
 type Tab = 'plan' | 'flow' | 'build' | 'track' | 'team'
@@ -78,6 +89,8 @@ const routeTabs: Array<{ id: Exclude<Tab, 'team'>; label: string }> = [
 const heading = computed(() => titleOf(plan))
 const edited = computed(() => relativeTime(plan.updatedAt))
 const stats = computed(() => projectStats(plan.build))
+const currentPrdHash = computed(() => hashPrd(plan))
+const currentAnchor = computed(() => plan.anchor?.hash === currentPrdHash.value ? plan.anchor : undefined)
 const activeTabIndex = computed(() => Math.max(0, routeTabs.findIndex((item) => item.id === tab.value)))
 const metaLabel = computed(() => {
   if (teamOnly) return `Track only · ${readOnly ? 'viewer' : 'editor'}`
@@ -96,7 +109,7 @@ watch(
   },
 )
 
-async function copy(what: 'prd' | 'flow' | 'build' | 'track' | 'markdown'): Promise<void> {
+async function copy(what: 'prd' | 'flow' | 'build' | 'track' | 'markdown' | 'github' | 'notion'): Promise<void> {
   const text = what === 'prd'
     ? prdToText(plan)
     : what === 'flow'
@@ -105,7 +118,11 @@ async function copy(what: 'prd' | 'flow' | 'build' | 'track' | 'markdown'): Prom
         ? trackToText(plan.build)
         : what === 'build'
           ? buildToText(plan)
-          : planToMarkdown(plan)
+          : what === 'github'
+            ? githubIssuesText(plan)
+            : what === 'notion'
+              ? notionTaskTable(plan)
+              : planToMarkdown(plan)
 
   const label = what === 'markdown'
     ? 'Full plan'
@@ -115,7 +132,11 @@ async function copy(what: 'prd' | 'flow' | 'build' | 'track' | 'markdown'): Prom
         ? 'Flow'
         : what === 'track'
           ? 'Tracker'
-          : 'Builder pack'
+          : what === 'github'
+            ? 'GitHub issue drafts'
+            : what === 'notion'
+              ? 'Notion task table'
+              : 'Builder pack'
 
   if (await copyText(text)) emit('notify', `${label} copied`, 'success')
   else emit('notify', "This browser would not let us copy", 'error')
@@ -181,6 +202,7 @@ function onTabKey(event: KeyboardEvent): void {
         <span>Cairn</span>
       </div>
       <div v-if="!teamOnly" class="bar__actions">
+        <WalletIdentity :address="walletAddress" />
         <button v-if="!readOnly" type="button" class="bar__change" :disabled="refining" @click="emit('refine', 'change_plan')">
           {{ refining ? 'Working…' : 'Update plan' }}
         </button>
@@ -204,8 +226,12 @@ function onTabKey(event: KeyboardEvent): void {
             <span>Preview every affected flow, task, and test before you save.</span>
           </button>
           <button v-if="!readOnly" type="button" class="action-item" :disabled="sharing" @click="emit('share'); actionsOpen = false">
-            <strong>{{ sharing ? 'Sharing…' : plan.shareId ? 'Copy share link' : 'Share read only link' }}</strong>
-            <span>Send a clean snapshot of this project.</span>
+            <strong>{{ sharing ? 'Publishing…' : plan.shareId ? 'Copy public link' : 'Publish a forkable Cairn' }}</strong>
+            <span>Send a clean snapshot that others can view or fork into private work.</span>
+          </button>
+          <button v-if="!readOnly" type="button" class="action-item" :disabled="anchoring" @click="emit('anchor'); actionsOpen = false">
+            <strong>{{ anchoring ? 'Checking Nimiq…' : currentAnchor?.status === 'verified' ? 'PRD verified on Nimiq' : currentAnchor ? 'Check PRD anchor' : plan.anchor ? 'Anchor updated PRD' : 'Timestamp and anchor PRD' }}</strong>
+            <span>{{ currentAnchor?.status === 'verified' ? 'This exact PRD has a confirmed on chain timestamp.' : currentAnchor ? 'Check whether the submitted transaction is confirmed.' : 'Write this PRD hash to a self transfer. Your wallet will show the network cost first.' }}</span>
           </button>
           <button type="button" class="action-item" @click="copy('markdown'); actionsOpen = false">
             <strong>Copy full plan</strong>
@@ -214,6 +240,14 @@ function onTabKey(event: KeyboardEvent): void {
           <button v-if="downloadable" type="button" class="action-item" @click="save(); actionsOpen = false">
             <strong>Save Markdown</strong>
             <span>Download a portable builder file.</span>
+          </button>
+          <button type="button" class="action-item" @click="copy('github'); actionsOpen = false">
+            <strong>Copy GitHub issue drafts</strong>
+            <span>Paste milestone issues with task checklists into a repository.</span>
+          </button>
+          <button type="button" class="action-item" @click="copy('notion'); actionsOpen = false">
+            <strong>Copy Notion task table</strong>
+            <span>Paste the tracker as a portable task table.</span>
           </button>
           <button v-if="!readOnly && teamPanel" type="button" class="action-item" @click="openTeam">
             <strong>Team workspace</strong>
@@ -237,6 +271,8 @@ function onTabKey(event: KeyboardEvent): void {
           </template>
           <span>{{ metaLabel }}</span>
           <span v-if="plan.shareId && !readOnly" class="badge">Shared</span>
+          <a v-if="currentAnchor?.status === 'verified'" class="badge badge--verified" :href="explorerTransactionUrl(currentAnchor.receipt)" target="_blank" rel="noreferrer">Verified on Nimiq</a>
+          <span v-else-if="currentAnchor" class="badge">Anchor pending</span>
         </p>
       </div>
       <div class="project-pulse" aria-label="Project progress">
@@ -300,7 +336,8 @@ function onTabKey(event: KeyboardEvent): void {
         </section>
 
         <section v-else-if="tab === 'track'" id="panel-track" key="track" role="tabpanel" aria-labelledby="tab-track" tabindex="0">
-          <MilestoneTracker v-model="plan.build" :read-only="readOnly" :editing="editing" :team-mode="teamOnly" @update:model-value="emit('track-change', $event)" />
+          <BuilderStandup v-if="!readOnly && !teamOnly" v-model="plan.builderLog" />
+          <MilestoneTracker v-model="plan.build" :read-only="readOnly" :editing="editing" :team-mode="teamOnly" :paying-bounty-id="payingBountyId" @update:model-value="emit('track-change', $event)" @pay-bounty="emit('pay-bounty', $event)" />
         </section>
 
         <section v-else-if="tab === 'team' && teamPanel" id="panel-team" key="team" tabindex="0">

@@ -36,6 +36,7 @@ import {
   sharePlan,
   updateTeamMember,
   updateTeamTracker,
+  verifyPlanAnchor,
 } from './lib/api'
 import type { PriceQuote, RefineAction, TeamResult, TeamRole } from './lib/api'
 import { copyText } from './lib/clipboard'
@@ -51,12 +52,14 @@ import {
   renamePlan,
   savePlan,
   publicTrackOf,
+  forkPlan,
   titleOf,
   type BuildPlanDraft,
   type PlanChanges,
   type RealityCheckItem,
   type Plan,
   type PlanInput,
+  type Milestone,
 } from './lib/plan'
 import type { TeamPanelState } from './components/Workspace.vue'
 import { useSession } from './lib/session'
@@ -64,6 +67,7 @@ import { bindPayment, samePaymentAddress } from './lib/payment-session'
 import { mergeRefinement } from './lib/refinement'
 import { createExamplePlan } from './lib/example'
 import { stubGenerate, stubRefinement } from './lib/stub'
+import { hashPrd } from './lib/anchor'
 
 type View = 'new' | 'workspace' | 'library'
 type Tone = 'info' | 'success' | 'error'
@@ -82,6 +86,8 @@ const formInitial = ref<PlanInput | undefined>(undefined)
 const generating = ref(false)
 const sharing = ref(false)
 const supportLoading = ref(false)
+const anchoring = ref(false)
+const payingBountyId = ref<string | null>(null)
 const payOpen = ref(false)
 const payState = ref<'idle' | 'paying' | 'verifying'>('idle')
 const payError = ref<string | null>(null)
@@ -146,6 +152,9 @@ const refineChanges = ref<PlanChanges | null>(null)
 /** A plan opened from someone else's share link. Read-only, never saved here. */
 const shared = ref<Plan | null>(null)
 const showingExample = ref(false)
+const sharedCreator = ref<string | null>(null)
+const sharedId = ref<string | null>(null)
+const tipping = ref(false)
 
 function openExample(): void {
   flush()
@@ -224,6 +233,8 @@ async function loadShared(shareId: string): Promise<void> {
     const normalized = normalizeSharedPlan(result.plan)
     if (!normalized) throw new Error('That shared plan is incomplete.')
     shared.value = normalized
+    sharedCreator.value = result.creator
+    sharedId.value = shareId
   } catch (error) {
     notify(
       error instanceof ApiError && error.code === 'not_found'
@@ -256,6 +267,7 @@ function teamPlanFrom(result: TeamResult): Plan {
     flow: [],
     build: hydratePublicBuild(result.build),
     realityCheck: [],
+    builderLog: [],
     teamId: result.teamId,
   }
 }
@@ -333,6 +345,8 @@ function goNew(input?: PlanInput): void {
   formInitial.value = input
   formKey.value += 1
   shared.value = null
+  sharedCreator.value = null
+  sharedId.value = null
   teamPlan.value = null
   teamResult.value = null
   view.value = 'new'
@@ -342,6 +356,8 @@ function goLibrary(): void {
   showingExample.value = false
   flush()
   shared.value = null
+  sharedCreator.value = null
+  sharedId.value = null
   teamPlan.value = null
   teamResult.value = null
   plans.value = listPlans()
@@ -934,6 +950,80 @@ async function share(): Promise<void> {
   }
 }
 
+async function checkCurrentAnchor(showPending = true): Promise<void> {
+  const plan = current.value
+  const anchor = plan?.anchor
+  if (!plan || !anchor || anchoring.value) return
+  anchoring.value = true
+  try {
+    if (!(await requireAuth())) return
+    const result = await verifyPlanAnchor(anchor.hash, anchor.receipt)
+    if (result.verified && result.transactionHash) {
+      anchor.status = 'verified'
+      anchor.receipt = result.transactionHash
+      flush()
+      notify('PRD verified on Nimiq', 'success')
+    } else if (showPending) {
+      notify('The anchor is still confirming. Check again shortly.', 'info')
+    }
+  } catch (error) {
+    notify(messageOf(error), 'error')
+  } finally {
+    anchoring.value = false
+  }
+}
+
+async function anchorCurrentPlan(): Promise<void> {
+  const plan = current.value
+  if (!plan || anchoring.value) return
+  const hash = hashPrd(plan)
+  if (plan.anchor?.hash === hash) {
+    if (plan.anchor.status === 'verified') return
+    await checkCurrentAnchor()
+    return
+  }
+  if (localPreview) {
+    notify('PRD anchoring needs Nimiq Pay or Nimiq Hub.', 'info')
+    return
+  }
+
+  anchoring.value = true
+  try {
+    const address = await requireAuth()
+    if (!address) return
+    const transaction = await session.anchor(hash)
+    if (!transaction) {
+      notify(session.lastError.value ?? 'The anchor transaction was not sent.', 'error')
+      return
+    }
+    plan.anchor = {
+      hash,
+      receipt: transaction.receipt,
+      address: transaction.sender,
+      createdAt: Date.now(),
+      status: 'pending',
+    }
+    flush()
+    notify('Anchor submitted. Cairn will verify it after confirmation.', 'success')
+    window.setTimeout(() => void checkCurrentAnchor(false), 5_000)
+  } finally {
+    anchoring.value = false
+  }
+}
+
+async function payMilestoneBounty(milestone: Milestone): Promise<void> {
+  const bounty = milestone.bounty
+  if (!bounty || payingBountyId.value) return
+  payingBountyId.value = milestone.id
+  try {
+    const payment = await session.pay(bounty.recipient, bounty.amountLuna, `Cairn milestone: ${milestone.title}`.slice(0, 64))
+    if (payment) notify('Bounty sent directly to the collaborator', 'success')
+    else notify(session.lastError.value ?? 'The bounty was not sent.', 'error')
+  } finally {
+    payingBountyId.value = null
+  }
+}
+
 // -- library actions --------------------------------------------------------
 
 function remove(id: string): void {
@@ -956,6 +1046,33 @@ function rename(id: string, name: string): void {
 function ownIt(): void {
   goNew()
 }
+
+function forkShared(): void {
+  if (!shared.value || !sharedId.value) return
+  const fork = forkPlan(shared.value, sharedId.value, sharedCreator.value ?? undefined)
+  if (!savePlan(fork)) persistent.value = false
+  plans.value = listPlans()
+  current.value = getPlan(fork.id) ?? fork
+  shared.value = null
+  showingExample.value = false
+  view.value = 'workspace'
+  window.scrollTo(0, 0)
+  notify('Fork saved to your projects', 'success')
+}
+
+async function tipSharedCreator(): Promise<void> {
+  const creator = sharedCreator.value
+  const shareId = sharedId.value
+  if (!creator || !shareId || tipping.value) return
+  tipping.value = true
+  try {
+    const payment = await session.pay(creator, 10_000, `Tip for Cairn ${shareId}`)
+    if (payment) notify('Tip sent directly to the builder', 'success')
+    else notify(session.lastError.value ?? 'The tip was not sent.', 'error')
+  } finally {
+    tipping.value = false
+  }
+}
 </script>
 
 <template>
@@ -976,9 +1093,11 @@ function ownIt(): void {
         <p class="gifted__body">
           {{ showingExample ? 'A curated illustration, not a customer project or a live AI result. Explore Plan, Flow, Build, and Track without connecting a wallet.' : 'Cairn turns an idea into a product map and a route to release. Explore this plan, then create your own. Planning is free and Nimiq wallet support is built in.' }}
         </p>
-        <button type="button" class="btn btn--primary btn--sm" @click="ownIt">
-          Map my own idea
-        </button>
+        <div class="gifted__actions">
+          <button v-if="!showingExample" type="button" class="btn btn--primary btn--sm" @click="forkShared">Fork this Cairn</button>
+          <button v-if="!showingExample && sharedCreator" type="button" class="btn btn--secondary btn--sm" :disabled="tipping" @click="tipSharedCreator">{{ tipping ? 'Opening wallet…' : 'Tip builder 0.1 NIM' }}</button>
+          <button type="button" class="btn btn--ghost btn--sm" @click="ownIt">Start a blank plan</button>
+        </div>
       </div>
     </template>
   </Workspace>
@@ -1028,8 +1147,13 @@ function ownIt(): void {
         :refining="refineBusy"
         :team-panel="ownerTeamPanel"
         :team-syncing="teamSyncing"
+        :wallet-address="session.address.value"
+        :anchoring="anchoring"
+        :paying-bounty-id="payingBountyId"
         @back="back"
         @share="share"
+        @anchor="anchorCurrentPlan"
+        @pay-bounty="payMilestoneBounty"
         @regenerate="current && generate(current.input, current.id)"
         @refine="openRefine"
         @remove="current && remove(current.id)"
@@ -1229,6 +1353,13 @@ function ownIt(): void {
   font-size: var(--text-sm);
   line-height: var(--leading);
   color: var(--text-muted);
+}
+
+.gifted__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-top: var(--s2);
 }
 
 .team-banner {
