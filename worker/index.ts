@@ -6,6 +6,7 @@ import { CreditLedgerUnavailable, redeemCredits, readCredits, stateOf } from './
 import { fail, corsHeaders, isLocalHost, json, normalizeAddress, readJson, securityHeaders } from './http'
 import { generateWithGemini, refineWithGemini } from './generate'
 import { inspectPayment, verifyAnchor, type PaymentInspection } from './payments'
+import { createPlanProofChallenge, verifyPlanProof } from './proof'
 import { clampPlan, isInvalid, readPlanInput } from './shape'
 import { createShare, publicPlan, readShare } from './share'
 import { addMember, createTeam, getTeam, removeMember, TeamError, updateMember, updateTracker } from './team'
@@ -103,6 +104,25 @@ async function handleAuthVerify(env: Env, request: Request, cors: Record<string,
   const result = await verifyChallenge(env, request, raw)
   if (!result) return authRequired(cors)
   return json(result, 200, cors)
+}
+
+async function handleProofChallenge(env: Env, request: Request, url: URL, cors: Record<string, string>): Promise<Response> {
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  const hash = url.searchParams.get('hash')?.trim() ?? ''
+  if (!/^[a-f0-9]{64}$/i.test(hash)) return fail('invalid_request', 'The plan proof hash is invalid.', 400, cors)
+  const challenge = await createPlanProofChallenge(env, session.address, hash)
+  if (!challenge) return fail('rate_limited', 'Please wait before requesting another plan proof.', 429, cors)
+  return json(challenge, 200, cors)
+}
+
+async function handleProofVerify(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
+  const raw = await readJson(request, 16 * 1024)
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  const proof = await verifyPlanProof(env, session.address, raw)
+  if (!proof) return fail('invalid_request', 'That wallet proof is invalid or expired.', 400, cors)
+  return json({ proof }, 200, cors)
 }
 
 async function handleCredits(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
@@ -360,6 +380,8 @@ async function route(env: Env, request: Request): Promise<Response> {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: securityHeaders(cors, url.protocol === 'https:') })
   if (url.pathname === '/api/auth/challenge' && request.method === 'GET') return handleAuthChallenge(env, request, url, cors)
   if (url.pathname === '/api/auth/verify' && request.method === 'POST') return handleAuthVerify(env, request, cors)
+  if (url.pathname === '/api/proof/challenge' && request.method === 'GET') return handleProofChallenge(env, request, url, cors)
+  if (url.pathname === '/api/proof/verify' && request.method === 'POST') return handleProofVerify(env, request, cors)
   if (url.pathname === '/api/credits' && request.method === 'GET') return handleCredits(env, request, cors)
   if (url.pathname === '/api/generate' && request.method === 'POST') return handleGenerate(env, request, cors)
   if (url.pathname === '/api/refine' && request.method === 'POST') return handleRefine(env, request, cors)

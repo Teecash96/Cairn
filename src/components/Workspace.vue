@@ -8,13 +8,14 @@ import MilestoneTracker from './MilestoneTracker.vue'
 import PrdView from './PrdView.vue'
 import TeamPanel from './TeamPanel.vue'
 import VisualPrd from './VisualPrd.vue'
+import WalletProofCard from './WalletProofCard.vue'
 import WalletIdentity from './WalletIdentity.vue'
 import { copyText, canDownload, downloadText } from '../lib/clipboard'
 import { buildToText, flowToText, githubIssuesText, notionTaskTable, planToMarkdown, prdToText, trackToText } from '../lib/markdown'
 import type { RefineAction, TeamMember, TeamRole } from '../lib/api'
 import { relativeTime, slugOf, titleOf, type BuildPlan, type Plan } from '../lib/plan'
 import { projectStats } from '../lib/tracker'
-import { explorerTransactionUrl, hashPrd } from '../lib/anchor'
+import { explorerTransactionUrl, hashPlan, hashPrd } from '../lib/anchor'
 
 export interface TeamPanelState {
   teamId: string | null
@@ -38,6 +39,7 @@ const {
   walletAddress,
   anchoring = false,
   payingBountyId = null,
+  proving = false,
 } = defineProps<{
   plan: Plan
   readOnly?: boolean
@@ -50,6 +52,7 @@ const {
   walletAddress?: string | null
   anchoring?: boolean
   payingBountyId?: string | null
+  proving?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -67,6 +70,7 @@ const emit = defineEmits<{
   'team-copy': [url: string]
   'track-change': [build: BuildPlan]
   anchor: []
+  proof: []
   'pay-bounty': [milestone: import('../lib/plan').Milestone]
 }>()
 
@@ -90,6 +94,7 @@ const heading = computed(() => titleOf(plan))
 const edited = computed(() => relativeTime(plan.updatedAt))
 const stats = computed(() => projectStats(plan.build))
 const currentPrdHash = computed(() => hashPrd(plan))
+const currentPlanHash = computed(() => hashPlan(plan))
 const currentAnchor = computed(() => plan.anchor?.hash === currentPrdHash.value ? plan.anchor : undefined)
 const activeTabIndex = computed(() => Math.max(0, routeTabs.findIndex((item) => item.id === tab.value)))
 const metaLabel = computed(() => {
@@ -281,6 +286,16 @@ function onTabKey(event: KeyboardEvent): void {
         <small>{{ stats.completedTasks }} of {{ stats.totalTasks }} tasks done</small>
       </div>
     </div>
+
+    <WalletProofCard
+      v-if="!teamOnly && (!readOnly || plan.walletProof)"
+      :proof="plan.walletProof"
+      :current-hash="currentPlanHash"
+      :wallet-address="walletAddress"
+      :read-only="readOnly"
+      :busy="proving"
+      @prove="emit('proof')"
+    />
 
     <div v-if="!teamOnly && tab !== 'team'" class="route-tabs" :style="{ '--active-tab': activeTabIndex }" role="tablist" aria-label="Project views" @keydown="onTabKey">
       <span class="route-tabs__indicator" aria-hidden="true" />

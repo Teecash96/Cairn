@@ -83,6 +83,20 @@ test('remote HTTP is redirected and private routes reject missing sessions', asy
   }), env())
   assert.equal(anchorResponse.status, 401)
   assert.equal((await anchorResponse.json() as { error: string }).error, 'auth_required')
+
+  const proofChallengeResponse = await worker.fetch(new Request(`https://cairn.example/api/proof/challenge?hash=${'a'.repeat(64)}`, {
+    method: 'GET',
+  }), env())
+  assert.equal(proofChallengeResponse.status, 401)
+  assert.equal((await proofChallengeResponse.json() as { error: string }).error, 'auth_required')
+
+  const proofVerifyResponse = await worker.fetch(new Request('https://cairn.example/api/proof/verify', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({}),
+  }), env())
+  assert.equal(proofVerifyResponse.status, 401)
+  assert.equal((await proofVerifyResponse.json() as { error: string }).error, 'auth_required')
 })
 
 test('free generation and refinement do not consult the credit ledger', async () => {

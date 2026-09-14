@@ -177,6 +177,16 @@ export interface PlanAnchor {
   status: 'pending' | 'verified'
 }
 
+/** A fee free wallet signature for one exact plan snapshot. */
+export interface WalletProof {
+  hash: string
+  address: string
+  publicKey: string
+  signature: string
+  message: string
+  createdAt: number
+}
+
 export interface ForkSource {
   shareId: string
   creator?: string
@@ -218,6 +228,8 @@ export interface Plan {
   builderLog: BuilderLogEntry[]
   /** Local proof metadata written only after the wallet accepts an anchor transaction. */
   anchor?: PlanAnchor
+  /** Fee free wallet signature for the exact product and build snapshot. */
+  walletProof?: WalletProof
   /** Attribution retained when this plan started from a public Cairn. */
   forkedFrom?: ForkSource
   /** Set once the plan has been shared. Absent means it has never left the device. */
@@ -654,6 +666,27 @@ function normalizeAnchor(value: unknown): PlanAnchor | undefined {
   }
 }
 
+function normalizeWalletProof(value: unknown): WalletProof | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const raw = value as Partial<WalletProof>
+  if (
+    typeof raw.hash !== 'string' || !/^[a-f0-9]{64}$/i.test(raw.hash) ||
+    typeof raw.address !== 'string' || !raw.address.trim() || raw.address.length > 64 ||
+    typeof raw.publicKey !== 'string' || !/^[a-f0-9]{64}$/i.test(raw.publicKey) ||
+    typeof raw.signature !== 'string' || !/^[a-f0-9]{128}$/i.test(raw.signature) ||
+    typeof raw.message !== 'string' || !raw.message.trim() || raw.message.length > 512 ||
+    !Number.isFinite(raw.createdAt)
+  ) return undefined
+  return {
+    hash: raw.hash.toLowerCase(),
+    address: raw.address.replace(/\s+/g, '').toUpperCase(),
+    publicKey: raw.publicKey.toLowerCase(),
+    signature: raw.signature.toLowerCase(),
+    message: raw.message,
+    createdAt: raw.createdAt as number,
+  }
+}
+
 function normalizeForkSource(value: unknown): ForkSource | undefined {
   if (typeof value !== 'object' || value === null) return undefined
   const raw = value as Partial<ForkSource>
@@ -794,19 +827,21 @@ function normalizePlan(value: unknown): Plan | null {
     Array.isArray(plan.flow)
   )) return null
 
-  const copied = clone(value) as Omit<Plan, 'build' | 'realityCheck'>
-  const { teamId, ...withoutTeamId } = copied
+  const copied = clone(value) as Plan
+  const { teamId, walletProof: _walletProof, ...withoutPrivate } = copied
   const safeTeamId = typeof teamId === 'string' && /^[a-z2-9]{16,32}$/i.test(teamId) ? teamId : undefined
 
   const anchor = normalizeAnchor(plan.anchor)
+  const walletProof = normalizeWalletProof(plan.walletProof)
   const forkedFrom = normalizeForkSource(plan.forkedFrom)
   return {
-    ...withoutTeamId,
+    ...withoutPrivate,
     ...(safeTeamId ? { teamId: safeTeamId } : {}),
     build: normalizeBuild(plan.build),
     realityCheck: normalizeRealityCheck(plan.realityCheck),
     builderLog: normalizeBuilderLog(plan.builderLog),
     ...(anchor ? { anchor } : {}),
+    ...(walletProof ? { walletProof } : {}),
     ...(forkedFrom ? { forkedFrom } : {}),
   }
 }

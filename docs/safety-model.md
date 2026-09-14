@@ -17,14 +17,15 @@ is correct or complete.
 ## Security objectives
 
 1. A wallet session must belong to the wallet that signed the challenge.
-2. A client must not be able to choose another wallet's private records.
-3. User input and provider output must stay within bounded shapes and sizes.
-4. Public and team sharing must disclose only the documented projection.
-5. A legacy receipt can grant a balance at most once.
-6. A ledger outage must not send writes to a second balance store.
-7. A failed generation must not consume a paid credit.
-8. An optional NIM transfer must require explicit wallet approval.
-9. Production must never use the local payment bypass.
+2. A plan proof must belong to the wallet that signed that exact plan hash.
+3. A client must not be able to choose another wallet's private records.
+4. User input and provider output must stay within bounded shapes and sizes.
+5. Public and team sharing must disclose only the documented projection.
+6. A legacy receipt can grant a balance at most once.
+7. A ledger outage must not send writes to a second balance store.
+8. A failed generation must not consume a paid credit.
+9. An optional NIM transfer must require explicit wallet approval.
+10. Production must never use the local payment bypass.
 
 ## Trust boundaries
 
@@ -61,6 +62,12 @@ signs the challenge. The Worker verifies the Ed25519 signature, derives the
 address from the public key, and checks any address supplied by the client. The
 session expires after twelve hours. The token stays in memory in the client and
 is not stored in a cookie or local storage.
+
+Plan proof uses the same envelope and a separate five minute, single use
+challenge. The message includes the exact plan hash and authenticated wallet
+address. The Worker rejects a changed hash, a different derived address, an
+expired challenge, and a replay. Edits to the PRD, flow, or build task state
+change the hash, so an old proof cannot be presented as proof of the new plan.
 
 An attacker can still ask the genuine wallet owner to sign a challenge. Cairn
 cannot protect a user who approves a malicious wallet prompt. The UI must never
@@ -142,6 +149,7 @@ boundary.
 | User rejects wallet connection or signature | No session and no plan request |
 | Wallet changes between sign in and payment | Payment stops and the user must sign in again |
 | Challenge expires or is reused | Authentication fails; create a new challenge |
+| Plan proof expires, is replayed, or does not match the wallet | Proof is rejected; the owner signs a fresh plan hash |
 | Provider timeout or malformed output | Safe generation error; local plan remains unchanged |
 | Rate limit or daily budget reached | Clear retry or next day message; no credit mutation |
 | RPC cannot see a transfer yet | `payment_not_found`; user must wait and check, not pay again |

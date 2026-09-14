@@ -46,11 +46,13 @@ Every field is editable. The plan is local by default.
 2. Authenticate with a Nimiq wallet when you generate or refine a plan.
 3. Cairn writes the full builder pack. Review the generated product map and
    builder pack.
-4. Edit the plan. Changes autosave to the device.
-5. Use **Change the plan, update the build** to submit a new requirement.
-6. Review affected outputs. Accept or reject the proposed changes.
-7. Use Track to execute tasks, record blockers, and follow the next useful move.
-8. Export Markdown or copy a GitHub issue draft. Share a read only snapshot or
+4. Sign the exact plan state with your Nimiq wallet. This is free and does not
+   move NIM. Cairn verifies the signature and marks the plan as yours.
+5. Edit the plan. Changes autosave to the device and make the old proof stale.
+6. Use **Change the plan, update the build** to submit a new requirement.
+7. Review affected outputs. Accept or reject the proposed changes.
+8. Use Track to execute tasks, record blockers, and follow the next useful move.
+9. Export Markdown or copy a GitHub issue draft. Share a read only snapshot or
    create a protected Track workspace for named Nimiq wallets.
 
 The refinement flow preserves stable task IDs and local progress. Completed work
@@ -62,7 +64,7 @@ the owner explicitly shares the allowed Track projection.
 ```mermaid
 flowchart LR
   U[Builder] --> UI[Vue 3 and TypeScript<br/>Nimiq mini app UI]
-  UI --> W[Nimiq Pay or Nimiq Hub<br/>wallet and signatures]
+  UI --> W[Nimiq Pay or Nimiq Hub<br/>wallet signatures and transfers]
   UI --> API[Cloudflare Worker<br/>API and static asset entry]
   API --> AUTH[Ed25519 session verification]
   API --> VALID[Input and output shaping]
@@ -117,6 +119,8 @@ bindings. The repository does not contain a provider key or a wallet key.
 * Planning requires a short lived wallet session, not a payment.
 * The Worker verifies a one time Ed25519 signature challenge and binds the
   session to the signed wallet address.
+* A builder can sign the exact plan and build state for a fee free, verifiable
+  wallet proof. Editing that state makes the proof stale.
 * User input and planning output are bounded and shaped before storage or use.
 * Free planning is protected by per wallet and IP rate limits plus a daily
   service budget.
@@ -139,11 +143,13 @@ signs the authentication challenge and approves any optional NIM transfer.
 
 The current explicit actions are:
 
-1. PRD anchor: write a Blake2b hash of the current PRD into a one Luna self
+1. Wallet proof: sign a hash of the current product map and build state. Cairn
+   verifies the Ed25519 signature and shows when edits make it stale.
+2. PRD anchor: write a Blake2b hash of the current PRD into a one Luna self
    transfer, then verify the confirmed transaction.
-2. Milestone bounty: send NIM directly from the owner wallet to a collaborator
+3. Milestone bounty: send NIM directly from the owner wallet to a collaborator
    after the owner marks the milestone complete.
-3. Builder tip: an optional transfer on a shared plan. Cairn never holds these
+4. Builder tip: an optional transfer on a shared plan. Cairn never holds these
    funds or decides a dispute.
 
 None of these actions is required to generate or refine a plan.

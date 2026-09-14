@@ -26,6 +26,8 @@ JSON errors use a stable `error` code and a user safe `message`.
 | --- | --- | --- | --- |
 | GET | `/api/auth/challenge` | No | Create a one time wallet signing challenge. An optional `address` binds it to a selected wallet. |
 | POST | `/api/auth/verify` | No | Verify the Ed25519 signature, consume the challenge, and issue a short lived session. |
+| GET | `/api/proof/challenge?hash=:hash` | Yes | Create a one time challenge for the current plan hash. |
+| POST | `/api/proof/verify` | Yes | Verify the wallet signature and return a plan proof. |
 | GET | `/api/credits` | Yes | Read legacy paid credit state and the configured legacy receipt quote. Planning does not depend on this balance. |
 | POST | `/api/generate` | Yes | Validate the idea, enforce fair use, call the planning service, and return a structured draft. |
 | POST | `/api/refine` | Yes | Generate a targeted change proposal for a bounded plan and requirement. |
@@ -57,6 +59,7 @@ and v2 records are migrated on read. A plan contains:
 | `realityCheck` | Planning service draft, then client edits | Three prioritized concerns and practical tests or fixes. |
 | `builderLog` | Client | Private daily progress entries. |
 | `anchor` | Client after wallet approval | Local hash, receipt, address, and pending or verified state. |
+| `walletProof` | Client after wallet signature | Hash, wallet address, public key, signature, signed message, and timestamp for one exact plan state. |
 | `shareId` and `teamId` | Client after server action | Locators for explicit sharing. |
 
 Task and milestone IDs are client authored. The planning service never controls
@@ -69,6 +72,7 @@ owner review in the UI.
 | Store | Keys | Data | Write rule |
 | --- | --- | --- | --- |
 | CAIRN KV | `challenge:*`, `session:*` | One time challenges and short lived wallet sessions | Worker only, with expiration |
+| CAIRN KV | `proof:challenge:*` | One time plan proof challenges with a five minute expiry | Worker only, consumed after signature verification |
 | CAIRN KV | `share:*` | Public allowlisted plan snapshots | Explicit share action |
 | CAIRN KV | `team:*`, `team:owner:*` | Protected Track projection and owner lookup | Authenticated owner or permitted editor |
 | CAIRN KV | `rl:*`, `budget:*` | Fair use counters and the UTC daily service budget | Worker limiter |
@@ -93,6 +97,12 @@ writes when unavailable.
    twelve hour expiry.
 6. Each private request is bound to the session address. A body address is
    accepted only when it normalizes to that address.
+
+Plan proof uses a second, explicit challenge. The challenge contains the
+current plan hash and authenticated wallet address. Nimiq Pay or Hub signs the
+message, and `/api/proof/verify` checks the Ed25519 signature, derives the
+address from the public key, and consumes the challenge. The returned proof is
+safe to keep with the local plan because it contains no private key or secret.
 
 The client keeps the bearer token in memory. It does not put wallet authority in
 local storage or cookies.

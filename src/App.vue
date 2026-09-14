@@ -8,8 +8,9 @@
  * in one file is what makes the ordering rules below checkable at a glance.
  *
  * The wallet prompt fires on the first generate tap, never at boot. It proves
- * identity for free planning and protected team actions. NIM payments support
- * anchors, bounties, builder tips, and recovery of legacy receipts.
+ * identity for free planning and protected team actions. A second, explicit
+ * signature can prove the exact plan state without moving NIM. NIM payments
+ * support anchors, bounties, builder tips, and recovery of legacy receipts.
  *
  * Editing autosaves. There is no save button, and the deep watcher that does it
  * is guarded so that stamping `updatedAt` cannot retrigger itself.
@@ -67,7 +68,7 @@ import { samePaymentAddress } from './lib/payment-session'
 import { mergeRefinement } from './lib/refinement'
 import { createExamplePlan } from './lib/example'
 import { stubGenerate, stubRefinement } from './lib/stub'
-import { hashPrd } from './lib/anchor'
+import { hashPlan, hashPrd } from './lib/anchor'
 
 type View = 'new' | 'workspace' | 'library'
 type Tone = 'info' | 'success' | 'error'
@@ -87,6 +88,7 @@ const generating = ref(false)
 const sharing = ref(false)
 const recoveryLoading = ref(false)
 const anchoring = ref(false)
+const proving = ref(false)
 const payingBountyId = ref<string | null>(null)
 const payOpen = ref(false)
 const payState = ref<'idle' | 'paying' | 'verifying'>('idle')
@@ -982,6 +984,34 @@ async function anchorCurrentPlan(): Promise<void> {
   }
 }
 
+async function proveCurrentPlan(): Promise<void> {
+  const plan = current.value
+  if (!plan || proving.value) return
+  const hash = hashPlan(plan)
+  const currentProof = plan.walletProof
+  const sameWallet = currentProof && session.address.value
+    ? currentProof.address.replace(/\s+/g, '').toUpperCase() === session.address.value.replace(/\s+/g, '').toUpperCase()
+    : true
+  if (currentProof?.hash === hash && sameWallet) {
+    notify('This plan is already signed by your Nimiq wallet.', 'info')
+    return
+  }
+
+  proving.value = true
+  try {
+    const proof = await session.signPlanProof(hash)
+    if (!proof) {
+      notify(session.lastError.value ?? 'The plan was not signed.', 'error')
+      return
+    }
+    plan.walletProof = proof
+    flush()
+    notify('Plan signed and verified by your Nimiq wallet.', 'success')
+  } finally {
+    proving.value = false
+  }
+}
+
 async function payMilestoneBounty(milestone: Milestone): Promise<void> {
   const bounty = milestone.bounty
   if (!bounty || payingBountyId.value) return
@@ -1121,10 +1151,12 @@ async function tipSharedCreator(): Promise<void> {
         :team-syncing="teamSyncing"
         :wallet-address="session.address.value"
         :anchoring="anchoring"
+        :proving="proving"
         :paying-bounty-id="payingBountyId"
         @back="back"
         @share="share"
         @anchor="anchorCurrentPlan"
+        @proof="proveCurrentPlan"
         @pay-bounty="payMilestoneBounty"
         @regenerate="current && generate(current.input, current.id)"
         @refine="openRefine"

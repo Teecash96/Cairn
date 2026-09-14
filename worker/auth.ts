@@ -27,7 +27,8 @@ function hexBytes(value: unknown, length: number): Uint8Array | null {
   return bytes
 }
 
-function signedMessageHash(message: string): Uint8Array {
+/** Hash the Nimiq signed-message envelope used by auth and plan proofs. */
+export function signedMessageHash(message: string): Uint8Array {
   // Nimiq's signed message format is a one byte prefix length, the literal
   // prefix, the decimal message length, then the message itself. Challenge
   // messages are ASCII, so JS length and UTF-8 byte length are identical.

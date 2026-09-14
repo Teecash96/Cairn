@@ -10,6 +10,8 @@ import {
   type Plan,
 } from '../../src/lib/plan.ts'
 import { mergeRefinement } from '../../src/lib/refinement.ts'
+import { hashPlan, planProofPayload } from '../../src/lib/anchor.ts'
+import { createExamplePlan } from '../../src/lib/example.ts'
 
 class MemoryStorage {
   readonly #values = new Map<string, string>()
@@ -171,6 +173,18 @@ test('normalizes tracker fields before saving them', () => {
   assert.equal(task?.dueDate, undefined)
   assert.deepEqual(task?.labels, ['one', 'two', 'three'])
   assert.deepEqual(task?.dependsOn, [])
+})
+
+test('wallet proof hash covers the build state but excludes private builder notes', () => {
+  const plan = createExamplePlan()
+  const task = plan.build.milestones[0]!.tasks[0]!
+  task.notes = 'Private implementation detail'
+  const first = hashPlan(plan)
+  assert.ok(!planProofPayload(plan).includes(task.notes))
+
+  task.status = 'done'
+  const second = hashPlan(plan)
+  assert.notEqual(second, first)
 })
 
 test('preserves task identity and progress when matching text survives refinement', () => {

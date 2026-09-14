@@ -52,7 +52,7 @@ flowchart TB
   WORKSPACE -->|same origin JSON| WORKER
   PAY --> RPC
   WORKER --> AI
-  NIMIQ -->|signed challenge or approved transfer| WORKER
+  NIMIQ -->|signed challenge, plan proof, or approved transfer| WORKER
 ```
 
 ## Responsibilities
@@ -112,6 +112,39 @@ sequenceDiagram
 Planning is free. The wallet session proves identity and supplies abuse limit
 keys. It does not spend a credit and it does not grant the Worker permission to
 move funds.
+
+## Wallet proof in the main loop
+
+After a plan is generated, the workspace presents a **Wallet proof** step. The
+owner can ask for a short challenge bound to the current plan hash, sign it in
+Nimiq Pay or Nimiq Hub, and send the signature to the Worker. The Worker checks
+the Ed25519 signature, derives the address from the public key, consumes the
+challenge, and returns the verified proof. Cairn stores that proof with the
+local plan and marks it stale when the product map or actionable build state
+changes. No NIM transfer is made.
+
+```mermaid
+sequenceDiagram
+  participant B as Browser
+  participant W as Worker
+  participant K as CAIRN KV
+  participant N as Nimiq wallet
+
+  B->>W: GET /api/proof/challenge?hash=H
+  W->>K: Store hash bound one time challenge
+  W-->>B: Challenge and readable message
+  B->>N: Sign plan message
+  N-->>B: Public key and signature
+  B->>W: POST /api/proof/verify
+  W->>W: Verify Ed25519 and derive wallet address
+  W->>K: Consume challenge
+  W-->>B: Verified plan proof
+  B->>B: Store proof beside the plan
+```
+
+The proof covers the PRD, flow, and build task state. Private tracker notes and
+the builder log are excluded. A requirement update therefore produces a new
+hash and gives the owner a clear reason to sign the updated plan again.
 
 ## Plan and refinement lifecycle
 

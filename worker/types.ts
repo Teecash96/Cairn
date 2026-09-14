@@ -168,6 +168,28 @@ export interface Plan {
   shareId?: string
 }
 
+/** A wallet signature that attests to one exact Cairn plan snapshot. */
+export interface WalletProof {
+  hash: string
+  address: string
+  publicKey: string
+  signature: string
+  message: string
+  createdAt: number
+}
+
+export interface WalletProofChallenge {
+  challenge: string
+  hash: string
+  message: string
+  expiresAt: number
+}
+
+export interface WalletProofChallengeRecord extends WalletProofChallenge {
+  address: string
+  used?: boolean
+}
+
 export type RefineAction =
   | 'cut_mvp_scope'
   | 'break_into_tasks'

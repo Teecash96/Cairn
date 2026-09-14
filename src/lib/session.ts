@@ -9,10 +9,21 @@
  *
  * Nothing here prompts at boot. Wallet sign in starts on the first action that
  * needs identity. Planning never requires a payment. NIM transfers are used
- * for explicit product actions such as anchors, bounties, and builder tips.
+ * for an explicit fee free plan proof and product actions such as anchors,
+ * bounties, and builder tips.
  */
 import { computed, readonly, ref } from 'vue'
-import { clearAuthToken, getAuthChallenge, hasAuthToken, setAuthToken, verifyAuth } from './api'
+import {
+  clearAuthToken,
+  getAuthChallenge,
+  getPlanProofChallenge,
+  hasAuthToken,
+  setAuthToken,
+  verifyAuth,
+  verifyPlanProof,
+} from './api'
+import type { WalletProofChallenge } from './api'
+import type { WalletProof } from './plan'
 import {
   ProviderError,
   chooseAddressInBrowser,
@@ -25,7 +36,9 @@ import {
   sendPaymentInBrowser,
   signMessage,
   signMessageInBrowser,
+  type BrowserSignedMessage,
   type NimiqProvider,
+  type SignedMessage,
 } from './nimiq'
 
 export type SessionMode = 'booting' | 'nimiq' | 'preview'
@@ -287,6 +300,63 @@ export function useSession() {
     }
   }
 
+  /** Sign and server verify the current plan snapshot without spending NIM. */
+  async function signPlanProof(hash: string): Promise<WalletProof | null> {
+    if (!/^[a-f0-9]{64}$/i.test(hash)) {
+      lastError.value = 'The plan proof hash is invalid.'
+      return null
+    }
+    if (mode.value === 'booting') await boot()
+    const wallet = address.value ?? await authenticate()
+    if (!wallet) return null
+    if (localPreview) {
+      lastError.value = 'Plan proofs need the Cairn Worker and a Nimiq wallet.'
+      return null
+    }
+
+    try {
+      const challengePromise = getPlanProofChallenge(hash)
+      let signed: SignedMessage | BrowserSignedMessage
+      let challenge: WalletProofChallenge
+
+      if (mode.value === 'nimiq' && provider) {
+        challenge = await challengePromise
+        signed = await signMessage(provider, challenge.message)
+      } else if (mode.value === 'preview') {
+        // Open Hub before awaiting the Worker response so Chrome keeps the
+        // original tap's popup activation, just like wallet authentication.
+        signed = await signMessageInBrowser(
+          challengePromise.then((value) => value.message),
+          wallet,
+        )
+        challenge = await challengePromise
+      } else {
+        lastError.value = 'Could not reach your Nimiq wallet.'
+        return null
+      }
+
+      const result = await verifyPlanProof({
+        challenge: challenge.challenge,
+        hash: challenge.hash,
+        publicKey: signed.publicKey,
+        signature: signed.signature,
+      })
+      const canonical = (value: string): string => value.replace(/\s+/g, '').toUpperCase()
+      if (canonical(result.proof.address) !== canonical(wallet)) {
+        throw new Error('The wallet proof did not match the connected wallet.')
+      }
+      return result.proof
+    } catch (error) {
+      lastError.value =
+        error instanceof ProviderError && error.isDenied
+          ? 'Plan signing cancelled.'
+          : error instanceof Error
+            ? error.message
+            : 'Could not verify the plan signature.'
+      return null
+    }
+  }
+
   /** Clear the in memory wallet session so a different wallet can reconnect. */
   function disconnect(): void {
     clearAuthToken()
@@ -309,6 +379,7 @@ export function useSession() {
     connect,
     authenticate,
     anchor,
+    signPlanProof,
     pay,
     disconnect,
     refreshChain,

@@ -24,10 +24,15 @@ local host and must never be enabled in production.
 
 ## Nimiq integration
 
-Nimiq Pay is used for wallet authentication and explicit product payments. The
-Nimiq Mini App template gives builders a concrete NIM checkout, confirmation,
-and recovery journey to adapt in their own projects. USDT is not part of this
-release.
+Nimiq Pay is used for wallet authentication, a fee free plan proof, and explicit
+product payments. After generation, a builder can sign the current plan hash.
+Cairn verifies that signature and shows when later edits make the proof stale.
+This puts wallet verified state in the main planning loop without charging the
+builder or moving NIM.
+
+The Nimiq Mini App template gives builders a concrete NIM checkout,
+confirmation, and recovery journey to adapt in their own projects. USDT is not
+part of this release.
 
 ## Release checks
 

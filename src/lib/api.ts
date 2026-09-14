@@ -16,6 +16,7 @@ import type {
   PublicBuildPlan,
   Prd,
   RealityCheckItem,
+  WalletProof,
 } from './plan'
 
 export interface GenerateResult {
@@ -73,6 +74,13 @@ export interface AuthChallenge {
 export interface AuthResult {
   token: string
   address: string
+  expiresAt: number
+}
+
+export interface WalletProofChallenge {
+  challenge: string
+  hash: string
+  message: string
   expiresAt: number
 }
 
@@ -323,6 +331,24 @@ export function verifyAuth(body: {
   return request<AuthResult>('/auth/verify', {
     method: 'POST',
     body: JSON.stringify(body),
+  })
+}
+
+export function getPlanProofChallenge(hash: string): Promise<WalletProofChallenge> {
+  const params = new URLSearchParams({ hash })
+  return request<WalletProofChallenge>(`/proof/challenge?${params.toString()}`, { auth: true })
+}
+
+export function verifyPlanProof(body: {
+  challenge: string
+  hash: string
+  publicKey: string
+  signature: string
+}): Promise<{ proof: WalletProof }> {
+  return request<{ proof: WalletProof }>('/proof/verify', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    auth: true,
   })
 }
 
