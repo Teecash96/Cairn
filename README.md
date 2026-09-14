@@ -44,7 +44,8 @@ Every field is editable. The plan is local by default.
 
 1. Describe the idea. Only the idea field is required.
 2. Authenticate with a Nimiq wallet when you generate or refine a plan.
-3. Review the generated product map and builder pack.
+3. Cairn writes the full builder pack. Review the generated product map and
+   builder pack.
 4. Edit the plan. Changes autosave to the device.
 5. Use **Change the plan, update the build** to submit a new requirement.
 6. Review affected outputs. Accept or reject the proposed changes.
