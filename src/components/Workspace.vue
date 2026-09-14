@@ -52,7 +52,7 @@ const emit = defineEmits<{
   notify: [message: string, tone?: 'info' | 'success' | 'error']
   'team-open': []
   'team-create': []
-  'team-add': [address: string, role: TeamRole]
+  'team-add': [address: string, title: string, role: TeamRole]
   'team-update': [address: string, role: TeamRole]
   'team-remove': [address: string]
   'team-copy': [url: string]
@@ -150,8 +150,8 @@ function goBack(): void {
   emit('back')
 }
 
-function teamAdd(address: string, role: TeamRole): void {
-  emit('team-add', address, role)
+function teamAdd(address: string, title: string, role: TeamRole): void {
+  emit('team-add', address, title, role)
 }
 
 function teamUpdate(address: string, role: TeamRole): void {

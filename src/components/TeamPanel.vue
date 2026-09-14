@@ -25,21 +25,24 @@ const {
 
 const emit = defineEmits<{
   create: []
-  add: [address: string, role: TeamRole]
+  add: [address: string, title: string, role: TeamRole]
   update: [address: string, role: TeamRole]
   remove: [address: string]
   copy: [url: string]
 }>()
 
 const address = ref('')
+const memberTitle = ref('')
 const memberRole = ref<TeamRole>('viewer')
 const confirming = ref<string | null>(null)
 
 function add(): void {
   const value = address.value.trim()
-  if (!value || loading) return
-  emit('add', value, memberRole.value)
+  const title = memberTitle.value.replace(/\s+/g, ' ').trim()
+  if (!value || !title || loading) return
+  emit('add', value, title, memberRole.value)
   address.value = ''
+  memberTitle.value = ''
 }
 
 function changeRole(member: TeamMember, event: Event): void {
@@ -99,13 +102,17 @@ function confirmRemove(member: TeamMember): void {
         </label>
         <p id="team-address-help" class="faint">The member must open the invite with this wallet.</p>
         <label class="field">
-          <span class="field__label">Permission</span>
-          <select v-model="memberRole" class="input">
+          <span class="field__label">Role title</span>
+          <input v-model="memberTitle" class="input" autocomplete="organization-title" maxlength="48" placeholder="Designer, developer, researcher…" />
+        </label>
+        <label class="field">
+          <span class="field__label">Access permission</span>
+          <select v-model="memberRole" class="input" aria-label="Access permission">
             <option value="viewer">Viewer · can see Track</option>
             <option value="editor">Editor · can change Track</option>
           </select>
         </label>
-        <button type="submit" class="btn btn--primary btn--block" :disabled="loading || !address.trim()">Add member</button>
+        <button type="submit" class="btn btn--primary btn--block" :disabled="loading || !address.trim() || !memberTitle.trim()">Add member</button>
       </form>
 
       <section class="member-list" aria-labelledby="member-list-heading">
@@ -122,8 +129,8 @@ function confirmRemove(member: TeamMember): void {
         </div>
         <div v-for="member in members" :key="member.address" class="member-row">
           <div class="member-row__identity">
-            <strong class="mono">{{ shortAddress(member.address) }}</strong>
-            <span class="muted">Wallet member</span>
+            <strong>{{ member.title }}</strong>
+            <span class="muted mono">{{ shortAddress(member.address) }}</span>
           </div>
           <div class="member-row__actions">
             <select class="role-select" :value="member.role" aria-label="Member permission" :disabled="loading" @change="changeRole(member, $event)">

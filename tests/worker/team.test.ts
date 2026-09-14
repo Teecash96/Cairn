@@ -91,8 +91,9 @@ test('owner controls roles and editors can change Track only', async () => {
     build: build(),
   }, 'https://cairn.example')
 
-  const withViewer = await addMember(env(kv), created.teamId, owner, viewer, 'viewer', 'https://cairn.example')
+  const withViewer = await addMember(env(kv), created.teamId, owner, viewer, 'Product designer', 'viewer', 'https://cairn.example')
   assert.equal(withViewer.members[0]?.role, 'viewer')
+  assert.equal(withViewer.members[0]?.title, 'Product designer')
   assert.equal((await getTeam(env(kv), created.teamId, viewer, 'https://cairn.example')).role, 'viewer')
 
   await assert.rejects(
@@ -102,7 +103,7 @@ test('owner controls roles and editors can change Track only', async () => {
 
   const withEditor = await updateMember(env(kv), created.teamId, owner, viewer, 'editor', 'https://cairn.example')
   assert.equal(withEditor.members[0]?.role, 'editor')
-  const withSecondMember = await addMember(env(kv), created.teamId, owner, editor, 'viewer', 'https://cairn.example')
+  const withSecondMember = await addMember(env(kv), created.teamId, owner, editor, 'Developer', 'viewer', 'https://cairn.example')
   assert.equal(withSecondMember.revision, withEditor.revision + 1)
 
   const updated = await updateTracker(env(kv), created.teamId, viewer, {
@@ -123,7 +124,7 @@ test('owner controls roles and editors can change Track only', async () => {
     (error: unknown) => error instanceof TeamError && error.code === 'conflict',
   )
   await assert.rejects(
-    () => addMember(env(kv), created.teamId, viewer, address(3), 'viewer', 'https://cairn.example'),
+    () => addMember(env(kv), created.teamId, viewer, address(3), 'Researcher', 'viewer', 'https://cairn.example'),
     (error: unknown) => error instanceof TeamError && error.code === 'forbidden',
   )
 })
@@ -139,12 +140,12 @@ test('duplicate, owner, and removed member access are rejected', async () => {
   }, 'https://cairn.example')
 
   await assert.rejects(
-    () => addMember(env(kv), created.teamId, owner, owner, 'viewer', 'https://cairn.example'),
+    () => addMember(env(kv), created.teamId, owner, owner, 'Owner', 'viewer', 'https://cairn.example'),
     (error: unknown) => error instanceof TeamError && error.code === 'invalid_request',
   )
-  await addMember(env(kv), created.teamId, owner, member, 'viewer', 'https://cairn.example')
+  await addMember(env(kv), created.teamId, owner, member, 'Designer', 'viewer', 'https://cairn.example')
   await assert.rejects(
-    () => addMember(env(kv), created.teamId, owner, member, 'editor', 'https://cairn.example'),
+    () => addMember(env(kv), created.teamId, owner, member, 'Developer', 'editor', 'https://cairn.example'),
     (error: unknown) => error instanceof TeamError && error.code === 'conflict',
   )
 
@@ -153,6 +154,33 @@ test('duplicate, owner, and removed member access are rejected', async () => {
     () => getTeam(env(kv), created.teamId, member, 'https://cairn.example'),
     (error: unknown) => error instanceof TeamError && error.code === 'forbidden',
   )
+})
+
+test('requires a role title and keeps legacy members readable', async () => {
+  const kv = new MemoryKV()
+  const owner = address(0)
+  const member = address(1)
+  const created = await createTeam(env(kv), owner, {
+    planId: 'plan-member-titles',
+    name: 'Member titles',
+    build: build(),
+  }, 'https://cairn.example')
+
+  await assert.rejects(
+    () => addMember(env(kv), created.teamId, owner, member, '   ', 'viewer', 'https://cairn.example'),
+    (error: unknown) => error instanceof TeamError && error.code === 'invalid_request',
+  )
+
+  const added = await addMember(env(kv), created.teamId, owner, member, '  Product   designer  ', 'viewer', 'https://cairn.example')
+  assert.equal(added.members[0]?.title, 'Product designer')
+
+  const key = `team:${created.teamId}`
+  const stored = JSON.parse(kv.values.get(key) ?? '{}') as { members?: Array<Record<string, unknown>> }
+  delete stored.members?.[0]?.title
+  await kv.put(key, JSON.stringify(stored))
+
+  const legacy = await getTeam(env(kv), created.teamId, member, 'https://cairn.example')
+  assert.equal(legacy.members[0]?.title, 'Team member')
 })
 
 test('team routes require a wallet session before checking membership', async () => {

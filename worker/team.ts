@@ -18,6 +18,7 @@ const MAX_MEMBERS = 20
 const TEAM_ID = /^[a-z2-9]{16,32}$/i
 const PLAN_ID = /^[a-z0-9_-]{1,96}$/i
 const NAME_MAX = 80
+const MEMBER_TITLE_MAX = 48
 
 export type TeamErrorCode = 'invalid_request' | 'not_found' | 'forbidden' | 'conflict'
 
@@ -65,6 +66,10 @@ function role(value: unknown): TeamRole | null {
   return value === 'viewer' || value === 'editor' ? value : null
 }
 
+function memberTitle(value: unknown): string {
+  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, MEMBER_TITLE_MAX) : ''
+}
+
 function recordOrThrow(record: TeamRecord | null): TeamRecord {
   if (!record || !validTeamId(record.id) || !validPlanId(record.planId)) {
     throw new TeamError('not_found', 'That team workspace does not exist.', 404)
@@ -94,7 +99,7 @@ function recordOrThrow(record: TeamRecord | null): TeamRecord {
       throw new TeamError('not_found', 'That team workspace does not exist.', 404)
     }
     seen.add(address)
-    members.push({ address, role: memberRole, createdAt: raw.createdAt as number })
+    members.push({ address, title: memberTitle(raw.title) || 'Team member', role: memberRole, createdAt: raw.createdAt as number })
   }
 
   return {
@@ -211,13 +216,15 @@ export async function addMember(
   teamId: string,
   ownerValue: string,
   memberValue: unknown,
+  titleValue: unknown,
   roleValue: unknown,
   appUrl: string,
 ): Promise<TeamView> {
   const owner = normalizeAddress(ownerValue)
   const member = normalizeAddress(memberValue)
+  const title = memberTitle(titleValue)
   const memberRole = role(roleValue)
-  if (!owner || !member || !memberRole) throw new TeamError('invalid_request', 'Enter a valid wallet and role.', 400)
+  if (!owner || !member || !title || !memberRole) throw new TeamError('invalid_request', 'Enter a valid wallet, role title, and permission.', 400)
   const record = recordOrThrow(await readRecord(env, teamId))
   requireOwner(record, owner)
   if (member === record.owner) throw new TeamError('invalid_request', 'The owner is already in the team.', 400)
@@ -226,7 +233,7 @@ export async function addMember(
   }
   if (record.members.length >= MAX_MEMBERS) throw new TeamError('invalid_request', 'A team can have up to 20 members.', 400)
 
-  record.members.push({ address: member, role: memberRole, createdAt: Date.now() })
+  record.members.push({ address: member, title, role: memberRole, createdAt: Date.now() })
   record.updatedAt = Date.now()
   record.revision += 1
   await writeRecord(env, record)

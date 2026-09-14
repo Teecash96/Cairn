@@ -247,6 +247,7 @@ export type TeamRole = 'viewer' | 'editor'
 
 export interface TeamMember {
   address: string
+  title: string
   role: TeamRole
   createdAt: number
 }

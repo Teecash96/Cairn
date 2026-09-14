@@ -284,7 +284,7 @@ async function handleTeamAddMember(env: Env, request: Request, teamId: string, c
   if (!session) return authRequired(cors)
   if (await tooFastByKey(env, session.address, 'team-member', 20)) return fail('rate_limited', 'Please wait before changing team members again.', 429, cors)
   try {
-    const result = await addMember(env, teamId, session.address, raw.address, raw.role, teamBaseUrl(env, request))
+    const result = await addMember(env, teamId, session.address, raw.address, raw.title, raw.role, teamBaseUrl(env, request))
     return json(result, 200, cors)
   } catch (error) {
     return teamFailure(error, cors)

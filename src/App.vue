@@ -446,13 +446,13 @@ function activeOwnerTeamId(): string | null {
   return id && teamResult.value?.teamId === id ? id : null
 }
 
-async function addOwnerMember(address: string, role: TeamRole): Promise<void> {
+async function addOwnerMember(address: string, title: string, role: TeamRole): Promise<void> {
   const teamId = activeOwnerTeamId()
   if (!teamId || teamLoading.value) return
   teamLoading.value = true
   teamError.value = null
   try {
-    teamResult.value = await addTeamMember(teamId, address, role)
+    teamResult.value = await addTeamMember(teamId, address, title, role)
     notify('Member added', 'success')
   } catch (error) {
     teamError.value = messageOf(error)

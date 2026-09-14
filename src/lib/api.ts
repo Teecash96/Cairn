@@ -74,6 +74,7 @@ export type TeamRole = 'viewer' | 'editor'
 
 export interface TeamMember {
   address: string
+  title: string
   role: TeamRole
   createdAt: number
 }
@@ -373,10 +374,10 @@ export function getTeam(teamId: string): Promise<TeamResult> {
   return request<TeamResult>(`/team/${encodeURIComponent(teamId)}`, { auth: true })
 }
 
-export function addTeamMember(teamId: string, address: string, role: TeamRole): Promise<TeamResult> {
+export function addTeamMember(teamId: string, address: string, title: string, role: TeamRole): Promise<TeamResult> {
   return request<TeamResult>(`/team/${encodeURIComponent(teamId)}/members`, {
     method: 'POST',
-    body: JSON.stringify({ address, role }),
+    body: JSON.stringify({ address, title, role }),
     auth: true,
   })
 }
