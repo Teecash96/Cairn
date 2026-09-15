@@ -144,7 +144,7 @@ onMounted(() => {
             <ul><li v-for="task in removedTasks" :key="task.id">{{ task.text }} — {{ task.status === 'done' ? 'completed' : task.status === 'in_progress' ? 'in progress' : 'to do' }}</li></ul>
             <label><input v-model="acknowledgeRemoval" type="checkbox" /> I understand that these tasks and their saved progress, notes, and dependencies will be removed.</label>
           </div>
-          <p class="faint refine-result__note">Unchanged task text keeps its progress and notes, even when moved to another milestone. Renamed tasks are treated as replacements.</p>
+          <p class="faint refine-result__note">Retained tasks carry their stable id, so a rename or move keeps progress, notes, dates, and dependencies. New tasks start as to do.</p>
         </div>
         <p v-else class="empty-result muted">No plan changes were proposed. Your plan stays as it is.</p>
 

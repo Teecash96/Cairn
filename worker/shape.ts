@@ -16,14 +16,17 @@
  */
 import type {
   BuildMilestoneDraft,
+  BuildTaskDraft,
   BuildPlanDraft,
   FlowBranch,
   FlowStep,
   FlowStepKind,
   PlanInput,
+  Plan,
   PublicBuildPlan,
   PublicMilestone,
   PublicTask,
+  PublicPlan,
   Prd,
   PlanChanges,
   RealityCheckItem,
@@ -56,6 +59,7 @@ const TRACKER_LABEL_LENGTH = 24
 const TRACKER_DATE = /^\d{4}-\d{2}-\d{2}$/
 const TRACKER_MILESTONE_MAX = 12
 const TRACKER_TASK_MAX = 12
+const TASK_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/
 
 // -- primitives -------------------------------------------------------------
 
@@ -209,6 +213,16 @@ function readTaskText(value: unknown): string {
   return str((value as { text?: unknown }).text, ITEM_MAX)
 }
 
+function readTaskDraft(value: unknown): string | BuildTaskDraft {
+  const text = readTaskText(value)
+  if (!text) return ''
+  if (typeof value !== 'object' || value === null) return text
+  const rawId = (value as { id?: unknown }).id
+  return typeof rawId === 'string' && TASK_ID.test(rawId)
+    ? { id: rawId, text }
+    : text
+}
+
 /** Loose clamp used for stored share snapshots and client edits. */
 export function clampBuild(value: unknown): BuildPlanDraft {
   if (typeof value !== 'object' || value === null) {
@@ -223,12 +237,12 @@ export function clampBuild(value: unknown): BuildPlanDraft {
     if (typeof item !== 'object' || item === null) continue
     const record = item as Record<string, unknown>
     const rawTasks = Array.isArray(record.tasks) ? record.tasks : []
-    const tasks: string[] = []
+    const tasks: Array<string | BuildTaskDraft> = []
     for (const task of rawTasks) {
       if (taskCount >= BUILD_TASK_MAX) break
-      const text = readTaskText(task)
-      if (!text) continue
-      tasks.push(text)
+      const draft = readTaskDraft(task)
+      if (!draft) continue
+      tasks.push(draft)
       taskCount += 1
     }
     milestones.push({
@@ -291,7 +305,7 @@ function sharedLabels(value: unknown): string[] {
 
 /** Public tracker fields only. Private notes, priorities, and dependencies stay local. */
 /** Clamp the public Track projection and rebuild ids under the server prefix. */
-export function clampSharedBuild(value: unknown, id: string): PublicBuildPlan {
+export function clampSharedBuild(value: unknown, id: string, preserveTaskIds = false): PublicBuildPlan {
   const raw = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {}
   const rawMilestones = Array.isArray(raw.milestones) ? raw.milestones : []
   const milestones: PublicMilestone[] = []
@@ -318,8 +332,11 @@ export function clampSharedBuild(value: unknown, id: string): PublicBuildPlan {
           ? 'done'
           : 'todo'
       const dueDate = validDate(task.dueDate) ? task.dueDate : undefined
+      const incomingId = preserveTaskIds && typeof task.id === 'string' && TASK_ID.test(task.id)
+        ? task.id
+        : `${id}-m${milestones.length + 1}-t${tasks.length + 1}`
       tasks.push({
-        id: `${id}-m${milestones.length + 1}-t${tasks.length + 1}`,
+        id: incomingId,
         text,
         status,
         labels: sharedLabels(task.labels),
@@ -448,6 +465,25 @@ export function clampChanges(value: unknown): PlanChanges {
   return changes
 }
 
+/** Reject model references that do not belong to the current plan. */
+export function validateRefinementTaskReferences(plan: Plan | PublicPlan, changes: PlanChanges): void {
+  const milestones = changes.build?.milestones
+  if (!milestones) return
+  const existing = new Set(plan.build.milestones.flatMap((milestone) => milestone.tasks.map((task) => task.id)))
+  const seen = new Set<string>()
+  for (const milestone of milestones) {
+    for (const entry of milestone.tasks) {
+      if (typeof entry !== 'object' || entry === null || !('id' in entry)) continue
+      const id = (entry as { id?: unknown }).id
+      if (typeof id !== 'string' || !TASK_ID.test(id) || !existing.has(id)) {
+        throw new Error('The model returned an unknown task reference.')
+      }
+      if (seen.has(id)) throw new Error('The model returned a duplicate task reference.')
+      seen.add(id)
+    }
+  }
+}
+
 // -- a whole plan, on its way into KV ---------------------------------------
 
 /**
@@ -458,7 +494,12 @@ export function clampChanges(value: unknown): PlanChanges {
  * treatment as a generation. `id` and timestamps are replaced rather than trusted:
  * the stored copy is a new object with no link to the sharer's library.
  */
-export function clampPlan(value: unknown, id: string, now: number): import('./types').PublicPlan | Invalid {
+export function clampPlan(
+  value: unknown,
+  id: string,
+  now: number,
+  options: { preserveTaskIds?: boolean } = {},
+): PublicPlan | Invalid {
   if (typeof value !== 'object' || value === null) return { message: 'No plan was sent.' }
   const raw = value as Record<string, unknown>
 
@@ -467,7 +508,7 @@ export function clampPlan(value: unknown, id: string, now: number): import('./ty
 
   const flow = clampFlow(raw.flow)
   const prd = clampPrd(raw.prd)
-  const build = clampSharedBuild(raw.build, id)
+  const build = clampSharedBuild(raw.build, id, options.preserveTaskIds === true)
   const realityCheck = clampRealityCheck(raw.realityCheck)
   if (!prd.summary && flow.length === 0 && !build.nextAction) {
     return { message: 'That plan is empty.' }

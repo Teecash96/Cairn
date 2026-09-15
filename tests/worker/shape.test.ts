@@ -23,12 +23,12 @@ test('accepts a complete builder pack and enforces its limits', () => {
   assert.throws(() => requireBuild({ ...validBuild(), milestones: validBuild().milestones.slice(0, 2) }))
 })
 
-test('clamps client task objects to text for a share snapshot', () => {
+test('clamps refinement task objects while preserving their stable id', () => {
   const build = clampBuild({
     ...validBuild(),
     milestones: [{ title: 'One', outcome: 'Done', tasks: [{ id: 'secret', text: 'Keep this', done: true }] }],
   })
-  assert.deepEqual(build.milestones[0]?.tasks, ['Keep this'])
+  assert.deepEqual(build.milestones[0]?.tasks, [{ id: 'secret', text: 'Keep this' }])
 })
 
 test('returns only valid targeted refinement fields', () => {

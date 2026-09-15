@@ -3,7 +3,7 @@ import test from 'node:test'
 import worker from '../../worker/index.ts'
 import { addMember, createTeam, getTeam, removeMember, TeamCoordinator, TeamError, updateMember, updateTracker } from '../../worker/team.ts'
 import { addressFromPublicKey } from '../../worker/http.ts'
-import type { Env } from '../../worker/types.ts'
+import type { Env, TeamRecord } from '../../worker/types.ts'
 
 class MemoryKV {
   readonly values = new Map<string, string>()
@@ -17,6 +17,48 @@ class MemoryKV {
   async put(key: string, value: string): Promise<void> {
     this.values.set(key, value)
   }
+}
+
+class MemoryDurableObjectStorage {
+  readonly values = new Map<string, unknown>()
+  private tail: Promise<void> = Promise.resolve()
+
+  async get<T = unknown>(key: string): Promise<T | undefined> {
+    return this.values.get(key) as T | undefined
+  }
+
+  async put<T = unknown>(key: string, value: T): Promise<void> {
+    this.values.set(key, value)
+  }
+
+  async transaction<T>(closure: (transaction: DurableObjectTransaction) => Promise<T>): Promise<T> {
+    const previous = this.tail
+    let release: (() => void) | undefined
+    this.tail = new Promise<void>((resolve) => { release = resolve })
+    await previous
+
+    const pending = new Map(this.values)
+    try {
+      const transaction = {
+        get: async <V = unknown>(key: string): Promise<V | undefined> => pending.get(key) as V | undefined,
+        put: async <V = unknown>(key: string, value: V): Promise<void> => { pending.set(key, value) },
+        rollback: () => { throw new Error('transaction rolled back') },
+      } as unknown as DurableObjectTransaction
+      const result = await closure(transaction)
+      this.values.clear()
+      for (const [key, value] of pending) this.values.set(key, value)
+      return result
+    } finally {
+      release?.()
+    }
+  }
+}
+
+function durableState(storage: MemoryDurableObjectStorage): DurableObjectState {
+  return {
+    storage: storage as unknown as DurableObjectStorage,
+    blockConcurrencyWhile: async <T>(callback: () => Promise<T>): Promise<T> => callback(),
+  } as unknown as DurableObjectState
 }
 
 function env(kv: MemoryKV): Env {
@@ -190,7 +232,8 @@ test('the coordinator accepts only one concurrent update for a revision', async 
     name: 'Concurrent team',
     build: build(),
   }, 'https://cairn.example')
-  const coordinator = new TeamCoordinator({} as DurableObjectState, testEnv)
+  const storage = new MemoryDurableObjectStorage()
+  const coordinator = new TeamCoordinator(durableState(storage), testEnv)
 
   const command = (text: string) => {
     const candidate = build()
@@ -213,6 +256,42 @@ test('the coordinator accepts only one concurrent update for a revision', async 
   ])
 
   assert.deepEqual(responses.map((response) => response.status).sort(), [200, 409])
-  const stored = await getTeam(testEnv, created.teamId, owner, 'https://cairn.example')
-  assert.equal(stored.revision, 2)
+  const stored = await storage.get<TeamRecord>('team-record')
+  assert.equal(stored?.revision, 2)
+  assert.equal(stored?.build.milestones[0]?.tasks[0]?.text === 'First edit' || stored?.build.milestones[0]?.tasks[0]?.text === 'Second edit', true)
+})
+
+test('membership changes use the same transaction and reject one competing add', async () => {
+  const kv = new MemoryKV()
+  const testEnv = env(kv)
+  const owner = address(10)
+  const member = address(11)
+  const created = await createTeam(testEnv, owner, {
+    planId: 'concurrent-members',
+    name: 'Concurrent members',
+    build: build(),
+  }, 'https://cairn.example')
+  const storage = new MemoryDurableObjectStorage()
+  const coordinator = new TeamCoordinator(durableState(storage), testEnv)
+  const command = (memberRole: 'viewer' | 'editor') => new Request('https://team.internal/', {
+    method: 'POST',
+    body: JSON.stringify({
+      action: 'add',
+      teamId: created.teamId,
+      owner,
+      member,
+      role: memberRole,
+      appUrl: 'https://cairn.example',
+    }),
+  })
+
+  const responses = await Promise.all([
+    coordinator.fetch(command('viewer')),
+    coordinator.fetch(command('editor')),
+  ])
+
+  assert.deepEqual(responses.map((response) => response.status).sort(), [200, 409])
+  const stored = await storage.get<TeamRecord>('team-record')
+  assert.equal(stored?.revision, 2)
+  assert.equal(stored?.members.length, 1)
 })

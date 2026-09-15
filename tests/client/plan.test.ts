@@ -292,3 +292,74 @@ test('a same-shape refinement keeps task identity when task wording changes', ()
   assert.equal(next.milestones[0]?.tasks[0]?.notes, 'Keep rollout notes')
   assert.equal(next.milestones[0]?.tasks[0]?.dueDate, '2026-09-30')
 })
+
+test('an explicit refinement task id preserves progress when the wording changes', () => {
+  const previous: BuildPlan = {
+    mvpScope: ['Core'],
+    milestones: [{
+      id: 'milestone-1',
+      title: 'Launch',
+      outcome: 'Ready',
+      blocked: false,
+      tasks: [{
+        id: 'task-1',
+        text: 'Publish the first version',
+        status: 'done',
+        priority: 'high',
+        labels: ['release'],
+        notes: 'Keep rollout notes',
+        dueDate: '2026-09-30',
+        dependsOn: [],
+      }],
+    }],
+    risks: [],
+    acceptanceTests: [],
+    nextAction: 'Publish',
+  }
+
+  const next = materializeBuildPlan({
+    mvpScope: ['Core'],
+    milestones: [{
+      title: 'Launch',
+      outcome: 'Ready',
+      tasks: [{ id: 'task-1', text: 'Publish the first production version' }],
+    }],
+    risks: [],
+    acceptanceTests: [],
+    nextAction: 'Publish',
+  }, previous)
+
+  const task = next.milestones[0]?.tasks[0]
+  assert.equal(task?.id, 'task-1')
+  assert.equal(task?.text, 'Publish the first production version')
+  assert.equal(task?.status, 'done')
+  assert.equal(task?.notes, 'Keep rollout notes')
+  assert.equal(task?.dueDate, '2026-09-30')
+})
+
+test('rejects unknown and duplicate refinement task references', () => {
+  const previous = buildWithCompletedTask()
+  assert.throws(() => materializeBuildPlan({
+    mvpScope: [],
+    milestones: [{
+      title: 'Foundation',
+      outcome: 'The core path works',
+      tasks: [{ id: 'missing-task', text: 'A replacement' }],
+    }],
+    risks: [],
+    acceptanceTests: [],
+    nextAction: '',
+  }, previous), /unknown task/)
+
+  assert.throws(() => materializeBuildPlan({
+    mvpScope: [],
+    milestones: [{
+      title: 'Foundation',
+      outcome: 'The core path works',
+      tasks: [{ id: 'task-done', text: 'First copy' }, { id: 'task-done', text: 'Second copy' }],
+    }],
+    risks: [],
+    acceptanceTests: [],
+    nextAction: '',
+  }, previous), /same task more than once/)
+})
