@@ -131,11 +131,22 @@ export interface PublicBuildPlan {
   nextAction: string
 }
 
-/** Server-authored build shape. It deliberately has no ids or progress. */
+/**
+ * Server-authored build task shape.
+ *
+ * A new plan uses plain text tasks. A refinement may include an existing task's
+ * id when it renames or moves that task. The client still owns all progress and
+ * tracker metadata.
+ */
+export interface BuildTaskDraft {
+  id?: string
+  text: string
+}
+
 export interface BuildMilestoneDraft {
   title: string
   outcome: string
-  tasks: string[]
+  tasks: Array<string | BuildTaskDraft>
 }
 
 export interface BuildPlanDraft {
@@ -238,6 +249,11 @@ export function newId(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
 }
 
+/** Task ids are local opaque identifiers, never executable input. */
+export function isValidTaskId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,95}$/.test(value)
+}
+
 export function emptyBuildPlan(): BuildPlan {
   return {
     mvpScope: [],
@@ -336,6 +352,39 @@ function normalizeMatch(value: string): string {
   return value.trim().replace(/\s+/g, ' ').toLocaleLowerCase()
 }
 
+function draftTaskText(value: string | BuildTaskDraft): string {
+  const text = typeof value === 'string' ? value : value.text
+  return typeof text === 'string' ? text.trim() : ''
+}
+
+function draftTaskId(value: string | BuildTaskDraft): string | undefined {
+  return typeof value === 'object' && value !== null ? value.id : undefined
+}
+
+/**
+ * Validate explicit refinement references before the planner is materialized.
+ * Unknown or duplicate ids are rejected instead of silently creating a new task
+ * and losing the old task's progress.
+ */
+export function validateTaskReferences(
+  previous: BuildPlan | undefined,
+  milestones: BuildMilestoneDraft[],
+): void {
+  const existing = new Set((previous?.milestones ?? []).flatMap((milestone) => milestone.tasks.map((task) => task.id)))
+  const seen = new Set<string>()
+  for (const milestone of milestones) {
+    for (const entry of milestone.tasks) {
+      const id = draftTaskId(entry)
+      if (id === undefined) continue
+      if (!isValidTaskId(id) || !existing.has(id)) {
+        throw new Error('The refinement referenced an unknown task.')
+      }
+      if (seen.has(id)) throw new Error('The refinement referenced the same task more than once.')
+      seen.add(id)
+    }
+  }
+}
+
 /**
  * Turn a server draft into client-owned work state.
  *
@@ -346,6 +395,8 @@ export function materializeBuildPlan(
   draft: BuildPlanDraft,
   previous?: BuildPlan,
 ): BuildPlan {
+  validateTaskReferences(previous, draft.milestones)
+
   const oldTasks = new Map<string, Task[]>()
   for (const milestone of previous?.milestones ?? []) {
     for (const task of milestone.tasks) {
@@ -362,6 +413,11 @@ export function materializeBuildPlan(
     const bucket = oldMilestones.get(key) ?? []
     bucket.push(milestone)
     oldMilestones.set(key, bucket)
+  }
+
+  const oldById = new Map<string, Task>()
+  for (const milestone of previous?.milestones ?? []) {
+    for (const task of milestone.tasks) oldById.set(task.id, task)
   }
 
   const usedTasks = new Set<string>()
@@ -384,10 +440,16 @@ export function materializeBuildPlan(
         ...(milestoneMatch?.dueDate ? { dueDate: milestoneMatch.dueDate } : {}),
         blocked: milestoneMatch?.blocked === true,
         tasks: item.tasks
-          .map((text) => text.trim())
+          .map((entry) => ({ entry, text: draftTaskText(entry) }))
+          .filter(({ text }) => Boolean(text))
           .filter(Boolean)
-          .map((text, taskIndex, draftTasks) => {
-            const exact = (oldTasks.get(normalizeMatch(text)) ?? []).find(
+          .map(({ entry, text }, taskIndex, draftTasks) => {
+            const explicitId = draftTaskId(entry)
+            const explicit = explicitId ? oldById.get(explicitId) : undefined
+            if (explicit && usedTasks.has(explicit.id)) {
+              throw new Error('The refinement referenced the same task more than once.')
+            }
+            const exact = explicit ?? (oldTasks.get(normalizeMatch(text)) ?? []).find(
               (candidate) => !usedTasks.has(candidate.id),
             )
             // When a refinement keeps the milestone and task count, its task
@@ -440,10 +502,6 @@ export function materializeBuildPlan(
   // A refinement can move a task between milestones. Preserve dependency links
   // only when both endpoints survived. Any link that would create a cycle is
   // dropped rather than making the tracker impossible to edit.
-  const oldById = new Map<string, Task>()
-  for (const milestone of previous?.milestones ?? []) {
-    for (const task of milestone.tasks) oldById.set(task.id, task)
-  }
   const nextById = new Map<string, Task>()
   for (const milestone of result.milestones) {
     for (const task of milestone.tasks) nextById.set(task.id, task)

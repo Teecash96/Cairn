@@ -61,7 +61,7 @@ import {
 import type { TeamPanelState } from './components/Workspace.vue'
 import { useSession } from './lib/session'
 import { bindPayment, clearPendingPayment, loadPendingPayment, samePaymentAddress, savePendingPayment } from './lib/payment-session'
-import { mergeRefinement } from './lib/refinement'
+import { mergeRefinement, snapshotPlan } from './lib/refinement'
 import { createExamplePlan } from './lib/example'
 import { stubGenerate, stubRefinement } from './lib/stub'
 
@@ -128,6 +128,8 @@ const refineBusy = ref(false)
 const refineExplanation = ref('')
 const refineAnswer = ref('')
 const refineChanges = ref<PlanChanges | null>(null)
+const refinementUndo = ref<{ before: Plan; after: Plan } | null>(null)
+let refinementUndoTimer: ReturnType<typeof setTimeout> | undefined
 
 /** A plan opened from someone else's share link. Read-only, never saved here. */
 const shared = ref<Plan | null>(null)
@@ -160,6 +162,38 @@ function notify(message: string, tone: Tone = 'info'): void {
   if (toastTimer !== undefined) clearTimeout(toastTimer)
   // Errors need reading; confirmations need only registering.
   toastTimer = setTimeout(() => (toast.value = ''), tone === 'error' ? 5200 : 2800)
+}
+
+function clearRefinementUndo(): void {
+  refinementUndo.value = null
+  if (refinementUndoTimer !== undefined) {
+    clearTimeout(refinementUndoTimer)
+    refinementUndoTimer = undefined
+  }
+}
+
+function armRefinementUndo(before: Plan, after: Plan): void {
+  clearRefinementUndo()
+  refinementUndo.value = { before, after }
+  refinementUndoTimer = setTimeout(clearRefinementUndo, 10_000)
+}
+
+function undoRefinement(): void {
+  const pending = refinementUndo.value
+  const plan = current.value
+  if (!pending || !plan) return
+
+  // Do not overwrite edits made after the refinement was applied.
+  if (JSON.stringify(plan) !== JSON.stringify(pending.after)) {
+    clearRefinementUndo()
+    notify('Undo is no longer available because the plan changed.', 'info')
+    return
+  }
+
+  current.value = snapshotPlan(pending.before)
+  flush()
+  clearRefinementUndo()
+  notify('Refinement undone', 'success')
 }
 
 function messageOf(error: unknown): string {
@@ -308,12 +342,14 @@ onUnmounted(() => {
   if (saveTimer !== undefined) clearTimeout(saveTimer)
   if (toastTimer !== undefined) clearTimeout(toastTimer)
   if (teamSyncTimer !== undefined) clearTimeout(teamSyncTimer)
+  clearRefinementUndo()
   stopPaymentPolling()
 })
 
 // -- navigation -------------------------------------------------------------
 
 function goNew(input?: PlanInput): void {
+  clearRefinementUndo()
   showingExample.value = false
   flush()
   formInitial.value = input
@@ -325,6 +361,7 @@ function goNew(input?: PlanInput): void {
 }
 
 function goLibrary(): void {
+  clearRefinementUndo()
   showingExample.value = false
   flush()
   shared.value = null
@@ -335,6 +372,7 @@ function goLibrary(): void {
 }
 
 function open(id: string): void {
+  clearRefinementUndo()
   flush()
   const plan = getPlan(id)
   if (!plan) {
@@ -351,6 +389,7 @@ function open(id: string): void {
 }
 
 function back(): void {
+  clearRefinementUndo()
   flush()
   // The plan you were just in is saved, so the library is never empty here.
   view.value = plans.value.length ? 'library' : 'new'
@@ -865,6 +904,7 @@ function applyRefinement(): void {
   const changes = refineChanges.value
   if (!plan || !changes) return
 
+  const before = snapshotPlan(plan)
   let updated: Plan
   try {
     updated = mergeRefinement(plan, changes)
@@ -874,9 +914,9 @@ function applyRefinement(): void {
   }
   current.value = updated
   flush()
+  armRefinementUndo(before, snapshotPlan(updated))
   refineOpen.value = false
   clearRefineResult()
-  notify('Plan updated', 'success')
 }
 
 function closeRefinement(apply = false): void {
@@ -1100,6 +1140,13 @@ function ownIt(): void {
   />
 
   <Toast :message="toast" :tone="toastTone" />
+
+  <Transition name="rise">
+    <div v-if="refinementUndo" class="undo-banner" role="status" aria-live="polite">
+      <span>Plan updated.</span>
+      <button type="button" class="undo-banner__button" @click="undoRefinement">Undo</button>
+    </div>
+  </Transition>
 </template>
 
 <style scoped>
@@ -1144,6 +1191,36 @@ function ownIt(): void {
   font-weight: 650;
   color: inherit;
 }
+
+.undo-banner {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--nav-h) + var(--safe-bottom) + var(--s3));
+  z-index: 61;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  max-width: calc(100% - (2 * var(--s4)));
+  padding: var(--s2) var(--s2) var(--s2) var(--s4);
+  border-radius: var(--r-full);
+  background: var(--text);
+  color: var(--bg);
+  box-shadow: 0 6px 20px rgb(16 18 27 / 18%);
+  transform: translateX(-50%);
+  font-size: var(--text-sm);
+  font-weight: 550;
+}
+
+.undo-banner__button {
+  min-height: 32px;
+  padding: 0 var(--s3);
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+
+.undo-banner__button:hover { background: var(--accent-strong, var(--accent)); }
 
 /* -- shared-plan banner -------------------------------------------------- */
 

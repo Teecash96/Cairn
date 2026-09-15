@@ -75,10 +75,16 @@ export interface FlowStep {
   branches?: [FlowBranch, FlowBranch]
 }
 
+/** New tasks may be text only; refinements may carry a validated stable id. */
+export interface BuildTaskDraft {
+  id?: string
+  text: string
+}
+
 export interface BuildMilestoneDraft {
   title: string
   outcome: string
-  tasks: string[]
+  tasks: Array<string | BuildTaskDraft>
 }
 
 export interface BuildPlanDraft {

@@ -2,11 +2,13 @@
  * Client side application of a targeted planner refinement.
  *
  * The Worker returns only the fields it proposes to change. This module applies
- * those fields and leaves the rest of the plan alone. Task ids and tracker
- * state are rebuilt on the client so the AI cannot mark work complete.
+ * those fields and leaves the rest of the plan alone. Task ids are validated on
+ * the client, while tracker state remains client-owned so the AI cannot mark
+ * work complete.
  */
 import {
   materializeBuildPlan,
+  validateTaskReferences,
   type BuildPlanDraft,
   type Plan,
   type PlanChanges,
@@ -21,13 +23,18 @@ function copy<T>(value: T): T {
     : (JSON.parse(JSON.stringify(source)) as T)
 }
 
+/** Make an immutable undo snapshot before applying a refinement. */
+export function snapshotPlan(plan: Plan): Plan {
+  return copy(plan)
+}
+
 function draftFromBuild(build: Plan['build']): BuildPlanDraft {
   return {
     mvpScope: [...build.mvpScope],
     milestones: build.milestones.map((milestone) => ({
       title: milestone.title,
       outcome: milestone.outcome,
-      tasks: milestone.tasks.map((task) => task.text),
+      tasks: milestone.tasks.map((task) => ({ id: task.id, text: task.text })),
     })),
     risks: [...build.risks],
     acceptanceTests: [...build.acceptanceTests],
@@ -64,6 +71,7 @@ export function mergeRefinement(plan: Plan, changes: PlanChanges): Plan {
   if (changes.flow) next.flow = copy(changes.flow)
 
   if (changes.build) {
+    if (changes.build.milestones) validateTaskReferences(next.build, changes.build.milestones)
     const existing = draftFromBuild(next.build)
     const merged: BuildPlanDraft = {
       mvpScope: changes.build.mvpScope ?? existing.mvpScope,
@@ -89,6 +97,9 @@ export interface RefinementDifference {
 function readable(value: unknown): string {
   if (typeof value === 'string') return value
   if (Array.isArray(value)) return value.map(readable).join('\n\n')
+  if (value && typeof value === 'object' && 'text' in value && typeof (value as { text?: unknown }).text === 'string') {
+    return readable((value as { text: string }).text)
+  }
   if (value && typeof value === 'object') return Object.entries(value)
     .map(([key, item]) => `${key.replace(/([A-Z])/g, ' $1')}: ${readable(item)}`).join('\n')
   return ''
@@ -107,7 +118,24 @@ export function refinementDifferences(plan: Plan, changes: PlanChanges): Refinem
   add('User flow', plan.flow, changes.flow)
   const draft = draftFromBuild(plan.build)
   for (const key of Object.keys(changes.build ?? {}) as (keyof BuildPlanDraft)[]) {
-    add(`Build · ${key.replace(/([A-Z])/g, ' $1')}`, draft[key], changes.build?.[key])
+    const label = `Build · ${key.replace(/([A-Z])/g, ' $1')}`
+    if (key === 'milestones') {
+      const textOnly = (value: unknown) => Array.isArray(value)
+        ? value.map((milestone) => {
+          if (!milestone || typeof milestone !== 'object') return milestone
+          const raw = milestone as { tasks?: unknown }
+          return {
+            ...milestone,
+            tasks: Array.isArray(raw.tasks)
+              ? raw.tasks.map((task) => typeof task === 'string' ? task : task && typeof task === 'object' && 'text' in task ? (task as { text?: unknown }).text : '')
+              : [],
+          }
+        })
+        : value
+      add(label, textOnly(draft[key]), textOnly(changes.build?.[key]))
+    } else {
+      add(label, draft[key], changes.build?.[key])
+    }
   }
   add('Reality check', plan.realityCheck, changes.realityCheck)
   return result

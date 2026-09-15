@@ -161,7 +161,9 @@ async function handleRefine(env: Env, request: Request, cors: Record<string, str
     return fail('invalid_request', 'Ask a question with at least a few words.', 400, cors)
   }
 
-  const plan = clampPlan(raw.plan, 'refine', Date.now())
+  // Keep the owner's opaque task ids in the refinement context so the model
+  // can return them and the client can preserve tracker state across renames.
+  const plan = clampPlan(raw.plan, 'refine', Date.now(), { preserveTaskIds: true })
   if (isInvalid(plan)) return fail('invalid_request', plan.message, 400, cors)
 
   // Refinements use the same free, wallet-authenticated path as generation.

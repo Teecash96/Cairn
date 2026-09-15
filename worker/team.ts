@@ -18,6 +18,8 @@ const MAX_MEMBERS = 20
 const TEAM_ID = /^[a-z2-9]{16,32}$/i
 const PLAN_ID = /^[a-z0-9_-]{1,96}$/i
 const NAME_MAX = 80
+/** The Durable Object is the canonical record for coordinated team writes. */
+const TEAM_STORAGE_KEY = 'team-record'
 
 export type TeamErrorCode = 'invalid_request' | 'not_found' | 'forbidden' | 'conflict'
 
@@ -171,8 +173,18 @@ export async function createTeam(
   // A retry after a lost response must not create a second team for one plan.
   const existingId = await env.CAIRN.get<string>(ownerPlanKey(address, planId))
   if (existingId && validTeamId(existingId)) {
-    const existing = await readRecord(env, existingId)
-    if (existing && existing.owner === address) return viewOf(existing, address, appUrl)
+    if (env.TEAM_COORDINATOR) {
+      try {
+        // Read through the coordinator so an idempotent retry cannot return a
+        // stale KV copy after the team has already been edited in the DO.
+        return await coordinated(env, { action: 'get', teamId: existingId, address, appUrl })
+      } catch (error) {
+        if (!(error instanceof TeamError) || error.code !== 'not_found') throw error
+      }
+    } else {
+      const existing = await readRecord(env, existingId)
+      if (existing && existing.owner === address) return viewOf(existing, address, appUrl)
+    }
   }
 
   const id = token(16)
@@ -311,6 +323,116 @@ type TeamCommand =
   | { action: 'remove'; teamId: string; owner: string; member: unknown; appUrl: string }
   | { action: 'update-tracker'; teamId: string; address: string; build: unknown; revision: unknown; appUrl: string }
 
+interface CommandResult {
+  record: TeamRecord
+  address: string
+  changed: boolean
+}
+
+/**
+ * Apply one command to a validated record without performing I/O.
+ *
+ * The coordinator calls this from inside a Durable Object storage transaction,
+ * so permission checks, revision checks, and the resulting write share one
+ * atomic boundary. The raw KV functions above are retained only for the
+ * explicit no-binding fallback used by local previews and older deployments.
+ */
+function applyTeamCommand(record: TeamRecord, command: TeamCommand): CommandResult {
+  switch (command.action) {
+    case 'get': {
+      const address = normalizeAddress(command.address)
+      if (!address) throw new TeamError('invalid_request', 'The wallet address is invalid.', 400)
+      requireAccess(record, address)
+      return { record, address, changed: false }
+    }
+    case 'add': {
+      const owner = normalizeAddress(command.owner)
+      const member = normalizeAddress(command.member)
+      const memberRole = role(command.role)
+      if (!owner || !member || !memberRole) throw new TeamError('invalid_request', 'Enter a valid wallet and role.', 400)
+      requireOwner(record, owner)
+      if (member === record.owner) throw new TeamError('invalid_request', 'The owner is already in the team.', 400)
+      if (record.members.some((item) => item.address === member)) {
+        throw new TeamError('conflict', 'That wallet is already a team member.', 409)
+      }
+      if (record.members.length >= MAX_MEMBERS) throw new TeamError('invalid_request', 'A team can have up to 20 members.', 400)
+      const now = Date.now()
+      return {
+        address: owner,
+        changed: true,
+        record: {
+          ...record,
+          members: [...record.members, { address: member, role: memberRole, createdAt: now }],
+          revision: record.revision + 1,
+          updatedAt: now,
+        },
+      }
+    }
+    case 'update-member': {
+      const owner = normalizeAddress(command.owner)
+      const member = normalizeAddress(command.member)
+      const memberRole = role(command.role)
+      if (!owner || !member || !memberRole) throw new TeamError('invalid_request', 'Enter a valid role.', 400)
+      requireOwner(record, owner)
+      if (!record.members.some((item) => item.address === member)) {
+        throw new TeamError('not_found', 'That wallet is not a team member.', 404)
+      }
+      const now = Date.now()
+      return {
+        address: owner,
+        changed: true,
+        record: {
+          ...record,
+          members: record.members.map((item) => item.address === member ? { ...item, role: memberRole } : { ...item }),
+          revision: record.revision + 1,
+          updatedAt: now,
+        },
+      }
+    }
+    case 'remove': {
+      const owner = normalizeAddress(command.owner)
+      const member = normalizeAddress(command.member)
+      if (!owner || !member) throw new TeamError('invalid_request', 'The wallet address is invalid.', 400)
+      requireOwner(record, owner)
+      if (!record.members.some((item) => item.address === member)) {
+        throw new TeamError('not_found', 'That wallet is not a team member.', 404)
+      }
+      const now = Date.now()
+      return {
+        address: owner,
+        changed: true,
+        record: {
+          ...record,
+          members: record.members.filter((item) => item.address !== member),
+          revision: record.revision + 1,
+          updatedAt: now,
+        },
+      }
+    }
+    case 'update-tracker': {
+      const address = normalizeAddress(command.address)
+      if (!address || typeof command.revision !== 'number' || !Number.isInteger(command.revision) || command.revision < 1) {
+        throw new TeamError('invalid_request', 'The tracker update is invalid.', 400)
+      }
+      const access = requireAccess(record, address)
+      if (access === 'viewer') throw new TeamError('forbidden', 'Viewers cannot edit the tracker.', 403)
+      if (command.revision !== record.revision) {
+        throw new TeamError('conflict', 'This tracker changed. Refresh before saving again.', 409)
+      }
+      return {
+        address,
+        changed: true,
+        record: {
+          ...record,
+          build: clampTeamBuild(command.build, record.id),
+          revision: record.revision + 1,
+          updatedAt: Date.now(),
+        },
+      }
+    }
+  }
+}
+
 async function performTeamCommand(env: Env, command: TeamCommand): Promise<TeamView> {
   switch (command.action) {
     case 'get':
@@ -327,30 +449,65 @@ async function performTeamCommand(env: Env, command: TeamCommand): Promise<TeamV
 }
 
 /**
- * Serialize every read/check/write sequence for a team. KV remains the durable
- * record during rollout, while this object prevents two accepted revisions from
- * overwriting one another.
+ * Coordinate one team's protected writes in Durable Object storage.
+ *
+ * Existing KV records are imported once, on first access, for backwards
+ * compatibility. After that import the DO record is authoritative. Each
+ * mutation runs permission checks, revision checks, and the write in one
+ * storage transaction. This remains safe across object restarts and does not
+ * depend on an in-memory request queue.
  */
 export class TeamCoordinator {
-  private tail: Promise<void> = Promise.resolve()
-
   private readonly state: DurableObjectState
   private readonly env: Env
+  private hydrated = false
+  private hydration: Promise<void> | undefined
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state
     this.env = env
-    void this.state
+  }
+
+  private storage(): DurableObjectStorage | undefined {
+    return (this.state as unknown as { storage?: DurableObjectStorage }).storage
+  }
+
+  private async ensureCanonical(teamId: string): Promise<void> {
+    const storage = this.storage()
+    if (!storage || this.hydrated) return
+    if (!this.hydration) {
+      this.hydration = (async () => {
+        const existing = await storage.get<TeamRecord>(TEAM_STORAGE_KEY)
+        if (!existing) {
+          const legacy = await readRecord(this.env, teamId)
+          if (legacy) await storage.put(TEAM_STORAGE_KEY, legacy)
+        }
+        this.hydrated = true
+      })()
+    }
+    try {
+      await this.hydration
+    } finally {
+      if (!this.hydrated) this.hydration = undefined
+    }
+  }
+
+  private async run(command: TeamCommand): Promise<TeamView> {
+    await this.ensureCanonical(command.teamId)
+    const storage = this.storage()
+    if (!storage?.transaction) return performTeamCommand(this.env, command)
+    return storage.transaction(async (transaction) => {
+      const record = recordOrThrow(await transaction.get<TeamRecord>(TEAM_STORAGE_KEY) ?? null)
+      const result = applyTeamCommand(record, command)
+      if (result.changed) await transaction.put(TEAM_STORAGE_KEY, result.record)
+      return viewOf(result.record, result.address, command.appUrl)
+    })
   }
 
   async fetch(request: Request): Promise<Response> {
-    const previous = this.tail
-    let release: (() => void) | undefined
-    this.tail = new Promise<void>((resolve) => { release = resolve })
-    await previous
     try {
       const command = await request.json() as TeamCommand
-      const result = await performTeamCommand(this.env, command)
+      const result = await this.run(command)
       return Response.json({ ok: true, result })
     } catch (error) {
       if (error instanceof TeamError) {
@@ -363,8 +520,6 @@ export class TeamCoordinator {
         ok: false,
         error: { code: 'server', message: 'The team service is temporarily unavailable.', status: 503 },
       }, { status: 503 })
-    } finally {
-      release?.()
     }
   }
 }

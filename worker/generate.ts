@@ -10,7 +10,7 @@ import type {
   RefineAction,
   RealityCheckItem,
 } from './types'
-import { clampChanges, clampPrd, requireBuild, requireFlow, requireRealityCheck } from './shape'
+import { clampChanges, clampPrd, requireBuild, requireFlow, requireRealityCheck, validateRefinementTaskReferences } from './shape'
 
 interface GeminiResponse {
   candidates?: Array<{
@@ -90,6 +90,25 @@ const BUILD_MILESTONE_SCHEMA: JsonSchema = {
   additionalProperties: false,
 }
 
+/** Refinements carry stable ids for retained or renamed tasks. New tasks omit id. */
+const REFINEMENT_TASK_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: { id: TEXT_SCHEMA, text: TEXT_SCHEMA },
+  required: ['text'],
+  additionalProperties: false,
+}
+
+const REFINEMENT_MILESTONE_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    title: TEXT_SCHEMA,
+    outcome: TEXT_SCHEMA,
+    tasks: { type: 'array', items: REFINEMENT_TASK_SCHEMA, minItems: 3, maxItems: 4 },
+  },
+  required: ['title', 'outcome', 'tasks'],
+  additionalProperties: false,
+}
+
 const BUILD_SCHEMA: JsonSchema = {
   type: 'object',
   properties: {
@@ -155,7 +174,7 @@ const REFINEMENT_SCHEMA: JsonSchema = {
           type: 'object',
           properties: {
             mvpScope: listSchema(5),
-            milestones: { type: 'array', items: BUILD_MILESTONE_SCHEMA, minItems: 3, maxItems: 3 },
+            milestones: { type: 'array', items: REFINEMENT_MILESTONE_SCHEMA, minItems: 3, maxItems: 3 },
             risks: listSchema(5),
             acceptanceTests: listSchema(5),
             nextAction: TEXT_SCHEMA,
@@ -241,16 +260,15 @@ Primary goal: ${input.goal || '(not provided)'}`
 }
 
 function planJson(plan: Plan | PublicPlan): string {
-  // Tracker state belongs to the builder's device. Refinement receives the
-  // builder pack text only, so private notes, dates, labels, priorities,
-  // dependencies, and completion state cannot leak to Gemini or influence a
-  // later AI rewrite.
+  // Tracker state belongs to the builder's device. Refinement receives task
+  // ids and text only, so private notes, dates, labels, priorities, dependencies,
+  // and completion state cannot leak to Gemini or influence a later AI rewrite.
   const build = {
     mvpScope: plan.build.mvpScope,
     milestones: plan.build.milestones.map((milestone) => ({
       title: milestone.title,
       outcome: milestone.outcome,
-      tasks: milestone.tasks.map((task) => task.text),
+      tasks: milestone.tasks.map((task) => ({ id: task.id, text: task.text })),
     })),
     risks: plan.build.risks,
     acceptanceTests: plan.build.acceptanceTests,
@@ -280,11 +298,11 @@ function refinementPrompt(plan: Plan | PublicPlan, action: RefineAction, questio
 Rules:
 1. Use only the current plan and the question. Do not browse, research, or invent facts.
 2. Return targeted changes only. Missing fields in changes mean "leave this field alone".
-3. Never return task ids or done/completion flags. The client owns both.
+3. For every retained or renamed task, return its exact stable id from the current plan together with the new text. Omit id only for a genuinely new task. Never return done/completion flags; the client owns progress.
 4. Keep practical MVP planning. Do not add Scrum or enterprise process language.
 5. Return only valid JSON. No markdown fences and no commentary.
 6. When a requirement changes, consider its effects on the PRD, user flow, MVP scope, milestones, acceptance tests, and next action. Include affected fields together so the plan stays consistent; leave unrelated fields alone. Explain the impact.
-7. Preserve the exact text of unchanged tasks and titles of unchanged milestones, even when moving them. Text is used to retain local progress. Rename or remove work only when the requested change requires it, and explain replacements.
+7. Preserve the exact text and id of unchanged tasks and titles of unchanged milestones, even when moving them. Rename or remove work only when the requested change requires it, and explain replacements.
 
 Action: ${action}
 ${actionInstruction(action, question)}
@@ -298,7 +316,7 @@ Return this shape:
     "flow": ["optional complete replacement flow"],
     "build": {
       "mvpScope": ["optional strings"],
-      "milestones": [{"title":"string","outcome":"string","tasks":["strings"]}],
+      "milestones": [{"title":"string","outcome":"string","tasks":[{"id":"existing task id for retained work","text":"string"}]}],
       "risks": ["optional strings"],
       "acceptanceTests": ["optional strings"],
       "nextAction": "optional string"
@@ -433,6 +451,7 @@ export async function refineWithGemini(
   const explanation = text(raw.explanation, 500)
   if (!explanation) throw new Error('The model returned no refinement explanation.')
   const changes = clampChanges(raw.changes)
+  validateRefinementTaskReferences(plan, changes)
   const answer = text(raw.answer, 1200)
   return { explanation, changes, ...(answer ? { answer } : {}) }
 }
