@@ -2,6 +2,16 @@
 
 **Map the idea before you build it.**
 
+[![CI](https://github.com/Teecash96/cairn/actions/workflows/ci.yml/badge.svg)](https://github.com/Teecash96/cairn/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-2455d6.svg)](LICENSE)
+
+[Open Cairn](https://cairn.cairn-planner.workers.dev/) ·
+[Competition](https://miniappscompetition.com/submissions/cycle2) ·
+[Architecture](docs/architecture.md) ·
+[Release checklist](docs/release-checklist.md)
+
+![Cairn turns a rough idea into a clear route from Plan to Track.](docs/screenshots/cairn-01-social-preview.png)
+
 Cairn is a Nimiq Pay mini app that turns a few sentences about a product idea into
 a builder pack an indie builder can act on:
 
@@ -25,6 +35,27 @@ Nimiq wallets.
 
 A cairn is a stack of stones left to mark the route for whoever comes next. That
 is what a PRD is for.
+
+## Why Cairn instead of a general AI chat?
+
+| General AI chat | Cairn |
+| --- | --- |
+| Produces a useful answer that becomes another document to manage | Produces one connected, editable product workspace |
+| Requires the builder to invent the planning structure and prompts | Creates the PRD, visual map, user flow, MVP, milestones, risks, and tasks together |
+| Ends when the response is complete | Continues into a board, timeline, next action, and targeted refinements |
+| Shares a conversation or copied text | Shares a read-only plan or wallet-protected Track workspace with Viewer and Editor roles |
+| Depends on an account and cloud history | Keeps the private plan local by default and uses a Nimiq wallet for identity, teams, and optional support |
+
+The difference is not only generation. Cairn turns a response into a product
+system a builder and a named teammate can use after the prompt is over.
+
+## Product tour
+
+| Plan | Flow |
+| --- | --- |
+| ![Editable Cairn product plan on a phone.](docs/screenshots/cairn-02-plan.jpg) | ![Connected Cairn user flow on a phone.](docs/screenshots/cairn-03-flow.jpg) |
+| **Build** | **Track** |
+| ![Cairn MVP and milestone builder pack on a phone.](docs/screenshots/cairn-04-build.jpg) | ![Cairn task board and next action on a phone.](docs/screenshots/cairn-05-track.jpg) |
 
 ---
 
@@ -115,8 +146,11 @@ send NIM. Support is voluntary and never unlocks access.
 
 The Worker still verifies NIM receipts and preserves the SQLite-backed Durable
 Object ledger for existing balances and recovery. It never asks a user to pay
-again for a saved receipt. See [credit ledger cutover](docs/credit-ledger-cutover.md)
-before changing bindings or migrations.
+again for a saved receipt. It uses the configured Nimiq RPC service to check
+public transaction data. See [credit ledger cutover](docs/credit-ledger-cutover.md)
+before changing bindings or migrations. The checked-in production configuration
+has the reconciled ledger enabled; do not change its binding, class, or object
+name after it has accepted production writes.
 
 ## What leaves your phone
 
@@ -130,11 +164,13 @@ Stated plainly, because it matters:
 | A plan you tap **Share** on | Cairn's server, so the link can be opened. Progress, milestone dates, task due dates, and labels are shared. Notes, priorities, and dependencies are not shared |
 | A protected team workspace | Cairn's server, so named wallet members can use Track. Milestones, task text, status, labels, dates, and milestone blocker flags are shared. The PRD, flow, Build summary, notes, priorities, and dependencies are not shared |
 | Your wallet address | Cairn's server, as the identity bound to your short lived wallet session and protected team access |
+| A payment transaction hash | Cairn's server and the configured Nimiq RPC service, to verify public transaction details and prevent receipt reuse |
 | A request network address | A short lived abuse counter in Cairn's server. It is not used for analytics |
 
 There is no analytics, no tracking, and no third-party script. The app loads no
-external fonts. The browser talks only to Cairn's API. Cairn's Worker sends
-generation requests to Gemini on the server side.
+external fonts. The browser talks to Cairn's API and the wallet flow. Cairn's
+Worker sends generation requests to Gemini and public payment lookups to the
+configured Nimiq RPC service on the server side.
 
 Plans are stored per device by design. Clearing the app's storage deletes them,
 and there is no private copy on a server to restore from. A protected team
@@ -182,8 +218,9 @@ this way rather than only on `localhost`.
 ### Build
 
 ```bash
+npm run check        # types, tests, secret scan, dependency audit, production build
 npm run build        # vue-tsc -b && vite build
-npm test              # Node's built-in test runner
+npm test             # Node's built-in test runner
 ```
 
 ## Layout
@@ -220,9 +257,12 @@ src/
 
 ## Stack
 
-Vue 3 + TypeScript + Vite on the front, a Cloudflare Worker with KV behind it.
-No component library, no CSS framework, no webfont, no analytics. Type checking
-is strict, including `erasableSyntaxOnly` and `verbatimModuleSyntax`.
+Vue 3 + TypeScript + Vite on the front, with one Cloudflare Worker serving the
+app and API. KV stores sessions, explicit shares, team workspaces, rate limits,
+and budget counters. A SQLite-backed Durable Object owns atomic credits and
+payment receipt redemption. No component library, CSS framework, webfont, or
+analytics is used. Type checking is strict, including `erasableSyntaxOnly` and
+`verbatimModuleSyntax`.
 
 Google Analytics is intentionally not included. Cairn is a privacy first mini
 app, and adding third party tracking would contradict the disclosure shown

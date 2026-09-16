@@ -2,8 +2,9 @@
 
 ## Scope
 
-Cairn is a Vue mini app served by a Cloudflare Worker. The Worker stores credit
-records and explicit share snapshots in Cloudflare KV. The browser never receives
+Cairn is a Vue mini app served by a Cloudflare Worker. The Worker stores sessions
+and explicit share snapshots in Cloudflare KV. SQLite-backed Durable Objects
+coordinate the legacy credit ledger and protected team writes. The browser never receives
 the Gemini key, a KV credential, or a private wallet key.
 
 ## Controls in this repository
@@ -15,7 +16,7 @@ the Gemini key, a KV credential, or a private wallet key.
 | Server auth | Private routes require a short lived bearer session created by an Ed25519 signature over a one time Nimiq challenge. |
 | Record access | Credit, payment, refinement, and share writes use the address in the verified session. A body address must match it. |
 | Field tampering | Request bodies are bounded and shaped. Plans, flow steps, milestones, tasks, and model output are clamped before use or storage. |
-| Bot protection | Challenge, verification, generation, refinement, redemption, and sharing have rate limits. Free grants use the device identifier only as a usability cap and always enforce a server observed IP cap. A daily model budget is enforced. |
+| Bot protection | Challenge, verification, generation, refinement, optional support redemption, and sharing have rate limits. A server-observed network address limits abuse, and a daily model budget bounds AI cost. |
 | Input limits | JSON bodies, ideas, questions, receipts, plan fields, RPC responses, and Gemini responses have size limits. |
 | Output limits | Public plans expose a read only allowlist. JSON responses have a 256 KiB ceiling. |
 | Browser security | The Worker sends CSP, HSTS on HTTPS, frame denial, no sniffing, referrer, permissions, opener, and resource policy headers. `assets.run_worker_first` keeps the same policy on static app files. |
@@ -38,7 +39,7 @@ cannot change the wallet identity.
 
 ## Data and storage
 
-Cloudflare manages encryption at rest for KV. Cairn does not store passwords,
+Cloudflare manages encryption at rest for KV and Durable Objects. Cairn does not store passwords,
 private keys, API keys, payment card data, or uploaded files. A shared plan is
 intentionally readable by anyone holding its bearer link because sharing is an
 explicit product action. Private plans remain in the browser's local storage.
@@ -60,7 +61,7 @@ only authored content.
 4. Run `npm run security:deps`.
 5. Run `npm run typecheck`, `npm test`, `npm run build`, and `git diff --check`.
 6. Confirm the deployed response has HTTPS, CSP, HSTS, and `x-frame-options`.
-7. Review Cloudflare KV access and Worker secrets after every change to the
+7. Review Cloudflare KV and Durable Object access and Worker secrets after every change to the
    deployment account.
 
 Report a suspected vulnerability through a private GitHub security advisory or

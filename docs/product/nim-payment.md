@@ -32,5 +32,7 @@ part of this release.
 
 Test free generation and refinement with an authenticated wallet. Separately,
 if a supporter completes a real NIM transfer, confirm that the Worker verifies
-it once and that a retry does not grant it twice. Do not initiate a real
-transfer during automated QA.
+it once and that a retry does not grant it twice. Record the device, deployed
+commit, public transaction hash, result, and date in the private release log.
+Do not initiate a real transfer during automated QA or publish it as verified
+evidence until the test has actually passed.

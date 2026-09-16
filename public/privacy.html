@@ -47,7 +47,7 @@
       <main>
         <p class="eyebrow">Plain language</p>
         <h1>Cairn privacy policy</h1>
-        <p class="lede">This page explains what the mini app sends, stores, and shares. Last updated 6 September 2026.</p>
+        <p class="lede">This page explains what the mini app sends, stores, and shares. Last updated 16 September 2026.</p>
 
         <section class="card">
           <h2>What stays on your device</h2>
@@ -61,7 +61,7 @@
 
         <section class="card">
           <h2>Wallet information</h2>
-          <p>Cairn receives the connected Nimiq wallet address to verify your identity and protect team access. Your wallet signs a short lived login challenge. Cairn does not receive or store your private key. If you choose optional NIM support, the payment goes from your wallet to Cairn's receiving address. The Worker checks the network transaction and rejects reused receipts.</p>
+          <p>Cairn receives the connected Nimiq wallet address to verify your identity and protect team access. Your wallet signs a short lived login challenge. Cairn does not receive or store your private key. If you choose optional NIM support, the payment goes from your wallet to Cairn's receiving address. The Worker asks the configured Nimiq RPC service for public transaction data and rejects reused receipts.</p>
         </section>
 
         <section class="card">
@@ -86,7 +86,7 @@
 
         <section class="card">
           <h2>Security and retention</h2>
-          <p>Cloudflare manages encryption at rest for server records. Wallet sessions expire after twelve hours and login challenges expire after five minutes. Public shared plans and protected team records remain available for up to one year, unless the storage provider removes them sooner. Do not put confidential material in a shared plan or team tracker.</p>
+          <p>Cloudflare manages encryption at rest for server records in KV and SQLite-backed Durable Objects. Wallet sessions expire after twelve hours and login challenges expire after five minutes. Public shared plans and protected team records remain available for up to one year, unless the storage provider removes them sooner. Do not put confidential material in a shared plan or team tracker.</p>
         </section>
 
         <section class="card">

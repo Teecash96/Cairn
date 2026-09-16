@@ -5,6 +5,10 @@ on:
     branches: [main]
   push:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: cairn-${{ github.workflow }}-${{ github.ref }}
@@ -13,31 +17,27 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22.23.2
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run security:secrets
-      - run: npm run build
+      - run: npm run check
 
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request'
     needs: validate
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    timeout-minutes: 15
+    environment: production
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22.23.2
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - run: npm run build
