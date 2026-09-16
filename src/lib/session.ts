@@ -8,7 +8,7 @@
  *                the synthetic wallet and offline generator.
  *
  * Nothing here prompts at boot. Wallet sign in starts on the first action that
- * needs identity. Planning never requires a payment. The optional NIM support
+ * needs identity. Planning never requires a payment. Direct teammate rewards
  * path uses the same wallet bridge when the user explicitly chooses it.
  */
 import { computed, readonly, ref } from 'vue'

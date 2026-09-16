@@ -12,10 +12,10 @@ Saved plans stay in browser local storage until the person chooses to share. Gen
 
 ## Access
 
-Cairn plans and refinements are free after a signed Nimiq wallet session. The
-app has an optional Nimiq Pay support path for users who choose to send 1 NIM.
-Payment never unlocks access. The Worker verifies receipts and rejects reused
-receipts. Sharing, exports, local editing, and team workspaces are free.
+Cairn plans and refinements are free after a signed Nimiq wallet session.
+Sharing, exports, local editing, and team workspaces are free. An owner can send
+a direct NIM reward to a named teammate after completed work; Cairn never holds
+the funds.
 
 ## Links
 

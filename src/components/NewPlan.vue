@@ -20,12 +20,10 @@ import { NIMIQ_TEMPLATE } from '../lib/example'
 
 const {
   busy = false,
-  supportBusy = false,
   initial,
   showDisclosure = true,
 } = defineProps<{
   busy?: boolean
-  supportBusy?: boolean
   initial?: PlanInput
   showDisclosure?: boolean
 }>()
@@ -33,7 +31,6 @@ const {
 const emit = defineEmits<{
   submit: [input: PlanInput]
   example: []
-  support: []
 }>()
 
 const name = ref(initial?.name ?? '')
@@ -219,14 +216,6 @@ function submit(): void {
           Cairn uses your Nimiq wallet to verify your session and protect team access.
         </p>
 
-        <button
-          type="button"
-          class="btn btn--ghost btn--block support-link"
-          :disabled="busy || supportBusy"
-          @click="emit('support')"
-        >
-          {{ supportBusy ? 'Opening Nimiq Pay…' : 'Support Cairn with 1 NIM · optional' }}
-        </button>
       </div>
 
       <button
@@ -385,11 +374,6 @@ function submit(): void {
   font-size: var(--text-xs);
   line-height: var(--leading);
   text-align: center;
-}
-
-.support-link {
-  color: var(--accent);
-  font-size: var(--text-xs);
 }
 
 /* A single pulsing dot beside the phase text — motion enough to show life,

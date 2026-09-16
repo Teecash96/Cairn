@@ -16,7 +16,7 @@ the Gemini key, a KV credential, or a private wallet key.
 | Server auth | Private routes require a short lived bearer session created by an Ed25519 signature over a one time Nimiq challenge. |
 | Record access | Credit, payment, refinement, and share writes use the address in the verified session. A body address must match it. |
 | Field tampering | Request bodies are bounded and shaped. Plans, flow steps, milestones, tasks, and model output are clamped before use or storage. |
-| Bot protection | Challenge, verification, generation, refinement, optional support redemption, and sharing have rate limits. A server-observed network address limits abuse, and a daily model budget bounds AI cost. |
+| Bot protection | Challenge, verification, generation, refinement, legacy receipt redemption, teammate reward checks, and sharing have rate limits. A server-observed network address limits abuse, and a daily model budget bounds AI cost. |
 | Input limits | JSON bodies, ideas, questions, receipts, plan fields, RPC responses, and Gemini responses have size limits. |
 | Output limits | Public plans expose a read only allowlist. JSON responses have a 256 KiB ceiling. |
 | Browser security | The Worker sends CSP, HSTS on HTTPS, frame denial, no sniffing, referrer, permissions, opener, and resource policy headers. `assets.run_worker_first` keeps the same policy on static app files. |
