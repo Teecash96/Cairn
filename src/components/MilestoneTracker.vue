@@ -18,6 +18,7 @@ import {
   TASK_STATUS_LABEL,
   type MilestoneStatus,
 } from '../lib/tracker'
+import { formatNim } from '../lib/units'
 
 const build = defineModel<BuildPlan>({ required: true })
 const { readOnly = false, editing = false, teamMode = false } = defineProps<{
@@ -311,6 +312,7 @@ function newMilestone(): void {
             <div class="task-meta">
               <span v-for="label in task.labels" :key="label" class="badge badge--label">{{ label }}</span>
               <span v-if="task.dueDate" class="due" :class="{ 'due--late': isOverdue(task) }">{{ isOverdue(task) ? 'Overdue' : 'Due' }} {{ displayDate(task.dueDate) }}</span>
+              <a v-if="task.reward" class="badge badge--reward" :href="`https://nimiq.watch/#${task.reward.transactionHash}`" target="_blank" rel="noopener noreferrer" @click.stop>Rewarded {{ formatNim(task.reward.amountLuna) }} NIM ↗</a>
             </div>
             <div class="task-actions">
               <button type="button" class="status-button" :disabled="readOnly" :aria-label="`Change status, currently ${TASK_STATUS_LABEL[task.status]}`" @click.stop="cycleStatus(task)">{{ TASK_STATUS_LABEL[task.status] }}</button>
@@ -350,6 +352,7 @@ function newMilestone(): void {
                 <span>{{ task.text }}</span>
                 <span v-for="label in task.labels" :key="label" class="badge badge--label">{{ label }}</span>
                 <span v-if="task.dueDate" class="due">{{ isOverdue(task) ? 'Overdue' : 'Due' }} {{ displayDate(task.dueDate) }}</span>
+                <span v-if="task.reward" class="badge badge--reward">{{ formatNim(task.reward.amountLuna) }} NIM reward</span>
               </li>
             </ul>
           </div>
@@ -371,6 +374,7 @@ function newMilestone(): void {
                 <span>{{ task.text }}</span>
                 <span v-for="label in task.labels" :key="label" class="badge badge--label">{{ label }}</span>
                 <span v-if="task.dueDate" class="due">Due {{ displayDate(task.dueDate) }}</span>
+                <span v-if="task.reward" class="badge badge--reward">{{ formatNim(task.reward.amountLuna) }} NIM reward</span>
               </li>
             </ul>
           </div>

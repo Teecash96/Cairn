@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   getPlan,
+  exportPlanBackup,
+  importPlanBackup,
   listPlans,
   materializeBuildPlan,
   savePlan,
@@ -362,4 +364,28 @@ test('rejects unknown and duplicate refinement task references', () => {
     acceptanceTests: [],
     nextAction: '',
   }, previous), /same task more than once/)
+})
+
+test('exports and restores a route without inheriting share or team control', () => {
+  const original: Plan = {
+    ...legacyPlan(),
+    shareId: 'public-share',
+    teamId: 'abcdefghijklmnop',
+    build: buildWithCompletedTask(),
+    realityCheck: [],
+  }
+  original.build.milestones[0]!.tasks[0]!.reward = {
+    recipient: 'NQ01AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+    amountLuna: 100_000,
+    transactionHash: 'ab'.repeat(32),
+    createdAt: 123,
+  }
+
+  const restored = importPlanBackup(JSON.stringify(exportPlanBackup(original)))
+  assert.ok(restored)
+  assert.notEqual(restored?.id, original.id)
+  assert.equal(restored?.shareId, undefined)
+  assert.equal(restored?.teamId, undefined)
+  assert.equal(restored?.build.milestones[0]?.tasks[0]?.reward?.transactionHash, 'ab'.repeat(32))
+  assert.equal(importPlanBackup('{broken'), null)
 })

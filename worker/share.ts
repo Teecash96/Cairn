@@ -29,6 +29,13 @@ export async function readShare(env: Env, shareId: string): Promise<ShareRecord 
   return await env.CAIRN.get<ShareRecord>(`share:${shareId}`, 'json')
 }
 
+export async function revokeShare(env: Env, shareId: string, address: string): Promise<void> {
+  const record = await readShare(env, shareId)
+  if (!record) return
+  if (record.by !== address) throw new Error('Only the wallet that created this link can revoke it.')
+  await env.CAIRN.delete(`share:${shareId}`)
+}
+
 export function publicPlan(record: ShareRecord): PublicPlan {
   return { ...record.plan, shareId: record.plan.id }
 }

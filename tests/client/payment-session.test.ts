@@ -2,8 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   clearPendingPayment,
+  clearPendingReward,
   loadPendingPayment,
+  loadPendingReward,
   savePendingPayment,
+  savePendingReward,
 } from '../../src/lib/payment-session.ts'
 
 class MemoryStorage {
@@ -48,4 +51,16 @@ test('expired pending payments are discarded', () => {
 
   assert.equal(loadPendingPayment(storage, now + 8 * 24 * 60 * 60 * 1000), null)
   assert.equal(storage.length, 0)
+})
+
+test('pending teammate rewards survive reloads without requesting another payment', () => {
+  const storage = new MemoryStorage()
+  const reward = {
+    teamId: 'abcdefghijklmnop', taskId: 'task-one', recipient: 'NQ00 teammate',
+    amountLuna: 100_000, receipt: 'reward-hash', revision: 4,
+  }
+  savePendingReward(reward, storage)
+  assert.deepEqual(loadPendingReward(storage), reward)
+  clearPendingReward(storage)
+  assert.equal(loadPendingReward(storage), null)
 })

@@ -8,8 +8,8 @@ import { fail, corsHeaders, isLocalHost, json, normalizeAddress, readJson, secur
 import { generateWithGemini, refineWithGemini } from './generate'
 import { inspectPayment, type PaymentInspection } from './payments'
 import { clampPlan, isInvalid, readPlanInput } from './shape'
-import { createShare, publicPlan, readShare } from './share'
-import { addMember, createTeam, getTeam, removeMember, TeamError, updateMember, updateTracker } from './team'
+import { createShare, publicPlan, readShare, revokeShare } from './share'
+import { addMember, createTeam, deleteTeam, getTeam, recordReward, removeMember, TeamError, updateMember, updateTracker } from './team'
 import type { Env, PlanInput, RefineAction } from './types'
 
 function bodyRecord(value: unknown): Record<string, unknown> | null {
@@ -233,6 +233,17 @@ async function handleShare(env: Env, request: Request, cors: Record<string, stri
   }
 }
 
+async function handleShareRevoke(env: Env, request: Request, shareId: string, cors: Record<string, string>): Promise<Response> {
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  try {
+    await revokeShare(env, shareId, session.address)
+    return json({ revoked: true }, 200, cors)
+  } catch (error) {
+    return fail('forbidden', error instanceof Error ? error.message : 'That share link cannot be revoked.', 403, cors)
+  }
+}
+
 function teamBaseUrl(env: Env, request: Request): string {
   return readConfig(env).appUrl || new URL(request.url).origin
 }
@@ -326,6 +337,61 @@ async function handleTeamTracker(env: Env, request: Request, teamId: string, cor
   }
 }
 
+async function handleTeamReward(env: Env, request: Request, teamId: string, cors: Record<string, string>): Promise<Response> {
+  const raw = bodyRecord(await readJson(request, 16 * 1024))
+  if (!raw || typeof raw.receipt !== 'string' || raw.receipt.length < 1 || raw.receipt.length > 4096) {
+    return fail('invalid_request', 'The reward details are invalid.', 400, cors)
+  }
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  const recipient = normalizeAddress(raw.recipient)
+  const amountLuna = raw.amountLuna
+  if (!recipient || typeof amountLuna !== 'number' || !Number.isSafeInteger(amountLuna) || amountLuna < 1 || amountLuna > 100_000_000_000) {
+    return fail('invalid_request', 'Enter a valid NIM reward.', 400, cors)
+  }
+  try {
+    const team = await getTeam(env, teamId, session.address, teamBaseUrl(env, request))
+    const taskId = typeof raw.taskId === 'string' ? raw.taskId : ''
+    const task = team.build.milestones.flatMap((milestone) => milestone.tasks).find((candidate) => candidate.id === taskId)
+    if (team.role !== 'owner') return fail('forbidden', 'Only the team owner can record rewards.', 403, cors)
+    if (!team.members.some((member) => member.address === recipient)) {
+      return fail('invalid_request', 'Rewards can only be sent to a current team member.', 400, cors)
+    }
+    if (!task || task.status !== 'done') return fail('invalid_request', 'Choose a completed team task.', 400, cors)
+    if (task.reward) return fail('conflict', 'That task already has a recorded reward.', 409, cors)
+  } catch (error) {
+    return teamFailure(error, cors)
+  }
+  if (await tooFastByKey(env, session.address, 'team-reward', 60)) return fail('rate_limited', 'Please wait before checking the reward again.', 429, cors)
+  const config = { ...readConfig(env), payTo: recipient }
+  const inspection = await inspectPayment(config, session.address, amountLuna, raw.receipt)
+  if (inspection?.status === 'wrong_wallet') return fail('payment_wrong_wallet', 'The reward came from a different wallet.', 409, cors)
+  if (inspection?.status !== 'verified') return fail('payment_not_found', 'The reward is not visible on the network yet.', 402, cors)
+  try {
+    const result = await recordReward(env, teamId, session.address, {
+      taskId: raw.taskId,
+      recipient,
+      amountLuna,
+      transactionHash: inspection.hash,
+      revision: raw.revision,
+    }, teamBaseUrl(env, request))
+    return json(result, 200, cors)
+  } catch (error) {
+    return teamFailure(error, cors)
+  }
+}
+
+async function handleTeamDelete(env: Env, request: Request, teamId: string, cors: Record<string, string>): Promise<Response> {
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  try {
+    await deleteTeam(env, teamId, session.address, teamBaseUrl(env, request))
+    return json({ deleted: true }, 200, cors)
+  } catch (error) {
+    return teamFailure(error, cors)
+  }
+}
+
 async function route(env: Env, request: Request): Promise<Response> {
   const url = new URL(request.url)
   if (url.protocol === 'http:' && !isLocalHost(url.hostname)) {
@@ -348,6 +414,7 @@ async function route(env: Env, request: Request): Promise<Response> {
   if (url.pathname === '/api/team' && request.method === 'POST') return handleTeamCreate(env, request, cors)
   const teamMatch = /^\/api\/team\/([a-z2-9]{16,32})$/i.exec(url.pathname)
   if (teamMatch?.[1] && request.method === 'GET') return handleTeamRead(env, request, teamMatch[1], cors)
+  if (teamMatch?.[1] && request.method === 'DELETE') return handleTeamDelete(env, request, teamMatch[1], cors)
   const teamMembersMatch = /^\/api\/team\/([a-z2-9]{16,32})\/members$/i.exec(url.pathname)
   if (teamMembersMatch?.[1] && request.method === 'POST') return handleTeamAddMember(env, request, teamMembersMatch[1], cors)
   const teamMemberMatch = /^\/api\/team\/([a-z2-9]{16,32})\/members\/([^/]+)$/i.exec(url.pathname)
@@ -355,11 +422,17 @@ async function route(env: Env, request: Request): Promise<Response> {
   if (teamMemberMatch?.[1] && teamMemberMatch[2] && request.method === 'DELETE') return handleTeamRemoveMember(env, request, teamMemberMatch[1], teamMemberMatch[2], cors)
   const teamTrackerMatch = /^\/api\/team\/([a-z2-9]{16,32})\/tracker$/i.exec(url.pathname)
   if (teamTrackerMatch?.[1] && request.method === 'PUT') return handleTeamTracker(env, request, teamTrackerMatch[1], cors)
+  const teamRewardMatch = /^\/api\/team\/([a-z2-9]{16,32})\/rewards$/i.exec(url.pathname)
+  if (teamRewardMatch?.[1] && request.method === 'POST') return handleTeamReward(env, request, teamRewardMatch[1], cors)
   if (url.pathname.startsWith('/api/share/') && request.method === 'GET') {
     const id = url.pathname.slice('/api/share/'.length).replace(/[^a-z0-9]/gi, '').slice(0, 32)
     const record = id ? await readShare(env, id) : null
     if (!record) return fail('not_found', 'That share link has expired.', 404, cors)
     return json({ plan: publicPlan(record) }, 200, cors)
+  }
+  if (url.pathname.startsWith('/api/share/') && request.method === 'DELETE') {
+    const id = url.pathname.slice('/api/share/'.length).replace(/[^a-z0-9]/gi, '').slice(0, 32)
+    return id ? handleShareRevoke(env, request, id, cors) : fail('not_found', 'That share link has expired.', 404, cors)
   }
   const asset = await env.ASSETS.fetch(request)
   if (asset.status !== 404 || url.pathname === '/404.html') {

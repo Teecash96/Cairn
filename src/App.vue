@@ -20,6 +20,7 @@ import Library from './components/Library.vue'
 import NewPlan from './components/NewPlan.vue'
 import PaySheet from './components/PaySheet.vue'
 import RefineSheet from './components/RefineSheet.vue'
+import RewardSheet from './components/RewardSheet.vue'
 import Toast from './components/Toast.vue'
 import Workspace from './components/Workspace.vue'
 import {
@@ -33,12 +34,15 @@ import {
   redeemPayment,
   refinePlan,
   removeTeamMember,
+  recordTeamReward,
+  deleteTeamWorkspace,
+  revokeSharedPlan,
   sharePlan,
   updateTeamMember,
   updateTeamTracker,
 } from './lib/api'
 import type { PriceQuote, RefineAction, TeamResult, TeamRole } from './lib/api'
-import { copyText } from './lib/clipboard'
+import { copyText, shareLink } from './lib/clipboard'
 import {
   createPlan,
   deletePlan,
@@ -47,6 +51,7 @@ import {
   listPlans,
   materializeBuildPlan,
   hydratePublicBuild,
+  importPlanBackup,
   normalizeSharedPlan,
   renamePlan,
   savePlan,
@@ -60,7 +65,7 @@ import {
 } from './lib/plan'
 import type { TeamPanelState } from './components/Workspace.vue'
 import { useSession } from './lib/session'
-import { bindPayment, clearPendingPayment, loadPendingPayment, samePaymentAddress, savePendingPayment } from './lib/payment-session'
+import { bindPayment, clearPendingPayment, clearPendingReward, loadPendingPayment, loadPendingReward, samePaymentAddress, savePendingPayment, savePendingReward } from './lib/payment-session'
 import { mergeRefinement, snapshotPlan } from './lib/refinement'
 import { createExamplePlan } from './lib/example'
 import { stubGenerate, stubRefinement } from './lib/stub'
@@ -147,6 +152,11 @@ const teamPlan = ref<Plan | null>(null)
 const teamLoading = ref(false)
 const teamError = ref<string | null>(null)
 const teamSyncing = ref(false)
+const rewardRecipient = ref<string | null>(null)
+const rewardBusy = ref(false)
+const rewardStatus = ref('')
+const rewardError = ref<string | null>(null)
+const rewardPending = ref(loadPendingReward())
 let teamSyncTimer: ReturnType<typeof setTimeout> | undefined
 
 /** `vite dev` without `VITE_API_BASE` has no Worker behind its `/api` paths. */
@@ -522,6 +532,138 @@ async function removeOwnerMember(address: string): Promise<void> {
 async function copyTeamInvite(url: string): Promise<void> {
   if (await copyText(url)) notify('Invite link copied', 'success')
   else notify("This browser would not let us copy the invite link", 'error')
+}
+
+function openTeamReward(address: string): void {
+  const plan = current.value
+  if (!plan) return
+  const available = plan.build.milestones.flatMap((milestone) => milestone.tasks)
+    .some((task) => task.status === 'done' && !task.reward)
+  if (!available) {
+    notify('Complete an unrewarded task first.', 'info')
+    return
+  }
+  if (rewardPending.value && rewardPending.value.recipient !== address) {
+    notify('Finish checking the pending teammate reward first.', 'info')
+    return
+  }
+  rewardRecipient.value = address
+  rewardError.value = null
+  rewardStatus.value = ''
+}
+
+function closeTeamReward(): void {
+  if (rewardBusy.value) return
+  rewardRecipient.value = null
+  rewardError.value = null
+  rewardStatus.value = ''
+}
+
+async function sendTeamReward(value: { taskId: string; amountLuna: number }): Promise<void> {
+  const teamId = activeOwnerTeamId()
+  const recipient = rewardRecipient.value
+  const plan = current.value
+  const state = teamResult.value
+  if (!teamId || !recipient || !plan || !state || rewardBusy.value) return
+  const task = plan.build.milestones.flatMap((milestone) => milestone.tasks).find((item) => item.id === value.taskId)
+  if (!task || task.status !== 'done' || task.reward) return
+
+  rewardBusy.value = true
+  rewardError.value = null
+  rewardStatus.value = 'Confirm the direct payment in your Nimiq wallet.'
+  try {
+    if (!(await requireAuth())) throw new Error(session.lastError.value ?? 'Connect your wallet to send the reward.')
+    const existing = rewardPending.value
+    let receipt: string
+    let revision: number
+    if (existing) {
+      if (existing.teamId !== teamId || existing.taskId !== task.id || existing.recipient !== recipient || existing.amountLuna !== value.amountLuna) {
+        throw new Error('Finish checking the pending teammate reward before sending another one.')
+      }
+      receipt = existing.receipt
+      revision = existing.revision
+    } else {
+      const payment = await session.pay(recipient, value.amountLuna, `Cairn reward: ${task.text.slice(0, 48)}`)
+      if (!payment) throw new Error(session.lastError.value ?? 'The reward was not sent.')
+      receipt = payment.receipt
+      revision = state.revision
+      rewardPending.value = { teamId, taskId: task.id, recipient, amountLuna: value.amountLuna, receipt, revision }
+      savePendingReward(rewardPending.value)
+    }
+
+    rewardStatus.value = 'Payment sent. Waiting for one network confirmation…'
+    const delays = [0, 3_000, 5_000, 8_000, 12_000, 15_000, 20_000, 25_000]
+    let result: TeamResult | null = null
+    for (const delay of delays) {
+      if (delay) await new Promise((resolve) => setTimeout(resolve, delay))
+      try {
+        result = await recordTeamReward(teamId, {
+          taskId: task.id,
+          recipient,
+          amountLuna: value.amountLuna,
+          receipt,
+          revision,
+        })
+        break
+      } catch (error) {
+        if (error instanceof ApiError && error.code === 'payment_not_found') continue
+        if (error instanceof ApiError && error.code === 'conflict') {
+          const refreshed = await getTeam(teamId)
+          teamResult.value = refreshed
+          const recorded = refreshed.build.milestones.flatMap((milestone) => milestone.tasks)
+            .find((candidate) => candidate.id === task.id)?.reward
+          if (recorded?.transactionHash) {
+            result = refreshed
+            break
+          }
+          revision = refreshed.revision
+          rewardPending.value = { teamId, taskId: task.id, recipient, amountLuna: value.amountLuna, receipt, revision }
+          savePendingReward(rewardPending.value)
+          continue
+        }
+        throw error
+      }
+    }
+    if (!result) throw new Error('The payment is still pending. Use Resume confirmation later. Cairn will not ask you to pay again.')
+
+    rewardPending.value = null
+    clearPendingReward()
+    teamResult.value = result
+    const verified = result.build.milestones.flatMap((milestone) => milestone.tasks).find((item) => item.id === task.id)?.reward
+    if (verified) task.reward = { ...verified }
+    flush()
+    rewardStatus.value = 'Reward confirmed and attached to the completed task.'
+    notify('Teammate reward confirmed', 'success')
+    await new Promise((resolve) => setTimeout(resolve, 900))
+    rewardRecipient.value = null
+  } catch (error) {
+    rewardError.value = messageOf(error)
+  } finally {
+    rewardBusy.value = false
+  }
+}
+
+async function deleteOwnerTeam(): Promise<void> {
+  const teamId = activeOwnerTeamId()
+  const plan = current.value
+  if (!teamId || !plan || teamLoading.value) return
+  teamLoading.value = true
+  try {
+    await deleteTeamWorkspace(teamId)
+    if (rewardPending.value?.teamId === teamId) {
+      rewardPending.value = null
+      clearPendingReward()
+    }
+    delete plan.teamId
+    teamResult.value = null
+    flush()
+    notify('Team workspace deleted and link revoked', 'success')
+  } catch (error) {
+    teamError.value = messageOf(error)
+    notify(teamError.value, 'error')
+  } finally {
+    teamLoading.value = false
+  }
 }
 
 function leaveTeam(): void {
@@ -948,11 +1090,26 @@ async function share(): Promise<void> {
     plan.shareId = result.shareId
     flush()
 
-    if (await copyText(result.url)) {
-      notify('Read-only link copied', 'success')
-    } else {
-      notify("Shared, but this browser wouldn't let us copy the link", 'error')
-    }
+    const outcome = await shareLink(titleOf(plan), 'A product route mapped with Cairn.', result.url)
+    if (outcome === 'shared') notify('Read-only link shared', 'success')
+    else if (outcome === 'copied') notify('Read-only link copied', 'success')
+    else if (outcome === 'failed') notify("Shared, but this browser wouldn't let us send the link", 'error')
+  } catch (error) {
+    notify(messageOf(error), 'error')
+  } finally {
+    sharing.value = false
+  }
+}
+
+async function revokeShare(): Promise<void> {
+  const plan = current.value
+  if (!plan?.shareId || sharing.value) return
+  sharing.value = true
+  try {
+    await revokeSharedPlan(plan.shareId)
+    delete plan.shareId
+    flush()
+    notify('Public link revoked', 'success')
   } catch (error) {
     notify(messageOf(error), 'error')
   } finally {
@@ -976,6 +1133,19 @@ function rename(id: string, name: string): void {
   plans.value = listPlans()
   const open = current.value
   if (open && open.id === id) open.name = name
+}
+
+function restoreBackup(text: string): void {
+  const restored = importPlanBackup(text)
+  if (!restored) {
+    notify('This is not a valid Cairn backup.', 'error')
+    return
+  }
+  if (!savePlan(restored)) persistent.value = false
+  plans.value = listPlans()
+  current.value = restored
+  view.value = 'workspace'
+  notify('Backup restored as a new route', 'success')
 }
 
 /** Leave a shared plan and start your own. Their idea is theirs — the form is blank. */
@@ -1054,6 +1224,7 @@ function ownIt(): void {
       :team-syncing="teamSyncing"
       @back="back"
       @share="share"
+      @share-revoke="revokeShare"
       @regenerate="current && generate(current.input, current.id)"
       @refine="openRefine"
       @remove="current && remove(current.id)"
@@ -1063,6 +1234,8 @@ function ownIt(): void {
       @team-update="updateOwnerMember"
       @team-remove="removeOwnerMember"
       @team-copy="copyTeamInvite"
+      @team-reward="openTeamReward"
+      @team-delete="deleteOwnerTeam"
       @track-change="onTrackChange"
       @notify="notify"
     />
@@ -1075,6 +1248,7 @@ function ownIt(): void {
       @create="goNew()"
       @remove="remove"
       @rename="rename"
+      @import="restoreBackup"
     />
   </template>
 
@@ -1137,6 +1311,20 @@ function ownIt(): void {
     :retrying="Boolean(pendingReceipt)"
     @pay="pay"
     @close="closePay"
+  />
+
+  <RewardSheet
+    v-if="rewardRecipient && current"
+    :recipient="rewardRecipient"
+    :tasks="current.build.milestones.flatMap((milestone) => milestone.tasks).filter((task) => task.status === 'done' && !task.reward).map((task) => ({ id: task.id, text: task.text }))"
+    :busy="rewardBusy"
+    :status="rewardStatus"
+    :error="rewardError"
+    :pending="Boolean(rewardPending)"
+    :initial-task-id="rewardPending?.taskId"
+    :initial-amount-luna="rewardPending?.amountLuna"
+    @send="sendTeamReward"
+    @close="closeTeamReward"
   />
 
   <Toast :message="toast" :tone="toastTone" />

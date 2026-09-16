@@ -88,12 +88,12 @@ export function canDownload(): boolean {
 }
 
 /** Offer `text` as a file. Returns false if the browser cannot do it. */
-export function downloadText(filename: string, text: string): boolean {
+export function downloadFile(filename: string, text: string, mimeType = 'text/plain;charset=utf-8'): boolean {
   if (!canDownload()) return false
 
   let url: string | null = null
   try {
-    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' })
+    const blob = new Blob([text], { type: mimeType })
     url = URL.createObjectURL(blob)
 
     const anchor = document.createElement('a')
@@ -112,4 +112,23 @@ export function downloadText(filename: string, text: string): boolean {
     // Revoke on the next frame — revoking synchronously can cancel the download.
     if (url) setTimeout(() => URL.revokeObjectURL(url as string), 10_000)
   }
+}
+
+/** Offer Markdown as a file without making existing callers know its MIME type. */
+export function downloadText(filename: string, text: string): boolean {
+  return downloadFile(filename, text, 'text/markdown;charset=utf-8')
+}
+
+/** Prefer the operating-system share sheet; copy is the dependable fallback. */
+export async function shareLink(title: string, text: string, url: string): Promise<'shared' | 'copied' | 'cancelled' | 'failed'> {
+  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+    try {
+      await navigator.share({ title, text, url })
+      return 'shared'
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled'
+      // WebViews can advertise share() and then reject it. Copy still works.
+    }
+  }
+  return await copyText(url) ? 'copied' : 'failed'
 }

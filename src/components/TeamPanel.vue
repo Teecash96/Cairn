@@ -12,6 +12,7 @@ const {
   loading = false,
   error = null,
   syncing = false,
+  completedTasks = [],
 } = defineProps<{
   teamId?: string | null
   owner?: string
@@ -21,6 +22,7 @@ const {
   loading?: boolean
   error?: string | null
   syncing?: boolean
+  completedTasks?: Array<{ id: string; text: string; rewarded: boolean }>
 }>()
 
 const emit = defineEmits<{
@@ -29,11 +31,14 @@ const emit = defineEmits<{
   update: [address: string, role: TeamRole]
   remove: [address: string]
   copy: [url: string]
+  reward: [address: string]
+  delete: []
 }>()
 
 const address = ref('')
 const memberRole = ref<TeamRole>('viewer')
 const confirming = ref<string | null>(null)
+const confirmingDelete = ref(false)
 
 function add(): void {
   const value = address.value.trim()
@@ -126,6 +131,7 @@ function confirmRemove(member: TeamMember): void {
             <span class="muted">Wallet member</span>
           </div>
           <div class="member-row__actions">
+            <button v-if="role === 'owner'" type="button" class="btn btn--secondary btn--sm" :disabled="loading || !completedTasks.some((task) => !task.rewarded)" @click="emit('reward', member.address)">Reward</button>
             <select class="role-select" :value="member.role" aria-label="Member permission" :disabled="loading" @change="changeRole(member, $event)">
               <option value="viewer">Viewer</option>
               <option value="editor">Editor</option>
@@ -136,6 +142,15 @@ function confirmRemove(member: TeamMember): void {
           </div>
         </div>
         <p v-if="!members.length" class="empty-team muted">No members yet. Copy the link after adding someone.</p>
+      </section>
+
+      <section v-if="role === 'owner'" class="team-danger card">
+        <div><strong>Delete team workspace</strong><p class="muted">This revokes the protected link and removes the server copy of Track.</p></div>
+        <div v-if="confirmingDelete" class="team-danger__actions">
+          <button type="button" class="btn btn--danger btn--sm" :disabled="loading" @click="emit('delete')">Confirm delete</button>
+          <button type="button" class="btn btn--ghost btn--sm" :disabled="loading" @click="confirmingDelete = false">Keep team</button>
+        </div>
+        <button v-else type="button" class="btn btn--ghost btn--sm" @click="confirmingDelete = true">Delete workspace</button>
       </section>
     </template>
   </section>
@@ -165,6 +180,9 @@ function confirmRemove(member: TeamMember): void {
 .member-row__actions { display: flex; align-items: center; gap: var(--s2); }
 .role-select { min-height: 38px; padding: 0 var(--s2); border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); color: var(--text); font-size: var(--text-xs); }
 .empty-team { padding: var(--s3); font-size: var(--text-sm); text-align: center; }
+.team-danger { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); }
+.team-danger p { margin-top: var(--s1); font-size: var(--text-xs); }
+.team-danger__actions { display: flex; gap: var(--s2); }
 @media (max-width: 28rem) {
   .member-row { align-items: flex-start; flex-direction: column; }
   .member-row__actions { align-self: stretch; justify-content: flex-end; }

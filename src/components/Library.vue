@@ -23,6 +23,7 @@ const emit = defineEmits<{
   create: []
   remove: [id: string]
   rename: [id: string, name: string]
+  import: [text: string]
 }>()
 
 /** Id of the row whose actions are showing, if any. */
@@ -30,6 +31,15 @@ const openRow = ref<string | null>(null)
 const renamingId = ref<string | null>(null)
 const draftName = ref('')
 const confirmingId = ref<string | null>(null)
+const backupInput = ref<HTMLInputElement | null>(null)
+
+async function importBackup(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  emit('import', await file.text())
+  input.value = ''
+}
 
 // A row that disappears must not leave its menu state behind.
 watch(
@@ -69,6 +79,11 @@ function commitRename(id: string): void {
         {{ plans.length }} product {{ plans.length === 1 ? 'route' : 'routes' }} saved on this device.
       </p>
     </header>
+
+    <div class="library-actions">
+      <button type="button" class="btn btn--secondary btn--sm" @click="backupInput?.click()">Restore JSON backup</button>
+      <input ref="backupInput" class="visually-hidden" type="file" accept="application/json,.json" @change="importBackup" />
+    </div>
 
     <p v-if="!persistent" class="warn">
       This browser is refusing to save anything — private mode, most likely. Plans will vanish when
@@ -181,6 +196,8 @@ function commitRename(id: string): void {
 
 .eyebrow { margin: 0 0 var(--s2); color: var(--accent); font-family: var(--font-mono); font-size: .7rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
 .screen__title { font-family: var(--font-display); font-size: clamp(2.25rem, 8vw, 4.5rem); letter-spacing: -.045em; }
+.library-actions { display: flex; justify-content: flex-end; margin: var(--s3) 0 var(--s4); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 /* -- empty --------------------------------------------------------------- */
 

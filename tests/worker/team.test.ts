@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import worker from '../../worker/index.ts'
-import { addMember, createTeam, getTeam, removeMember, TeamCoordinator, TeamError, updateMember, updateTracker } from '../../worker/team.ts'
+import { addMember, createTeam, deleteTeam, getTeam, recordReward, removeMember, TeamCoordinator, TeamError, updateMember, updateTracker } from '../../worker/team.ts'
 import { addressFromPublicKey } from '../../worker/http.ts'
 import type { Env, TeamRecord } from '../../worker/types.ts'
 
@@ -294,4 +294,63 @@ test('membership changes use the same transaction and reject one competing add',
   const stored = await storage.get<TeamRecord>('team-record')
   assert.equal(stored?.revision, 2)
   assert.equal(stored?.members.length, 1)
+})
+
+test('records a verified reward once and preserves it across tracker edits', async () => {
+  const kv = new MemoryKV()
+  const testEnv = env(kv)
+  const owner = address(20)
+  const member = address(21)
+  const created = await createTeam(testEnv, owner, {
+    planId: 'reward-plan', name: 'Reward team', build: build(),
+  }, 'https://cairn.example')
+  const joined = await addMember(testEnv, created.teamId, owner, member, 'editor', 'https://cairn.example')
+  const doneBuild = build()
+  doneBuild.milestones[0]!.tasks[0]!.status = 'done'
+  const completed = await updateTracker(testEnv, created.teamId, member, doneBuild, joined.revision, 'https://cairn.example')
+  const taskId = completed.build.milestones[0]!.tasks[0]!.id
+  const rewarded = await recordReward(testEnv, created.teamId, owner, {
+    taskId, recipient: member, amountLuna: 100_000, transactionHash: 'ab'.repeat(32), revision: completed.revision,
+  }, 'https://cairn.example')
+
+  assert.equal(rewarded.build.milestones[0]!.tasks[0]!.reward?.amountLuna, 100_000)
+  await assert.rejects(
+    () => recordReward(testEnv, created.teamId, owner, {
+      taskId, recipient: member, amountLuna: 100_000, transactionHash: 'cd'.repeat(32), revision: rewarded.revision,
+    }, 'https://cairn.example'),
+    (error: unknown) => error instanceof TeamError && error.code === 'conflict',
+  )
+
+  const edited = build()
+  edited.milestones[0]!.tasks[0]!.status = 'done'
+  const afterEdit = await updateTracker(testEnv, created.teamId, member, edited, rewarded.revision, 'https://cairn.example')
+  assert.equal(afterEdit.build.milestones[0]!.tasks[0]!.reward?.transactionHash, 'ab'.repeat(32))
+  assert.equal(afterEdit.build.milestones[0]!.tasks[0]!.status, 'done')
+
+  await assert.rejects(
+    () => updateTracker(testEnv, created.teamId, member, {
+      ...edited,
+      milestones: [{ ...edited.milestones[0]!, tasks: [] }],
+    }, afterEdit.revision, 'https://cairn.example'),
+    (error: unknown) => error instanceof TeamError && error.code === 'conflict',
+  )
+})
+
+test('owner deletion revokes team access and permits a fresh workspace', async () => {
+  const kv = new MemoryKV()
+  const testEnv = env(kv)
+  const owner = address(22)
+  const created = await createTeam(testEnv, owner, {
+    planId: 'deletable-plan', name: 'Delete team', build: build(),
+  }, 'https://cairn.example')
+
+  await deleteTeam(testEnv, created.teamId, owner, 'https://cairn.example')
+  await assert.rejects(
+    () => getTeam(testEnv, created.teamId, owner, 'https://cairn.example'),
+    (error: unknown) => error instanceof TeamError && error.code === 'not_found',
+  )
+  const recreated = await createTeam(testEnv, owner, {
+    planId: 'deletable-plan', name: 'Fresh team', build: build(),
+  }, 'https://cairn.example')
+  assert.notEqual(recreated.teamId, created.teamId)
 })

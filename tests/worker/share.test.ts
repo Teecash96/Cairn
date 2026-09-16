@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createShare, publicPlan, readShare } from '../../worker/share.ts'
+import { createShare, publicPlan, readShare, revokeShare } from '../../worker/share.ts'
 import type { Config } from '../../worker/config.ts'
 import type { Env } from '../../worker/types.ts'
 
@@ -15,6 +15,10 @@ class MemoryKV {
 
   async put(key: string, value: string): Promise<void> {
     this.values.set(key, value)
+  }
+
+  async delete(key: string): Promise<void> {
+    this.values.delete(key)
   }
 }
 
@@ -48,4 +52,16 @@ test('stores a full read-only snapshot and returns a clean share link', async ()
   assert.ok(record)
   assert.equal(record?.plan.prd.summary, 'A summary')
   assert.equal(publicPlan(record ?? { plan: plan as never, by: address, createdAt: 1 }).shareId, shareId)
+})
+
+test('only the creator can revoke a public snapshot', async () => {
+  const kv = new MemoryKV()
+  const testEnv = { CAIRN: kv as unknown as KVNamespace } as Env
+  const result = await createShare(testEnv, config, address, plan, new URL('https://cairn.example/'))
+
+  await assert.rejects(() => revokeShare(testEnv, result.shareId, 'NQ02BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB'))
+  assert.ok(await readShare(testEnv, result.shareId))
+
+  await revokeShare(testEnv, result.shareId, address)
+  assert.equal(await readShare(testEnv, result.shareId), null)
 })

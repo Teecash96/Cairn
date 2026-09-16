@@ -7,10 +7,10 @@ import MilestoneTracker from './MilestoneTracker.vue'
 import PrdView from './PrdView.vue'
 import TeamPanel from './TeamPanel.vue'
 import VisualPrd from './VisualPrd.vue'
-import { copyText, canDownload, downloadText } from '../lib/clipboard'
+import { copyText, canDownload, downloadFile, downloadText } from '../lib/clipboard'
 import { buildToText, flowToText, planToMarkdown, prdToText, trackToText } from '../lib/markdown'
 import type { RefineAction, TeamMember, TeamRole } from '../lib/api'
-import { relativeTime, slugOf, titleOf, type BuildPlan, type Plan } from '../lib/plan'
+import { exportPlanBackup, relativeTime, slugOf, titleOf, type BuildPlan, type Plan } from '../lib/plan'
 
 export interface TeamPanelState {
   teamId: string | null
@@ -46,6 +46,7 @@ const emit = defineEmits<{
   back: []
   regenerate: []
   share: []
+  'share-revoke': []
   refine: [action: RefineAction]
   remove: []
   notify: [message: string, tone?: 'info' | 'success' | 'error']
@@ -55,6 +56,8 @@ const emit = defineEmits<{
   'team-update': [address: string, role: TeamRole]
   'team-remove': [address: string]
   'team-copy': [url: string]
+  'team-reward': [address: string]
+  'team-delete': []
   'track-change': [build: BuildPlan]
 }>()
 
@@ -81,6 +84,9 @@ const metaLabel = computed(() => {
   return readOnly ? 'shared with you' : `edited ${edited.value}`
 })
 const availableTabs = computed<Tab[]>(() => teamOnly ? ['track'] : ['plan', 'flow', 'build', 'track'])
+const completedTasks = computed(() => plan.build.milestones.flatMap((milestone) => milestone.tasks)
+  .filter((task) => task.status === 'done')
+  .map((task) => ({ id: task.id, text: task.text, rewarded: Boolean(task.reward) })))
 
 watch(
   () => plan.id,
@@ -123,6 +129,15 @@ function save(): void {
     emit('notify', 'Saved as Markdown', 'success')
   } else {
     emit('notify', "This browser cannot save files. Copy the plan instead.", 'error')
+  }
+}
+
+function saveBackup(): void {
+  const json = JSON.stringify(exportPlanBackup(plan), null, 2)
+  if (downloadFile(`${slugOf(plan)}-cairn-backup.json`, json, 'application/json;charset=utf-8')) {
+    emit('notify', 'JSON backup saved', 'success')
+  } else {
+    emit('notify', 'This browser cannot save a backup file.', 'error')
   }
 }
 
@@ -192,6 +207,10 @@ function onTabKey(event: KeyboardEvent): void {
           <strong>{{ sharing ? 'Sharing…' : plan.shareId ? 'Copy share link' : 'Share read only link' }}</strong>
           <span>Send a clean snapshot of this route.</span>
         </button>
+        <button v-if="!readOnly && plan.shareId" type="button" class="action-item" :disabled="sharing" @click="emit('share-revoke'); actionsOpen = false">
+          <strong>Revoke public link</strong>
+          <span>Make the current read-only link stop working.</span>
+        </button>
         <button type="button" class="action-item" @click="copy('markdown'); actionsOpen = false">
           <strong>Copy full plan</strong>
           <span>Take the complete route to any tool.</span>
@@ -199,6 +218,10 @@ function onTabKey(event: KeyboardEvent): void {
         <button v-if="downloadable" type="button" class="action-item" @click="save(); actionsOpen = false">
           <strong>Save Markdown</strong>
           <span>Download a portable builder file.</span>
+        </button>
+        <button v-if="!readOnly && downloadable" type="button" class="action-item" @click="saveBackup(); actionsOpen = false">
+          <strong>Save JSON backup</strong>
+          <span>Keep a restorable copy of this route.</span>
         </button>
         <button v-if="!readOnly && teamPanel" type="button" class="action-item" @click="openTeam">
           <strong>Team workspace</strong>
@@ -278,7 +301,7 @@ function onTabKey(event: KeyboardEvent): void {
           <p class="eyebrow">Secondary workspace</p>
           <h3>Team access</h3>
         </div>
-        <TeamPanel :team-id="teamPanel.teamId" :owner="teamPanel.owner" :role="teamPanel.role" :members="teamPanel.members" :invite-url="teamPanel.inviteUrl" :loading="teamPanel.loading" :error="teamPanel.error" :syncing="teamSyncing" @create="emit('team-create')" @add="teamAdd" @update="teamUpdate" @remove="emit('team-remove', $event)" @copy="emit('team-copy', $event)" />
+        <TeamPanel :team-id="teamPanel.teamId" :owner="teamPanel.owner" :role="teamPanel.role" :members="teamPanel.members" :invite-url="teamPanel.inviteUrl" :loading="teamPanel.loading" :error="teamPanel.error" :syncing="teamSyncing" :completed-tasks="completedTasks" @create="emit('team-create')" @add="teamAdd" @update="teamUpdate" @remove="emit('team-remove', $event)" @copy="emit('team-copy', $event)" @reward="emit('team-reward', $event)" @delete="emit('team-delete')" />
       </section>
 
       <div v-if="tab !== 'team'" class="context-action">

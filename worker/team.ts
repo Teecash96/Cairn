@@ -68,7 +68,7 @@ function role(value: unknown): TeamRole | null {
 }
 
 function recordOrThrow(record: TeamRecord | null): TeamRecord {
-  if (!record || !validTeamId(record.id) || !validPlanId(record.planId)) {
+  if (!record || record.deletedAt || !validTeamId(record.id) || !validPlanId(record.planId)) {
     throw new TeamError('not_found', 'That team workspace does not exist.', 404)
   }
 
@@ -105,6 +105,30 @@ function recordOrThrow(record: TeamRecord | null): TeamRecord {
     name: record.name.replace(/\s+/g, ' ').trim().slice(0, NAME_MAX) || 'Cairn team',
     members,
     build: clampTeamBuild(record.build, record.id),
+  }
+}
+
+function preserveVerifiedRewards(next: PublicBuildPlan, previous: PublicBuildPlan): PublicBuildPlan {
+  const rewards = new Map(
+    previous.milestones.flatMap((milestone) => milestone.tasks)
+      .filter((task) => task.reward)
+      .map((task) => [task.id, task.reward!] as const),
+  )
+  const nextTaskIds = new Set(next.milestones.flatMap((milestone) => milestone.tasks).map((task) => task.id))
+  for (const taskId of rewards.keys()) {
+    if (!nextTaskIds.has(taskId)) {
+      throw new TeamError('conflict', 'A rewarded task cannot be removed from the team tracker.', 409)
+    }
+  }
+  return {
+    ...next,
+    milestones: next.milestones.map((milestone) => ({
+      ...milestone,
+      tasks: milestone.tasks.map((task) => {
+        const reward = rewards.get(task.id)
+        return { ...task, ...(reward ? { status: 'done' as const, reward: { ...reward } } : {}) }
+      }),
+    })),
   }
 }
 
@@ -183,7 +207,14 @@ export async function createTeam(
       }
     } else {
       const existing = await readRecord(env, existingId)
-      if (existing && existing.owner === address) return viewOf(existing, address, appUrl)
+      if (existing) {
+        try {
+          const valid = recordOrThrow(existing)
+          if (valid.owner === address) return viewOf(valid, address, appUrl)
+        } catch (error) {
+          if (!(error instanceof TeamError) || error.code !== 'not_found') throw error
+        }
+      }
     }
   }
 
@@ -308,11 +339,63 @@ async function rawUpdateTracker(
     throw new TeamError('conflict', 'This tracker changed. Refresh before saving again.', 409)
   }
 
-  record.build = clampTeamBuild(build, record.id)
+  record.build = preserveVerifiedRewards(clampTeamBuild(build, record.id), record.build)
   record.revision += 1
   record.updatedAt = Date.now()
   await writeRecord(env, record)
   return viewOf(record, address, appUrl)
+}
+
+async function rawRecordReward(
+  env: Env,
+  teamId: string,
+  ownerValue: string,
+  taskIdValue: unknown,
+  recipientValue: unknown,
+  amountValue: unknown,
+  hashValue: unknown,
+  revisionValue: unknown,
+  appUrl: string,
+): Promise<TeamView> {
+  const owner = normalizeAddress(ownerValue)
+  const recipient = normalizeAddress(recipientValue)
+  const taskId = typeof taskIdValue === 'string' ? taskIdValue : ''
+  const transactionHash = typeof hashValue === 'string' ? hashValue.toLowerCase() : ''
+  if (!owner || !recipient || !Number.isSafeInteger(amountValue) || (amountValue as number) < 1 ||
+      !/^[0-9a-f]{64}$/.test(transactionHash) || !Number.isInteger(revisionValue)) {
+    throw new TeamError('invalid_request', 'The reward details are invalid.', 400)
+  }
+  const record = recordOrThrow(await readRecord(env, teamId))
+  requireOwner(record, owner)
+  if (!record.members.some((member) => member.address === recipient)) {
+    throw new TeamError('invalid_request', 'Rewards can only be sent to a current team member.', 400)
+  }
+  if (revisionValue !== record.revision) throw new TeamError('conflict', 'This tracker changed. Refresh before recording the reward.', 409)
+  const allTasks = record.build.milestones.flatMap((milestone) => milestone.tasks)
+  const task = allTasks.find((candidate) => candidate.id === taskId)
+  if (!task || task.status !== 'done') throw new TeamError('invalid_request', 'Choose a completed team task.', 400)
+  if (task.reward) throw new TeamError('conflict', 'That task already has a recorded reward.', 409)
+  if (allTasks.some((candidate) => candidate.reward?.transactionHash === transactionHash)) {
+    throw new TeamError('conflict', 'That NIM transaction is already attached to a task.', 409)
+  }
+  task.reward = { recipient, amountLuna: amountValue as number, transactionHash, createdAt: Date.now() }
+  record.revision += 1
+  record.updatedAt = Date.now()
+  await writeRecord(env, record)
+  return viewOf(record, owner, appUrl)
+}
+
+async function rawDeleteTeam(env: Env, teamId: string, ownerValue: string, appUrl: string): Promise<TeamView> {
+  const owner = normalizeAddress(ownerValue)
+  if (!owner) throw new TeamError('invalid_request', 'The wallet address is invalid.', 400)
+  const record = recordOrThrow(await readRecord(env, teamId))
+  requireOwner(record, owner)
+  const view = viewOf(record, owner, appUrl)
+  record.deletedAt = Date.now()
+  record.revision += 1
+  record.updatedAt = record.deletedAt
+  await writeRecord(env, record)
+  return view
 }
 
 
@@ -322,6 +405,8 @@ type TeamCommand =
   | { action: 'update-member'; teamId: string; owner: string; member: unknown; role: unknown; appUrl: string }
   | { action: 'remove'; teamId: string; owner: string; member: unknown; appUrl: string }
   | { action: 'update-tracker'; teamId: string; address: string; build: unknown; revision: unknown; appUrl: string }
+  | { action: 'record-reward'; teamId: string; owner: string; taskId: unknown; recipient: unknown; amountLuna: unknown; transactionHash: unknown; revision: unknown; appUrl: string }
+  | { action: 'delete-team'; teamId: string; owner: string; appUrl: string }
 
 interface CommandResult {
   record: TeamRecord
@@ -424,11 +509,59 @@ function applyTeamCommand(record: TeamRecord, command: TeamCommand): CommandResu
         changed: true,
         record: {
           ...record,
-          build: clampTeamBuild(command.build, record.id),
+          build: preserveVerifiedRewards(clampTeamBuild(command.build, record.id), record.build),
           revision: record.revision + 1,
           updatedAt: Date.now(),
         },
       }
+    }
+    case 'record-reward': {
+      const owner = normalizeAddress(command.owner)
+      const recipient = normalizeAddress(command.recipient)
+      const taskId = typeof command.taskId === 'string' ? command.taskId : ''
+      const transactionHash = typeof command.transactionHash === 'string' ? command.transactionHash.toLowerCase() : ''
+      if (!owner || !recipient || !Number.isSafeInteger(command.amountLuna) || (command.amountLuna as number) < 1 ||
+          !/^[0-9a-f]{64}$/.test(transactionHash) || !Number.isInteger(command.revision)) {
+        throw new TeamError('invalid_request', 'The reward details are invalid.', 400)
+      }
+      requireOwner(record, owner)
+      if (!record.members.some((member) => member.address === recipient)) {
+        throw new TeamError('invalid_request', 'Rewards can only be sent to a current team member.', 400)
+      }
+      if (command.revision !== record.revision) throw new TeamError('conflict', 'This tracker changed. Refresh before recording the reward.', 409)
+      const allTasks = record.build.milestones.flatMap((milestone) => milestone.tasks)
+      const task = allTasks.find((candidate) => candidate.id === taskId)
+      if (!task || task.status !== 'done') throw new TeamError('invalid_request', 'Choose a completed team task.', 400)
+      if (task.reward) throw new TeamError('conflict', 'That task already has a recorded reward.', 409)
+      if (allTasks.some((candidate) => candidate.reward?.transactionHash === transactionHash)) {
+        throw new TeamError('conflict', 'That NIM transaction is already attached to a task.', 409)
+      }
+      const now = Date.now()
+      return {
+        address: owner,
+        changed: true,
+        record: {
+          ...record,
+          build: {
+            ...record.build,
+            milestones: record.build.milestones.map((milestone) => ({
+              ...milestone,
+              tasks: milestone.tasks.map((candidate) => candidate.id === taskId
+                ? { ...candidate, reward: { recipient, amountLuna: command.amountLuna as number, transactionHash, createdAt: now } }
+                : { ...candidate }),
+            })),
+          },
+          revision: record.revision + 1,
+          updatedAt: now,
+        },
+      }
+    }
+    case 'delete-team': {
+      const owner = normalizeAddress(command.owner)
+      if (!owner) throw new TeamError('invalid_request', 'The wallet address is invalid.', 400)
+      requireOwner(record, owner)
+      const now = Date.now()
+      return { address: owner, changed: true, record: { ...record, revision: record.revision + 1, updatedAt: now, deletedAt: now } }
     }
   }
 }
@@ -445,6 +578,10 @@ async function performTeamCommand(env: Env, command: TeamCommand): Promise<TeamV
       return rawRemoveMember(env, command.teamId, command.owner, command.member, command.appUrl)
     case 'update-tracker':
       return rawUpdateTracker(env, command.teamId, command.address, command.build, command.revision, command.appUrl)
+    case 'record-reward':
+      return rawRecordReward(env, command.teamId, command.owner, command.taskId, command.recipient, command.amountLuna, command.transactionHash, command.revision, command.appUrl)
+    case 'delete-team':
+      return rawDeleteTeam(env, command.teamId, command.owner, command.appUrl)
   }
 }
 
@@ -593,4 +730,18 @@ export async function updateTracker(
   appUrl: string,
 ): Promise<TeamView> {
   return coordinated(env, { action: 'update-tracker', teamId, address, build, revision, appUrl })
+}
+
+export async function recordReward(
+  env: Env,
+  teamId: string,
+  owner: string,
+  input: { taskId: unknown; recipient: unknown; amountLuna: unknown; transactionHash: unknown; revision: unknown },
+  appUrl: string,
+): Promise<TeamView> {
+  return coordinated(env, { action: 'record-reward', teamId, owner, ...input, appUrl })
+}
+
+export async function deleteTeam(env: Env, teamId: string, owner: string, appUrl: string): Promise<void> {
+  await coordinated(env, { action: 'delete-team', teamId, owner, appUrl })
 }

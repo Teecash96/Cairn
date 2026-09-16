@@ -344,6 +344,10 @@ export function getSharedPlan(shareId: string): Promise<SharedPlanResult> {
   return request<SharedPlanResult>(`/share/${encodeURIComponent(shareId)}`)
 }
 
+export function revokeSharedPlan(shareId: string): Promise<{ revoked: true }> {
+  return request<{ revoked: true }>(`/share/${encodeURIComponent(shareId)}`, { method: 'DELETE', auth: true })
+}
+
 /** Run a targeted planner action after wallet authentication. Refinement is free. */
 export function refinePlan(body: RefineRequest): Promise<RefineResult> {
   return request<RefineResult>('/refine', {
@@ -406,4 +410,23 @@ export function updateTeamTracker(
     body: JSON.stringify({ build, revision }),
     auth: true,
   })
+}
+
+export function recordTeamReward(teamId: string, body: {
+  taskId: string
+  recipient: string
+  amountLuna: number
+  receipt: string
+  revision: number
+}): Promise<TeamResult> {
+  return request<TeamResult>(`/team/${encodeURIComponent(teamId)}/rewards`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+    timeoutMs: TIMEOUT_MS.payment,
+    auth: true,
+  })
+}
+
+export function deleteTeamWorkspace(teamId: string): Promise<{ deleted: true }> {
+  return request<{ deleted: true }>(`/team/${encodeURIComponent(teamId)}`, { method: 'DELETE', auth: true })
 }

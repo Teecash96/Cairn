@@ -78,6 +78,15 @@ export interface Task {
   dueDate?: string
   /** Task ids in this same plan. */
   dependsOn: string[]
+  /** Public proof of an owner-sent NIM reward for this completed task. */
+  reward?: TaskReward
+}
+
+export interface TaskReward {
+  recipient: string
+  amountLuna: number
+  transactionHash: string
+  createdAt: number
 }
 
 export type TaskStatus = 'todo' | 'in_progress' | 'done'
@@ -111,6 +120,7 @@ export interface PublicTask {
   status: TaskStatus
   labels: string[]
   dueDate?: string
+  reward?: TaskReward
 }
 
 export interface PublicMilestone {
@@ -317,6 +327,7 @@ function normalizeTask(task: unknown): Task | null {
   if (!text) return null
   const status = validStatus(raw.status) ? raw.status : raw.done === true ? 'done' : 'todo'
   const notes = typeof raw.notes === 'string' ? raw.notes.slice(0, TRACKER_NOTES_MAX) : ''
+  const reward = normalizeReward(raw.reward)
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : newId(),
     text,
@@ -326,7 +337,19 @@ function normalizeTask(task: unknown): Task | null {
     notes,
     ...(optionalDate(raw.dueDate) ? { dueDate: raw.dueDate as string } : {}),
     dependsOn: dependencies(raw.dependsOn),
+    ...(reward ? { reward } : {}),
   }
+}
+
+function normalizeReward(value: unknown): TaskReward | null {
+  if (typeof value !== 'object' || value === null) return null
+  const raw = value as Record<string, unknown>
+  const recipient = typeof raw.recipient === 'string' ? raw.recipient.replace(/\s+/g, '').toUpperCase() : ''
+  const transactionHash = typeof raw.transactionHash === 'string' ? raw.transactionHash.toLowerCase() : ''
+  if (!/^NQ[0-9A-Z]{34}$/.test(recipient) || !/^[0-9a-f]{64}$/.test(transactionHash)) return null
+  if (typeof raw.amountLuna !== 'number' || !Number.isSafeInteger(raw.amountLuna) || raw.amountLuna < 1) return null
+  if (typeof raw.createdAt !== 'number' || !Number.isFinite(raw.createdAt)) return null
+  return { recipient, amountLuna: raw.amountLuna, transactionHash, createdAt: raw.createdAt }
 }
 
 function sanitizeBuildDependencies(milestones: Milestone[]): void {
@@ -726,6 +749,7 @@ export function publicBuildOf(build: BuildPlan): PublicBuildPlan {
         status: task.status,
         labels: task.labels.slice(0, TRACKER_LABEL_MAX),
         ...(task.dueDate ? { dueDate: task.dueDate } : {}),
+        ...(task.reward ? { reward: { ...task.reward } } : {}),
       })),
       ...(milestone.startDate ? { startDate: milestone.startDate } : {}),
       ...(milestone.dueDate ? { dueDate: milestone.dueDate } : {}),
@@ -790,6 +814,36 @@ function normalizePlan(value: unknown): Plan | null {
 /** Normalize a public share snapshot before rendering it beside local plans. */
 export function normalizeSharedPlan(value: unknown): Plan | null {
   return normalizePlan(value)
+}
+
+export interface PlanBackup {
+  format: 'cairn-plan'
+  version: 1
+  exportedAt: number
+  plan: Plan
+}
+
+/** A portable, versioned copy of one route. */
+export function exportPlanBackup(plan: Plan): PlanBackup {
+  return { format: 'cairn-plan', version: 1, exportedAt: Date.now(), plan: clone(plan) }
+}
+
+/** Restore a backup as a new local route, without inheriting server access. */
+export function importPlanBackup(text: string): Plan | null {
+  try {
+    const parsed: unknown = JSON.parse(text)
+    const candidate = typeof parsed === 'object' && parsed !== null &&
+      (parsed as { format?: unknown }).format === 'cairn-plan'
+      ? (parsed as { plan?: unknown }).plan
+      : parsed
+    const normalized = normalizePlan(candidate)
+    if (!normalized) return null
+    const now = Date.now()
+    const { shareId: _shareId, teamId: _teamId, ...local } = normalized
+    return { ...local, id: newId(), createdAt: now, updatedAt: now }
+  } catch {
+    return null
+  }
 }
 
 /**
