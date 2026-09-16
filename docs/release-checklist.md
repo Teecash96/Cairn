@@ -12,9 +12,8 @@
 - [ ] Open the production URL in a portrait phone and Nimiq Pay
 - [ ] Generate a plan and confirm all four workspaces render
 - [ ] Confirm generation and refinement work without payment
-- [ ] If testing optional support, complete one small real NIM payment and record private evidence
-- [ ] Confirm the app detects optional support without a manual status button
-- [ ] Confirm the same support transaction cannot be accepted twice
+- [ ] Complete one task and test a small direct reward with two test wallets
+- [ ] Confirm reward checking resumes without requesting a second payment
 - [ ] Invite a second wallet and test Viewer and Editor access to Track
 - [ ] Confirm the teammate cannot read the PRD, Flow, Build summary, or private notes
 

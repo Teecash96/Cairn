@@ -8,8 +8,7 @@
  * in one file is what makes the ordering rules below checkable at a glance.
  *
  * The wallet prompt fires on the first generate tap, never at boot. It proves
- * identity for free planning and protected team actions. NIM payment remains an
- * optional support path, never a prerequisite for using Cairn.
+ * identity for free planning and protected team actions.
  *
  * Editing autosaves. There is no save button, and the deep watcher that does it
  * is guarded so that stamping `updatedAt` cannot retrigger itself.
@@ -18,7 +17,6 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import CairnMark from './components/CairnMark.vue'
 import Library from './components/Library.vue'
 import NewPlan from './components/NewPlan.vue'
-import PaySheet from './components/PaySheet.vue'
 import RefineSheet from './components/RefineSheet.vue'
 import RewardSheet from './components/RewardSheet.vue'
 import Toast from './components/Toast.vue'
@@ -28,10 +26,8 @@ import {
   ApiError,
   createTeam,
   generatePlan,
-  getCredits,
   getSharedPlan,
   getTeam,
-  redeemPayment,
   refinePlan,
   removeTeamMember,
   recordTeamReward,
@@ -41,7 +37,7 @@ import {
   updateTeamMember,
   updateTeamTracker,
 } from './lib/api'
-import type { PriceQuote, RefineAction, TeamResult, TeamRole } from './lib/api'
+import type { RefineAction, TeamResult, TeamRole } from './lib/api'
 import { copyText, shareLink } from './lib/clipboard'
 import {
   createPlan,
@@ -65,7 +61,7 @@ import {
 } from './lib/plan'
 import type { TeamPanelState } from './components/Workspace.vue'
 import { useSession } from './lib/session'
-import { bindPayment, clearPendingPayment, clearPendingReward, loadPendingPayment, loadPendingReward, samePaymentAddress, savePendingPayment, savePendingReward } from './lib/payment-session'
+import { clearPendingReward, loadPendingReward, savePendingReward } from './lib/payment-session'
 import { mergeRefinement, snapshotPlan } from './lib/refinement'
 import { createExamplePlan } from './lib/example'
 import { stubGenerate, stubRefinement } from './lib/stub'
@@ -86,43 +82,6 @@ const formInitial = ref<PlanInput | undefined>(undefined)
 
 const generating = ref(false)
 const sharing = ref(false)
-const supportLoading = ref(false)
-const payOpen = ref(false)
-const payState = ref<'idle' | 'paying' | 'verifying'>('idle')
-const payError = ref<string | null>(null)
-const price = ref<PriceQuote | null>(null)
-const pendingGeneration = ref<{ input: PlanInput; replaceId?: string } | null>(null)
-const pendingRefinement = ref<{ action: RefineAction; question?: string } | null>(null)
-
-const PAYMENT_POLL_DELAYS_MS = [3_000, 5_000, 8_000, 10_000, 15_000]
-const PAYMENT_WAITING_MESSAGE = 'Payment sent. Cairn is checking for one network confirmation. Do not pay again.'
-const paymentPendingMessage = ref<string | null>(null)
-const paymentPollAttempt = ref(0)
-let paymentPollTimer: ReturnType<typeof setTimeout> | undefined
-let paymentPollRun = 0
-
-function rememberPendingReceipt(value: { address: string; receipt: string }): void {
-  pendingReceipt.value = value
-  paymentPendingMessage.value = PAYMENT_WAITING_MESSAGE
-  savePendingPayment(value)
-}
-
-function forgetPendingReceipt(): void {
-  pendingReceipt.value = null
-  paymentPendingMessage.value = null
-  clearPendingPayment()
-}
-
-const pendingReceipt = ref<{ address: string; receipt: string } | null>(loadPendingPayment())
-
-function stopPaymentPolling(): void {
-  paymentPollRun += 1
-  paymentPollAttempt.value = 0
-  if (paymentPollTimer !== undefined) {
-    clearTimeout(paymentPollTimer)
-    paymentPollTimer = undefined
-  }
-}
 
 const toast = ref('')
 const toastTone = ref<Tone>('info')
@@ -353,7 +312,6 @@ onUnmounted(() => {
   if (toastTimer !== undefined) clearTimeout(toastTimer)
   if (teamSyncTimer !== undefined) clearTimeout(teamSyncTimer)
   clearRefinementUndo()
-  stopPaymentPolling()
 })
 
 // -- navigation -------------------------------------------------------------
@@ -790,202 +748,6 @@ function onGenerateFailed(error: unknown, input: PlanInput, replaceId?: string):
   notify(messageOf(error), 'error')
 }
 
-async function completePayment(): Promise<void> {
-  stopPaymentPolling()
-  forgetPendingReceipt()
-  payOpen.value = false
-  const generation = pendingGeneration.value
-  const refinement = pendingRefinement.value
-  pendingGeneration.value = null
-  pendingRefinement.value = null
-  notify('Thank you. Your optional NIM support payment was verified.', 'success')
-  if (generation) await generate(generation.input, generation.replaceId)
-  else if (refinement) await runRefinement(refinement.action, refinement.question)
-}
-
-/** Open the voluntary NIM support path without gating any planner action. */
-async function openSupport(): Promise<void> {
-  if (supportLoading.value || payOpen.value) return
-  if (localPreview) {
-    notify('NIM support is available in the deployed Cairn app.', 'info')
-    return
-  }
-
-  supportLoading.value = true
-  try {
-    const address = await requireAuth()
-    if (!address) return
-    const result = await getCredits()
-    price.value = result.price
-    if (!result.price) {
-      notify('NIM support is temporarily unavailable.', 'error')
-      return
-    }
-    payError.value = null
-    paymentPendingMessage.value = pendingReceipt.value ? PAYMENT_WAITING_MESSAGE : null
-    payOpen.value = true
-  } catch (error) {
-    notify(messageOf(error), 'error')
-  } finally {
-    supportLoading.value = false
-  }
-}
-
-function startPaymentPolling(address: string, receipt: string): void {
-  stopPaymentPolling()
-  const run = paymentPollRun
-  paymentPollAttempt.value = 0
-  paymentPendingMessage.value = PAYMENT_WAITING_MESSAGE
-
-  const poll = async (): Promise<void> => {
-    const pending = pendingReceipt.value
-    if (
-      run !== paymentPollRun ||
-      !pending ||
-      pending.address !== address ||
-      pending.receipt !== receipt
-    ) return
-
-    payState.value = 'verifying'
-    try {
-      await redeemPayment(address, receipt)
-      if (run !== paymentPollRun) return
-      await completePayment()
-      return
-    } catch (error) {
-      if (run !== paymentPollRun) return
-      const transient = error instanceof ApiError && (
-        error.code === 'payment_not_found' ||
-        error.code === 'rate_limited' ||
-        error.code === 'network'
-      )
-      if (!transient) {
-        stopPaymentPolling()
-        payState.value = 'idle'
-        paymentPendingMessage.value = null
-        payError.value = messageOf(error)
-        if (error instanceof ApiError && error.code === 'payment_wrong_wallet') session.disconnect()
-        return
-      }
-
-      const delay = PAYMENT_POLL_DELAYS_MS[paymentPollAttempt.value] ?? 15_000
-      paymentPollAttempt.value += 1
-      // Stay busy between requests: no repeated taps or second payment required.
-      payState.value = 'verifying'
-      paymentPendingMessage.value = paymentPollAttempt.value >= 5
-        ? 'Confirmation is taking longer than usual. We are still checking automatically. Do not pay again.'
-        : PAYMENT_WAITING_MESSAGE
-      paymentPollTimer = setTimeout(() => {
-        paymentPollTimer = undefined
-        void poll()
-      }, delay)
-    }
-  }
-
-  void poll()
-}
-
-async function pay(): Promise<void> {
-  const quote = price.value
-  if (!quote || payState.value !== 'idle') return
-  const pending = pendingReceipt.value
-  // A saved receipt is a recovery flow, not a new checkout. Mark it busy
-  // before authentication so a second tap cannot start another attempt.
-  payState.value = pending?.receipt ? 'verifying' : 'paying'
-  // A wallet that already paid may now hold less than the purchase amount.
-  // Let it authenticate so its saved receipt can still be recovered.
-  const address = await requireAuth(pending?.receipt ? undefined : quote.priceLuna)
-  if (!address) {
-    payState.value = 'idle'
-    payError.value = session.lastError.value ?? 'Select your funded Nimiq wallet, then try again.'
-    return
-  }
-
-  payError.value = null
-  const storedReceipt = pending && samePaymentAddress(pending.address, address)
-    ? pending.receipt
-    : null
-  if (storedReceipt) {
-    startPaymentPolling(address, storedReceipt)
-    return
-  }
-
-  if (pending?.receipt) {
-    try {
-      // Keep the saved receipt when reconnecting a different wallet. A canonical
-      // receipt lets the Worker check one transaction directly and explain a
-      // wallet mismatch without scanning the whole recipient history.
-      const recovered = await redeemPayment(address, pending.receipt)
-      if (recovered.credits.total > 0) {
-        await completePayment()
-        return
-      }
-      payState.value = 'idle'
-      payError.value = 'That payment is already claimed. Do not pay again.'
-      return
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.code !== 'payment_not_found') {
-        payState.value = 'idle'
-        payError.value = messageOf(error)
-        if (error instanceof ApiError && error.code === 'payment_wrong_wallet') session.disconnect()
-        return
-      }
-      // The receipt is still pending or not visible for this wallet. Keep it
-      // saved for a later retry, but never fall through to a new payment.
-      payState.value = 'idle'
-      paymentPendingMessage.value = PAYMENT_WAITING_MESSAGE
-      payError.value = 'Payment is still confirming. Resume checking in a moment. Do not pay again.'
-      return
-    }
-  }
-
-  const payment = await session.pay(quote.payTo, quote.priceLuna, 'Optional support for Cairn')
-  if (!payment) {
-    payState.value = 'idle'
-    payError.value = session.lastError.value ?? 'Payment was not completed.'
-    return
-  }
-  const boundPayment = bindPayment(address, payment)
-  if (boundPayment.requiresPayerAuth) {
-    rememberPendingReceipt(boundPayment.pending)
-    session.disconnect()
-    payState.value = 'idle'
-    paymentPendingMessage.value = null
-    payError.value = 'Payment was sent from another wallet. Sign in with that paying wallet to claim the credits. Do not pay again.'
-    return
-  }
-
-  rememberPendingReceipt(boundPayment.pending)
-  startPaymentPolling(address, payment.receipt)
-}
-
-function resumePendingPayment(): void {
-  const connected = session.address.value
-  const pending = pendingReceipt.value
-  if (
-    payOpen.value &&
-    price.value &&
-    pending &&
-    connected &&
-    samePaymentAddress(connected, pending.address) &&
-    payState.value === 'idle'
-  ) void pay()
-}
-
-// Resume without another tap only while the authenticated payer is still in
-// memory. A reload must wait for a user tap so Hub can open its auth popup.
-watch([payOpen, price, pendingReceipt, session.address], resumePendingPayment)
-
-function closePay(): void {
-  if (payState.value === 'paying' || (payState.value === 'verifying' && !pendingReceipt.value)) return
-  stopPaymentPolling()
-  payState.value = 'idle'
-  payOpen.value = false
-  pendingGeneration.value = null
-  pendingRefinement.value = null
-  if (pendingReceipt.value) paymentPendingMessage.value = PAYMENT_WAITING_MESSAGE
-}
-
 // -- planner follow ups ----------------------------------------------------
 
 function clearRefineResult(): void {
@@ -1207,11 +969,9 @@ function ownIt(): void {
       v-if="view === 'new'"
       :key="formKey"
       :busy="generating"
-      :support-busy="supportLoading"
       :initial="formInitial"
       @submit="generate"
       @example="openExample"
-      @support="openSupport"
     />
 
     <Workspace
@@ -1299,18 +1059,6 @@ function ownIt(): void {
     :busy="refineBusy"
     @submit="submitRefinement"
     @cancel="closeRefinement"
-  />
-
-  <PaySheet
-    v-if="payOpen"
-    :price="price"
-    :state="payState"
-    :error="payError"
-    :pending="Boolean(pendingReceipt)"
-    :pending-message="paymentPendingMessage"
-    :retrying="Boolean(pendingReceipt)"
-    @pay="pay"
-    @close="closePay"
   />
 
   <RewardSheet

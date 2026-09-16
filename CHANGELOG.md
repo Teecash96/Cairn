@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1 — 2026-09-16
+
+- Remove the Cairn donation button and optional support checkout from the app.
+- Keep Nimiq wallet identity and direct teammate rewards.
+
 ## 1.1.0 — 2026-09-16
 
 - Add direct, verified NIM rewards for teammates who complete tasks.

@@ -44,7 +44,7 @@ is what a PRD is for.
 | Requires the builder to invent the planning structure and prompts | Creates the PRD, visual map, user flow, MVP, milestones, risks, and tasks together |
 | Ends when the response is complete | Continues into a board, timeline, next action, and targeted refinements |
 | Shares a conversation or copied text | Shares a read-only plan or wallet-protected Track workspace with Viewer and Editor roles |
-| Depends on an account and cloud history | Keeps the private plan local by default and uses a Nimiq wallet for identity, teams, and optional support |
+| Depends on an account and cloud history | Keeps the private plan local by default and uses a Nimiq wallet for identity, teams, and teammate rewards |
 
 The difference is not only generation. Cairn turns a response into a product
 system a builder and a named teammate can use after the prompt is over.
@@ -134,7 +134,7 @@ The deployed Worker serves a small information layer beside the mini app:
 
 1. `/case-studies` contains illustrative examples. They are not customer
    claims.
-2. `/faq` answers product, timing, free access, NIM support, sharing, and privacy questions.
+2. `/faq` answers product, timing, free access, sharing, and privacy questions.
 3. `/privacy` explains data handling in plain language.
 4. `/thank-you` is a simple completion page for links and demos.
 5. Unknown routes show a branded 404 page.
@@ -143,17 +143,17 @@ The app has a clear response promise: most plans are ready in under 30 seconds.
 The public pages use canonical URLs, Open Graph metadata, a social card,
 `robots.txt`, `sitemap.xml`, and `llms.txt`.
 
-## Nimiq support
+## Nimiq identity and rewards
 
 Cairn does not charge for plans or planner refinements. A signed Nimiq wallet
-session proves identity for AI requests and protected teams. The app also keeps
-an explicit **Support Cairn** path through Nimiq Pay for people who choose to
-send NIM. Support is voluntary and never unlocks access.
+session proves identity for AI requests and protected teams. Owners can send
+NIM directly to a teammate after that person completes a task. Cairn never
+holds those funds.
 
-The Worker still verifies NIM receipts and preserves the SQLite-backed Durable
-Object ledger for existing balances and recovery. It never asks a user to pay
-again for a saved receipt. It uses the configured Nimiq RPC service to check
-public transaction data. See [credit ledger cutover](docs/credit-ledger-cutover.md)
+The Worker preserves the legacy SQLite-backed credit ledger for compatibility,
+but Cairn no longer offers a donation checkout. It uses the configured Nimiq
+RPC service to verify direct teammate rewards. See
+[credit ledger cutover](docs/credit-ledger-cutover.md)
 before changing bindings or migrations. The checked-in production configuration
 has the reconciled ledger enabled; do not change its binding, class, or object
 name after it has accepted production writes.
@@ -170,7 +170,7 @@ Stated plainly, because it matters:
 | A plan you tap **Share** on | Cairn's server, so the link can be opened until you revoke it. Progress, milestone dates, task due dates, labels, and recorded reward proofs are shared. Notes, priorities, and dependencies are not shared |
 | A protected team workspace | Cairn's server, so named wallet members can use Track until the owner deletes it. Milestones, task text, status, labels, dates, milestone blocker flags, and recorded reward proofs are shared. The PRD, flow, Build summary, notes, priorities, and dependencies are not shared |
 | Your wallet address | Cairn's server, as the identity bound to your short lived wallet session and protected team access |
-| A payment transaction hash | Cairn's server and the configured Nimiq RPC service, to verify public transaction details and prevent receipt reuse |
+| A teammate reward transaction hash | Cairn's server and the configured Nimiq RPC service, to verify the public reward transaction |
 | A request network address | A short lived abuse counter in Cairn's server. It is not used for analytics |
 
 There is no analytics, no tracking, and no third-party script. The app loads no
@@ -202,8 +202,7 @@ without weakening the production wallet path.
 When you open the deployed app in Chrome, tap **Generate plan** and complete the
 Nimiq Hub popup. Allow popups for the Cairn site. Hub returns the selected wallet
 address and signature to Cairn, which the Worker verifies before the free AI
-action. Choose **Support Cairn** only if you want to send an optional NIM
-payment.
+action. Teammate reward payments appear only inside an owner-managed team workspace.
 
 ### On a real device
 
