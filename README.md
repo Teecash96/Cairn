@@ -122,6 +122,12 @@ priorities, or dependency details. Owner changes to the team board sync through 
 revision check, so a stale editor cannot overwrite a newer update. Public Share
 links remain separate and read only.
 
+After a member completes a task, the owner can send a NIM reward directly to
+that member's wallet. Cairn checks the public transaction, records its proof on
+the completed task, and never holds the funds. Slow confirmations keep polling
+automatically; resuming confirmation reuses the receipt and does not request a
+second payment. Owners can also delete a team workspace and revoke its link.
+
 ## Public pages
 
 The deployed Worker serves a small information layer beside the mini app:
@@ -161,8 +167,8 @@ Stated plainly, because it matters:
 | The idea you type | Google's Gemini API, via Cairn's server, to write the plan |
 | The finished plan and private Track data | Your device's local storage. **Nothing else**, unless you use a planner follow up, public Share, or a protected team workspace |
 | A plan you refine | Cairn's server and Google's Gemini API for that one follow up. The PRD, flow, and text only builder pack are sent so the change can be targeted. Private tracker metadata is not sent |
-| A plan you tap **Share** on | Cairn's server, so the link can be opened. Progress, milestone dates, task due dates, and labels are shared. Notes, priorities, and dependencies are not shared |
-| A protected team workspace | Cairn's server, so named wallet members can use Track. Milestones, task text, status, labels, dates, and milestone blocker flags are shared. The PRD, flow, Build summary, notes, priorities, and dependencies are not shared |
+| A plan you tap **Share** on | Cairn's server, so the link can be opened until you revoke it. Progress, milestone dates, task due dates, labels, and recorded reward proofs are shared. Notes, priorities, and dependencies are not shared |
+| A protected team workspace | Cairn's server, so named wallet members can use Track until the owner deletes it. Milestones, task text, status, labels, dates, milestone blocker flags, and recorded reward proofs are shared. The PRD, flow, Build summary, notes, priorities, and dependencies are not shared |
 | Your wallet address | Cairn's server, as the identity bound to your short lived wallet session and protected team access |
 | A payment transaction hash | Cairn's server and the configured Nimiq RPC service, to verify public transaction details and prevent receipt reuse |
 | A request network address | A short lived abuse counter in Cairn's server. It is not used for analytics |
@@ -173,9 +179,9 @@ Worker sends generation requests to Gemini and public payment lookups to the
 configured Nimiq RPC service on the server side.
 
 Plans are stored per device by design. Clearing the app's storage deletes them,
-and there is no private copy on a server to restore from. A protected team
-snapshot is a separate server record for the Track fields only. Copy anything
-you need to keep.
+and there is no private copy on a server to restore from. Use **Save JSON backup**
+and **Restore JSON backup** to move or recover a route. A restored file becomes
+a new local route and never inherits control of old share or team links.
 
 ## Running it locally
 

@@ -104,6 +104,14 @@ export interface Task {
   notes: string
   dueDate?: string
   dependsOn: string[]
+  reward?: TaskReward
+}
+
+export interface TaskReward {
+  recipient: string
+  amountLuna: number
+  transactionHash: string
+  createdAt: number
 }
 
 export interface Milestone {
@@ -131,6 +139,7 @@ export interface PublicTask {
   status: 'todo' | 'in_progress' | 'done'
   labels: string[]
   dueDate?: string
+  reward?: TaskReward
 }
 
 export interface PublicMilestone {
@@ -268,4 +277,5 @@ export interface TeamRecord {
   revision: number
   createdAt: number
   updatedAt: number
+  deletedAt?: number
 }

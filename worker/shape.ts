@@ -335,12 +335,27 @@ export function clampSharedBuild(value: unknown, id: string, preserveTaskIds = f
       const incomingId = preserveTaskIds && typeof task.id === 'string' && TASK_ID.test(task.id)
         ? task.id
         : `${id}-m${milestones.length + 1}-t${tasks.length + 1}`
+      const rewardRaw = typeof task.reward === 'object' && task.reward !== null
+        ? task.reward as Record<string, unknown>
+        : null
+      const recipient = rewardRaw && typeof rewardRaw.recipient === 'string'
+        ? rewardRaw.recipient.replace(/\s+/g, '').toUpperCase()
+        : ''
+      const transactionHash = rewardRaw && typeof rewardRaw.transactionHash === 'string'
+        ? rewardRaw.transactionHash.toLowerCase()
+        : ''
+      const reward = rewardRaw && /^NQ[0-9A-Z]{34}$/.test(recipient) && /^[0-9a-f]{64}$/.test(transactionHash)
+        && typeof rewardRaw.amountLuna === 'number' && Number.isSafeInteger(rewardRaw.amountLuna) && rewardRaw.amountLuna >= 1
+        && typeof rewardRaw.createdAt === 'number' && Number.isFinite(rewardRaw.createdAt)
+        ? { recipient, amountLuna: rewardRaw.amountLuna, transactionHash, createdAt: rewardRaw.createdAt }
+        : null
       tasks.push({
         id: incomingId,
         text,
         status,
         labels: sharedLabels(task.labels),
         ...(dueDate ? { dueDate } : {}),
+        ...(reward ? { reward } : {}),
       })
       taskCount += 1
     }

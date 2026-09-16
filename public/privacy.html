@@ -15,12 +15,12 @@
     <meta property="og:url" content="https://cairn.cairn-planner.workers.dev/privacy" />
     <meta property="og:title" content="Cairn privacy policy" />
     <meta property="og:description" content="What Cairn stores, sends, and shares." />
-    <meta property="og:image" content="https://cairn.cairn-planner.workers.dev/social-card.svg" />
+    <meta property="og:image" content="https://cairn.cairn-planner.workers.dev/social-card.png" />
     <meta property="og:image:alt" content="Cairn turns a rough idea into a product plan." />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Cairn privacy policy" />
     <meta name="twitter:description" content="What Cairn stores, sends, and shares." />
-    <meta name="twitter:image" content="https://cairn.cairn-planner.workers.dev/social-card.svg" />
+    <meta name="twitter:image" content="https://cairn.cairn-planner.workers.dev/social-card.png" />
     <title>Cairn privacy policy</title>
     <link rel="stylesheet" href="/site.css" />
   </head>
@@ -61,7 +61,7 @@
 
         <section class="card">
           <h2>Wallet information</h2>
-          <p>Cairn receives the connected Nimiq wallet address to verify your identity and protect team access. Your wallet signs a short lived login challenge. Cairn does not receive or store your private key. If you choose optional NIM support, the payment goes from your wallet to Cairn's receiving address. The Worker asks the configured Nimiq RPC service for public transaction data and rejects reused receipts.</p>
+          <p>Cairn receives the connected Nimiq wallet address to verify your identity and protect team access. Your wallet signs a short lived login challenge. Cairn does not receive or store your private key. Optional support goes from your wallet to Cairn. A teammate reward goes directly from the owner's wallet to the named member. The Worker asks the configured Nimiq RPC service for public transaction data. Cairn never holds teammate reward funds.</p>
         </section>
 
         <section class="card">
@@ -71,12 +71,12 @@
 
         <section class="card">
           <h2>Sharing</h2>
-          <p>Nothing is shared until you tap Share. A public shared plan is uploaded to the Worker so another person can open its read only link. The snapshot includes progress, milestone dates, task due dates, and labels. It excludes notes, priorities, and dependency details. Do not share confidential material.</p>
+          <p>Nothing is shared until you tap Share. A public shared plan is uploaded to the Worker so another person can open its read only link. The snapshot includes progress, milestone dates, task due dates, labels, and recorded reward proofs. It excludes notes, priorities, and dependency details. The creator can revoke the link. Do not share confidential material.</p>
         </section>
 
         <section class="card">
           <h2>Protected team workspaces</h2>
-          <p>The owner can create an optional protected workspace for Track and add named Nimiq wallet addresses as Viewers or Editors. Members must sign in with the wallet that the owner added. The Worker checks the wallet session and role on every request. The team snapshot includes milestone and task text, progress, labels, dates, and the owner's milestone blocker flag. It excludes the PRD, user flow, Build summary, private notes, priorities, and dependency details. Team records remain available for up to one year unless removed sooner.</p>
+          <p>The owner can create an optional protected workspace for Track and add named Nimiq wallet addresses as Viewers or Editors. Members must sign in with the wallet that the owner added. The Worker checks the wallet session and role on every request. The team snapshot includes milestone and task text, progress, labels, dates, the owner's milestone blocker flag, and recorded reward proofs. It excludes the PRD, user flow, Build summary, private notes, priorities, and dependency details. The owner can delete the workspace. Team records otherwise remain available for up to one year.</p>
         </section>
 
         <section class="card">
