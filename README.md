@@ -114,6 +114,8 @@ The owner can create one protected team workspace for a plan. The owner adds
 Nimiq wallet addresses and chooses a **Viewer** or **Editor** role for each one.
 Members must open the protected link with the wallet that was added. The link is
 only a locator. The Worker checks the signed wallet session on every request.
+There is no signup: no email, username, password, or profile is required. The
+Nimiq wallet address is the teammate's identity and permission key.
 
 Team members see and, when allowed, edit Track only. The shared snapshot contains
 milestones, task text, status, labels, dates, and the owner's milestone blocker
@@ -127,6 +129,11 @@ that member's wallet. Cairn checks the public transaction, records its proof on
 the completed task, and never holds the funds. Slow confirmations keep polling
 automatically; resuming confirmation reuses the receipt and does not request a
 second payment. Owners can also delete a team workspace and revoke its link.
+
+The next team milestone adds wallet-assigned tasks, signed activity history,
+completion approval, and rewards that can go only to the approved assignee. See
+[wallet-native teammate accountability](docs/product/wallet-native-accountability.md)
+for the product contract and acceptance criteria.
 
 ## Public pages
 
