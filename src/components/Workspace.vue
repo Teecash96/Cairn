@@ -102,8 +102,8 @@ function compactAddress(address: string): string {
   return address.length > 15 ? `${address.slice(0, 8)}…${address.slice(-5)}` : address
 }
 
-function relayTeamTask(payload: [string, 'assign' | 'submit' | 'approve' | 'return', string?]): void {
-  emit('team-task', ...payload)
+function relayTeamTask(taskId: string, operation: 'assign' | 'submit' | 'approve' | 'return', value?: string): void {
+  emit('team-task', taskId, operation, value)
 }
 
 const completedTasks = computed(() => plan.build.milestones.flatMap((milestone) => milestone.tasks)
