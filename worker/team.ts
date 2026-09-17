@@ -35,6 +35,13 @@ export class TeamError extends Error {
   }
 }
 
+export interface TeamSummary {
+  teamId: string
+  name: string
+  role: 'owner' | TeamRole
+  updatedAt: number
+}
+
 export interface TeamView {
   teamId: string
   planId: string
@@ -53,6 +60,30 @@ function teamKey(teamId: string): string {
 
 function ownerPlanKey(owner: string, planId: string): string {
   return `team:owner:${owner}:${planId}`
+}
+
+function walletTeamKey(address: string): string {
+  return `team:wallet:${address}`
+}
+
+async function readWalletTeams(env: Env, address: string): Promise<string[]> {
+  const value = await env.CAIRN.get<{ teamIds?: unknown }>(walletTeamKey(address), 'json')
+  return Array.isArray(value?.teamIds)
+    ? value.teamIds.filter((id): id is string => validTeamId(id)).slice(0, 100)
+    : []
+}
+
+async function addWalletTeam(env: Env, address: string, teamId: string): Promise<void> {
+  const current = await readWalletTeams(env, address)
+  if (current.includes(teamId)) return
+  await env.CAIRN.put(walletTeamKey(address), JSON.stringify({ teamIds: [teamId, ...current].slice(0, 100) }), { expirationTtl: TEAM_TTL })
+}
+
+async function removeWalletTeam(env: Env, address: string, teamId: string): Promise<void> {
+  const current = await readWalletTeams(env, address)
+  const next = current.filter((id) => id !== teamId)
+  if (next.length) await env.CAIRN.put(walletTeamKey(address), JSON.stringify({ teamIds: next }), { expirationTtl: TEAM_TTL })
+  else await env.CAIRN.delete(walletTeamKey(address))
 }
 
 function validTeamId(value: unknown): value is string {
@@ -234,6 +265,7 @@ export async function createTeam(
   }
   await writeRecord(env, record)
   await env.CAIRN.put(ownerPlanKey(address, planId), id, { expirationTtl: TEAM_TTL })
+  await addWalletTeam(env, address, id)
   return viewOf(record, address, appUrl)
 }
 
@@ -689,6 +721,22 @@ export async function getTeam(
   return coordinated(env, { action: 'get', teamId, address, appUrl })
 }
 
+export async function listTeams(env: Env, addressValue: string, appUrl: string): Promise<TeamSummary[]> {
+  const address = normalizeAddress(addressValue)
+  if (!address) throw new TeamError('invalid_request', 'The wallet address is invalid.', 400)
+  const teamIds = await readWalletTeams(env, address)
+  const results = await Promise.allSettled(teamIds.map((teamId) => getTeam(env, teamId, address, appUrl)))
+  const teams = results.flatMap((result) => result.status === 'fulfilled'
+    ? [{ teamId: result.value.teamId, name: result.value.name, role: result.value.role, updatedAt: Date.now() }]
+    : [])
+  if (teams.length !== teamIds.length) {
+    const validIds = teams.map((team) => team.teamId)
+    if (validIds.length) await env.CAIRN.put(walletTeamKey(address), JSON.stringify({ teamIds: validIds }), { expirationTtl: TEAM_TTL })
+    else await env.CAIRN.delete(walletTeamKey(address))
+  }
+  return teams
+}
+
 export async function addMember(
   env: Env,
   teamId: string,
@@ -697,7 +745,10 @@ export async function addMember(
   memberRole: unknown,
   appUrl: string,
 ): Promise<TeamView> {
-  return coordinated(env, { action: 'add', teamId, owner, member, role: memberRole, appUrl })
+  const result = await coordinated(env, { action: 'add', teamId, owner, member, role: memberRole, appUrl })
+  const address = normalizeAddress(member)
+  if (address) await addWalletTeam(env, address, teamId)
+  return result
 }
 
 export async function updateMember(
@@ -718,7 +769,10 @@ export async function removeMember(
   member: unknown,
   appUrl: string,
 ): Promise<TeamView> {
-  return coordinated(env, { action: 'remove', teamId, owner, member, appUrl })
+  const result = await coordinated(env, { action: 'remove', teamId, owner, member, appUrl })
+  const address = normalizeAddress(member)
+  if (address) await removeWalletTeam(env, address, teamId)
+  return result
 }
 
 export async function updateTracker(
@@ -743,5 +797,7 @@ export async function recordReward(
 }
 
 export async function deleteTeam(env: Env, teamId: string, owner: string, appUrl: string): Promise<void> {
-  await coordinated(env, { action: 'delete-team', teamId, owner, appUrl })
+  const result = await coordinated(env, { action: 'delete-team', teamId, owner, appUrl })
+  await Promise.all([result.owner, ...result.members.map((member) => member.address)]
+    .map((address) => removeWalletTeam(env, address, teamId)))
 }
