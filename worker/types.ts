@@ -95,6 +95,8 @@ export interface BuildPlanDraft {
   nextAction: string
 }
 
+export type TaskApprovalStatus = 'none' | 'pending' | 'approved' | 'changes_requested'
+
 export interface Task {
   id: string
   text: string
@@ -104,6 +106,10 @@ export interface Task {
   notes: string
   dueDate?: string
   dependsOn: string[]
+  assignee?: string
+  approvalStatus?: TaskApprovalStatus
+  completionNote?: string
+  reviewNote?: string
   reward?: TaskReward
 }
 
@@ -139,6 +145,10 @@ export interface PublicTask {
   status: 'todo' | 'in_progress' | 'done'
   labels: string[]
   dueDate?: string
+  assignee?: string
+  approvalStatus?: TaskApprovalStatus
+  completionNote?: string
+  reviewNote?: string
   reward?: TaskReward
 }
 
@@ -267,6 +277,16 @@ export interface TeamMember {
 }
 
 /** `team:<teamId>` — only the public Track projection is stored here. */
+export interface TeamActivity {
+  id: string
+  address: string
+  action: 'updated' | 'assigned' | 'submitted' | 'approved' | 'returned' | 'rewarded'
+  taskId?: string
+  taskText?: string
+  detail?: string
+  createdAt: number
+}
+
 export interface TeamRecord {
   id: string
   planId: string
@@ -275,6 +295,7 @@ export interface TeamRecord {
   members: TeamMember[]
   build: PublicBuildPlan
   revision: number
+  activity?: TeamActivity[]
   createdAt: number
   updatedAt: number
   deletedAt?: number
