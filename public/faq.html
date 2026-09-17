@@ -1,1 +1,121 @@
-/bin/bash: line 1: gitshowHEAD:public/faq.html: No such file or directory
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="index, follow" />
+    <meta
+      name="description"
+      content="Answers about Cairn, the Nimiq mini app that turns rough product ideas into clear plans."
+    />
+    <link rel="canonical" href="https://cairn.cairn-planner.workers.dev/faq" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Cairn" />
+    <meta property="og:url" content="https://cairn.cairn-planner.workers.dev/faq" />
+    <meta property="og:title" content="Cairn FAQ" />
+    <meta property="og:description" content="Answers about Cairn and how the planner works." />
+    <meta property="og:image" content="https://cairn.cairn-planner.workers.dev/social-card.png" />
+    <meta property="og:image:alt" content="Cairn turns a rough idea into a product plan." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Cairn FAQ" />
+    <meta name="twitter:description" content="Answers about Cairn and how the planner works." />
+    <meta name="twitter:image" content="https://cairn.cairn-planner.workers.dev/social-card.png" />
+    <title>Cairn FAQ</title>
+    <link rel="stylesheet" href="/site.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What is Cairn?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Cairn turns a rough product idea into an editable product brief, user flow, builder pack, and reality check." }
+          },
+          {
+            "@type": "Question",
+            "name": "What leaves my phone?",
+            "acceptedAnswer": { "@type": "Answer", "text": "The description you submit is sent through Cairn's server to Google Gemini. Your saved plans stay in local storage unless you choose to share one." }
+          },
+          {
+            "@type": "Question",
+            "name": "How long does a plan take?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Most plans are ready in under 30 seconds. Network conditions and model load can change the time." }
+          },
+          {
+            "@type": "Question",
+            "name": "Do I need to sign up?",
+            "acceptedAnswer": { "@type": "Answer", "text": "No. Select a Nimiq wallet on the landing screen. Its address is your Cairn identity. A one-time signature protects plan generation and team access." }
+          },
+          {
+            "@type": "Question",
+            "name": "Can I share a plan?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Yes. Sharing is an explicit action. A shared link is read only, does not expose private tracker notes, and can be revoked by its creator." }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <div class="site">
+      <header class="site-header">
+        <a class="brand" href="/">
+          <img src="/icon.svg" alt="Cairn logo" width="28" height="28" />
+          <span>Cairn</span>
+        </a>
+        <nav class="site-nav" aria-label="Primary">
+          <a href="/case-studies">Examples</a>
+          <a href="/faq" aria-current="page">FAQ</a>
+          <a href="/privacy">Privacy</a>
+        </nav>
+      </header>
+
+      <nav class="breadcrumbs" aria-label="Breadcrumb">
+        <a href="/">Cairn</a>
+        <span aria-hidden="true">›</span>
+        <span aria-current="page">FAQ</span>
+      </nav>
+
+      <main>
+        <p class="eyebrow">Answers</p>
+        <h1>Cairn FAQ</h1>
+        <p class="lede">Short answers about the planner, privacy, timing, wallet identity, and sharing.</p>
+
+        <section class="faq-list" aria-label="Frequently asked questions">
+          <details open>
+            <summary>What is Cairn?</summary>
+            <p>Cairn turns a rough product idea into an editable product brief, user flow, builder pack, and reality check.</p>
+          </details>
+          <details>
+            <summary>What leaves my phone?</summary>
+            <p>The description you submit is sent through Cairn's server to Google Gemini. Your saved plans stay in local storage unless you choose to share one.</p>
+          </details>
+          <details>
+            <summary>How long does a plan take?</summary>
+            <p>Most plans are ready in under 30 seconds. Network conditions and model load can change the time.</p>
+          </details>
+          <details>
+            <summary>Do I need to sign up?</summary>
+            <p>No. Select a Nimiq wallet on the landing screen. Its address is your Cairn identity and username. Generating a plan or opening a protected team asks for a one-time signature. No email or password is required.</p>
+          </details>
+          <details>
+            <summary>Can I share a plan?</summary>
+            <p>Yes. Sharing is an explicit action. A shared link is read only, does not expose private tracker notes, and can be revoked by its creator.</p>
+          </details>
+        </section>
+
+        <div class="cta-row">
+          <a class="cta" href="/">Create a plan</a>
+          <a class="cta cta--quiet" href="/case-studies">See examples</a>
+        </div>
+      </main>
+
+      <footer class="site-footer">
+        <span>© 2026 Cairn</span>
+        <a href="/privacy">Privacy</a>
+        <a href="https://github.com/Teecash96/Cairn">Source code</a>
+      </footer>
+    </div>
+  </body>
+</html>

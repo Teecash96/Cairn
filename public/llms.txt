@@ -1,1 +1,30 @@
-/bin/bash: line 1: gitshowHEAD:public/llms.txt: No such file or directory
+# Cairn
+
+> Cairn turns a rough product idea into a clear product brief, user flow, builder pack, and reality check.
+
+## Product
+
+Cairn is a mobile first web app designed for the Nimiq Pay mini app environment. A person describes an idea in plain language. Cairn maps it into an editable product plan, a five to eight step user flow, practical milestones and tasks, acceptance tests, and a reality check.
+
+## Privacy
+
+Saved plans stay in browser local storage until the person chooses to share. Generation sends the submitted description through Cairn's server to Google Gemini. Cairn uses signed Nimiq wallet identity. It does not require an email account and does not run Google Analytics or advertising tracking.
+
+## Access
+
+Cairn plans and refinements are free after a signed Nimiq wallet session.
+Sharing, exports, local editing, and team workspaces are free. An owner can send
+a direct NIM reward to a named teammate after completed work; Cairn never holds
+the funds.
+
+There is no signup. The landing screen selects a Nimiq wallet address, which is
+the person's Cairn identity. A separate one-time signature protects generation
+and team access. An invited teammate does not need to create a plan.
+
+## Links
+
+* [Open Cairn](https://cairn.cairn-planner.workers.dev/)
+* [Examples](https://cairn.cairn-planner.workers.dev/case-studies)
+* [FAQ](https://cairn.cairn-planner.workers.dev/faq)
+* [Privacy policy](https://cairn.cairn-planner.workers.dev/privacy)
+* [Source code](https://github.com/Teecash96/Cairn)
