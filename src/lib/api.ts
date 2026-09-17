@@ -80,6 +80,13 @@ export interface TeamMember {
 
 export type TeamAccess = 'owner' | TeamRole
 
+export interface TeamSummary {
+  teamId: string
+  name: string
+  role: TeamAccess
+  updatedAt: number
+}
+
 /** Protected team state. Only the public Track projection is returned. */
 export interface TeamResult {
   teamId: string
@@ -369,6 +376,12 @@ export function createTeam(body: {
     body: JSON.stringify(body),
     auth: true,
   })
+}
+
+/** Discover every current team for the authenticated wallet. */
+export async function listTeams(): Promise<TeamSummary[]> {
+  const result = await request<{ teams: TeamSummary[] }>('/team', { auth: true })
+  return result.teams
 }
 
 /** Read a protected team. The wallet session determines access and role. */
