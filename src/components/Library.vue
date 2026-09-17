@@ -85,6 +85,11 @@ function commitRename(id: string): void {
       </p>
     </header>
 
+    <div class="storage-note">
+      <strong>Personal work stays on this device.</strong>
+      <span>Your wallet restores team access, but it does not restore personal plans. Save a JSON backup from a plan before changing browsers or devices.</span>
+    </div>
+
     <div class="library-actions">
       <button type="button" class="btn btn--secondary btn--sm" @click="backupInput?.click()">Restore JSON backup</button>
       <input ref="backupInput" class="visually-hidden" type="file" accept="application/json,.json" @change="importBackup" />
@@ -194,7 +199,7 @@ function commitRename(id: string): void {
         <p class="team-empty__title">No teammate routes here yet</p>
         <p class="faint">
           {{ walletConnected
-            ? 'A protected team appears here after you open its invitation with this wallet.'
+            ? 'Teams added to this signed wallet appear here automatically.'
             : 'Connect your Nimiq wallet on Map, then open a protected team invitation.' }}
         </p>
       </div>
@@ -239,6 +244,8 @@ function commitRename(id: string): void {
 
 .eyebrow { margin: 0 0 var(--s2); color: var(--accent); font-family: var(--font-mono); font-size: .7rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
 .screen__title { font-family: var(--font-display); font-size: clamp(2.25rem, 8vw, 4.5rem); letter-spacing: -.045em; }
+.storage-note { display: grid; gap: var(--s1); min-width: 0; margin-top: var(--s4); padding: var(--s3) var(--s4); border-left: 3px solid var(--accent); background: var(--surface-sunken); font-size: var(--text-sm); line-height: var(--leading); }
+.storage-note span { color: var(--text-muted); overflow-wrap: anywhere; }
 .library-actions { display: flex; justify-content: flex-end; margin: var(--s3) 0 var(--s4); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
