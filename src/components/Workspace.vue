@@ -323,7 +323,7 @@ function onTabKey(event: KeyboardEvent): void {
           v-model="plan.build"
           :read-only="readOnly"
           :editing="editing"
-          :team-mode="teamOnly"
+          :team-mode="teamOnly || Boolean(teamContext)"
           :team-address="teamContext?.address"
           :team-role="teamContext?.role"
           :team-members="teamContext?.members"
@@ -331,7 +331,7 @@ function onTabKey(event: KeyboardEvent): void {
           @update:model-value="emit('track-change', $event)"
           @team-task="relayTeamTask"
         />
-        <section v-if="teamOnly && teamContext?.activity.length" class="activity-log" aria-labelledby="activity-title">
+        <section v-if="teamContext?.activity.length" class="activity-log" aria-labelledby="activity-title">
           <div class="activity-log__head">
             <p class="eyebrow">Signed history</p>
             <h3 id="activity-title">Team activity</h3>
