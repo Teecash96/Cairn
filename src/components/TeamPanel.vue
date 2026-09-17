@@ -22,7 +22,7 @@ const {
   loading?: boolean
   error?: string | null
   syncing?: boolean
-  completedTasks?: Array<{ id: string; text: string; rewarded: boolean }>
+  completedTasks?: Array<{ id: string; text: string; rewarded: boolean; assignee?: string; approved: boolean }>
 }>()
 
 const emit = defineEmits<{
@@ -131,7 +131,7 @@ function confirmRemove(member: TeamMember): void {
             <span class="muted">Wallet member</span>
           </div>
           <div class="member-row__actions">
-            <button v-if="role === 'owner'" type="button" class="btn btn--secondary btn--sm" :disabled="loading || !completedTasks.some((task) => !task.rewarded)" @click="emit('reward', member.address)">Reward</button>
+            <button v-if="role === 'owner'" type="button" class="btn btn--secondary btn--sm" :disabled="loading || !completedTasks.some((task) => task.approved && task.assignee === member.address && !task.rewarded)" @click="emit('reward', member.address)">Reward</button>
             <select class="role-select" :value="member.role" aria-label="Member permission" :disabled="loading" @change="changeRole(member, $event)">
               <option value="viewer">Viewer</option>
               <option value="editor">Editor</option>
