@@ -9,7 +9,7 @@ import { generateWithGemini, refineWithGemini } from './generate'
 import { inspectPayment, type PaymentInspection } from './payments'
 import { clampPlan, isInvalid, readPlanInput } from './shape'
 import { createShare, publicPlan, readShare, revokeShare } from './share'
-import { addMember, createTeam, deleteTeam, getTeam, listTeams, recordReward, removeMember, TeamError, updateMember, updateTracker } from './team'
+import { addMember, createTeam, deleteTeam, getTeam, listTeams, recordReward, removeMember, TeamError, updateMember, updateTeamTask, updateTracker } from './team'
 import type { Env, PlanInput, RefineAction } from './types'
 
 function bodyRecord(value: unknown): Record<string, unknown> | null {
@@ -333,6 +333,27 @@ async function handleTeamRemoveMember(env: Env, request: Request, teamId: string
   }
 }
 
+async function handleTeamTask(env: Env, request: Request, teamId: string, taskId: string, cors: Record<string, string>): Promise<Response> {
+  const raw = bodyRecord(await readJson(request, 16 * 1024))
+  if (!raw) return fail('invalid_request', 'The task action is invalid.', 400, cors)
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  const operation = raw.operation
+  if (operation !== 'assign' && operation !== 'submit' && operation !== 'approve' && operation !== 'return') {
+    return fail('invalid_request', 'Choose a valid task action.', 400, cors)
+  }
+  if (await tooFastByKey(env, session.address, 'team-task', 40)) return fail('rate_limited', 'Please wait before changing another task.', 429, cors)
+  try {
+    const result = await updateTeamTask(env, teamId, session.address, taskId, operation, {
+      assignee: raw.assignee,
+      note: raw.note,
+    }, teamBaseUrl(env, request))
+    return json(result, 200, cors)
+  } catch (error) {
+    return teamFailure(error, cors)
+  }
+}
+
 async function handleTeamTracker(env: Env, request: Request, teamId: string, cors: Record<string, string>): Promise<Response> {
   const raw = bodyRecord(await readJson(request, 128 * 1024))
   if (!raw) return fail('invalid_request', 'The tracker request is invalid.', 400, cors)
@@ -368,6 +389,7 @@ async function handleTeamReward(env: Env, request: Request, teamId: string, cors
       return fail('invalid_request', 'Rewards can only be sent to a current team member.', 400, cors)
     }
     if (!task || task.status !== 'done') return fail('invalid_request', 'Choose a completed team task.', 400, cors)
+    if (task.assignee !== recipient || task.approvalStatus !== 'approved') return fail('invalid_request', 'Reward only the approved assignee.', 400, cors)
     if (task.reward) return fail('conflict', 'That task already has a recorded reward.', 409, cors)
   } catch (error) {
     return teamFailure(error, cors)
@@ -431,6 +453,8 @@ async function route(env: Env, request: Request): Promise<Response> {
   const teamMemberMatch = /^\/api\/team\/([a-z2-9]{16,32})\/members\/([^/]+)$/i.exec(url.pathname)
   if (teamMemberMatch?.[1] && teamMemberMatch[2] && request.method === 'PATCH') return handleTeamUpdateMember(env, request, teamMemberMatch[1], teamMemberMatch[2], cors)
   if (teamMemberMatch?.[1] && teamMemberMatch[2] && request.method === 'DELETE') return handleTeamRemoveMember(env, request, teamMemberMatch[1], teamMemberMatch[2], cors)
+  const teamTaskMatch = /^\/api\/team\/([a-z2-9]{16,32})\/tasks\/([A-Za-z0-9][A-Za-z0-9_-]{0,95})$/i.exec(url.pathname)
+  if (teamTaskMatch?.[1] && teamTaskMatch[2] && request.method === 'PATCH') return handleTeamTask(env, request, teamTaskMatch[1], teamTaskMatch[2], cors)
   const teamTrackerMatch = /^\/api\/team\/([a-z2-9]{16,32})\/tracker$/i.exec(url.pathname)
   if (teamTrackerMatch?.[1] && request.method === 'PUT') return handleTeamTracker(env, request, teamTrackerMatch[1], cors)
   const teamRewardMatch = /^\/api\/team\/([a-z2-9]{16,32})\/rewards$/i.exec(url.pathname)
