@@ -117,6 +117,11 @@ only a locator. The Worker checks the signed wallet session on every request.
 There is no signup: no email, username, password, or profile is required. The
 Nimiq wallet address is the teammate's identity and permission key.
 
+The landing screen separates wallet selection from authorization. **Connect
+Nimiq wallet** selects the address. Generating a plan—or opening a protected
+team invite—then asks that wallet to sign a one-time Cairn verification message.
+An invited teammate can therefore open Track directly without creating a plan.
+
 Team members see and, when allowed, edit Track only. The shared snapshot contains
 milestones, task text, status, labels, dates, and the owner's milestone blocker
 flag. It does not contain the PRD, user flow, Build summary, private notes,

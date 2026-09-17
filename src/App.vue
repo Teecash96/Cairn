@@ -108,6 +108,7 @@ function openExample(): void {
 /** Protected team state. Unlike a public share, this requires wallet auth. */
 const teamResult = ref<TeamResult | null>(null)
 const teamPlan = ref<Plan | null>(null)
+const pendingTeamId = ref<string | null>(null)
 const teamLoading = ref(false)
 const teamError = ref<string | null>(null)
 const teamSyncing = ref(false)
@@ -169,6 +170,25 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong.'
 }
 
+async function connectIdentity(): Promise<void> {
+  const address = await session.connect()
+  if (address) {
+    notify('Wallet connected. Your address is your Cairn identity.', 'success')
+  } else {
+    notify(session.lastError.value ?? 'Choose a Nimiq wallet to continue.', 'error')
+  }
+}
+
+function disconnectIdentity(): void {
+  session.disconnect()
+  notify('Wallet disconnected', 'info')
+}
+
+async function openPendingTeam(): Promise<void> {
+  const teamId = pendingTeamId.value
+  if (teamId) await loadTeamLink(teamId)
+}
+
 async function requireAuth(minBalance?: number): Promise<string | null> {
   const address = await session.authenticate(minBalance)
   if (!address) notify(session.lastError.value ?? 'Sign in with your Nimiq wallet to continue.', 'error')
@@ -199,7 +219,7 @@ function readLink(): void {
 
   const teamId = params.get('t')
   if (teamId) {
-    void loadTeamLink(teamId)
+    pendingTeamId.value = teamId
     return
   }
 
@@ -266,6 +286,7 @@ async function loadTeamLink(teamId: string): Promise<void> {
     const result = await getTeam(teamId)
     teamResult.value = result
     teamPlan.value = teamPlanFrom(result)
+    pendingTeamId.value = null
     window.scrollTo(0, 0)
   } catch (error) {
     teamError.value = error instanceof ApiError && error.code === 'forbidden'
@@ -969,9 +990,16 @@ function ownIt(): void {
       v-if="view === 'new'"
       :key="formKey"
       :busy="generating"
+      :wallet-busy="session.connecting.value"
+      :team-busy="teamLoading"
+      :wallet-address="session.address.value"
+      :team-invite="Boolean(pendingTeamId)"
       :initial="formInitial"
       @submit="generate"
       @example="openExample"
+      @connect="connectIdentity"
+      @disconnect="disconnectIdentity"
+      @open-team="openPendingTeam"
     />
 
     <Workspace

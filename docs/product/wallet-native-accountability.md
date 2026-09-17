@@ -13,8 +13,11 @@ address that the owner added to the team.
 
 ## What works now
 
+- The landing screen lets a person select a Nimiq wallet before creating anything.
+- Wallet selection and one-time signature verification are separate actions.
 - The owner adds a Nimiq wallet address as a Viewer or Editor.
-- The teammate opens the protected link and signs in with that wallet.
+- The teammate opens the protected link, selects that wallet, and signs the
+  one-time message without creating a plan.
 - Editors update the shared Track board; Viewers can follow progress.
 - The owner can send NIM directly to a named member for a completed task.
 - Cairn verifies the public transaction and attaches its proof to the task.

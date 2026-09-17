@@ -17,20 +17,32 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import CairnMark from './CairnMark.vue'
 import type { PlanInput } from '../lib/plan'
 import { NIMIQ_TEMPLATE } from '../lib/example'
+import { shortAddress } from '../lib/units'
 
 const {
   busy = false,
+  walletBusy = false,
+  teamBusy = false,
   initial,
+  walletAddress,
+  teamInvite = false,
   showDisclosure = true,
 } = defineProps<{
   busy?: boolean
+  walletBusy?: boolean
+  teamBusy?: boolean
   initial?: PlanInput
+  walletAddress?: string | null
+  teamInvite?: boolean
   showDisclosure?: boolean
 }>()
 
 const emit = defineEmits<{
   submit: [input: PlanInput]
   example: []
+  connect: []
+  disconnect: []
+  'open-team': []
 }>()
 
 const name = ref(initial?.name ?? '')
@@ -105,7 +117,7 @@ watch(
 onUnmounted(stopTimer)
 
 function submit(): void {
-  if (!ready.value || busy) return
+  if (!ready.value || busy || !walletAddress) return
   emit('submit', {
     name: name.value.trim(),
     idea: idea.value.trim(),
@@ -147,6 +159,47 @@ function submit(): void {
     </header>
 
     <form id="new-plan-form" class="form atlas-form" aria-label="Create a product plan" @submit.prevent="submit">
+      <section class="wallet-card" :class="{ 'wallet-card--connected': walletAddress }" aria-labelledby="wallet-title">
+        <div class="wallet-card__copy">
+          <p class="eyebrow">Wallet identity</p>
+          <h2 id="wallet-title">{{ teamInvite ? 'Open your team workspace' : 'Connect before you generate' }}</h2>
+          <p>No sign-ups. Your Nimiq wallet address is your identity and username in Cairn.</p>
+          <p v-if="teamInvite" class="wallet-card__invite">
+            Use the wallet the project owner added. You do not need to create a plan.
+          </p>
+        </div>
+
+        <div v-if="walletAddress" class="wallet-card__status" aria-live="polite">
+          <span class="wallet-card__dot" aria-hidden="true" />
+          <span class="wallet-card__address mono">{{ shortAddress(walletAddress) }}</span>
+          <button type="button" class="wallet-card__change" :disabled="busy || teamBusy" @click="emit('disconnect')">Change</button>
+        </div>
+
+        <button
+          v-if="!walletAddress"
+          type="button"
+          class="btn btn--secondary btn--block wallet-card__action"
+          :disabled="busy || walletBusy"
+          :aria-busy="walletBusy"
+          @click="emit('connect')"
+        >
+          {{ walletBusy ? 'Connecting wallet…' : 'Connect Nimiq wallet' }}
+        </button>
+        <button
+          v-else-if="teamInvite"
+          type="button"
+          class="btn btn--primary btn--block wallet-card__action"
+          :disabled="busy || teamBusy"
+          :aria-busy="teamBusy"
+          @click="emit('open-team')"
+        >
+          {{ teamBusy ? 'Opening team…' : 'Sign & open team workspace' }}
+        </button>
+        <p v-else class="wallet-card__next">
+          Connected. Generate will ask you to sign a one-time verification message.
+        </p>
+      </section>
+
       <div class="field project-field">
         <label class="field__label" for="name">
           Project name
@@ -200,9 +253,9 @@ function submit(): void {
       <button type="button" class="btn btn--secondary" :disabled="busy" @click="useNimiqTemplate">Use the Nimiq Mini App template</button>
 
       <div class="submit">
-        <button type="submit" class="btn btn--primary btn--block" :disabled="!ready || busy">
+        <button type="submit" class="btn btn--primary btn--block" :disabled="!ready || busy || !walletAddress">
           <span v-if="busy" class="dot" aria-hidden="true"></span>
-          {{ busy ? PHASES[phase] + '…' : 'Generate my plan' }}
+          {{ busy ? PHASES[phase] + '…' : walletAddress ? 'Generate my plan' : 'Connect wallet to generate' }}
         </button>
 
         <p v-if="busy" class="foot faint" aria-live="polite">
@@ -211,10 +264,11 @@ function submit(): void {
         <p v-else-if="!ready && idea.trim()" class="foot faint">
           A little more detail and it will have something to work with.
         </p>
-        <p v-else class="foot muted">
+        <p v-else-if="walletAddress" class="foot muted">
           Planning, refinements, editing, tracking, sharing, and exports are free.
           Cairn uses your Nimiq wallet to verify your session and protect team access.
         </p>
+        <p v-else class="foot muted">Connect above first. No payment or account registration is required.</p>
 
       </div>
 
@@ -360,6 +414,21 @@ function submit(): void {
 }
 .example__label { color: var(--accent); font-size: var(--text-xs); font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
 .example__text { max-width: 52ch; }
+
+/* -- wallet identity ----------------------------------------------------- */
+
+.wallet-card { display: grid; gap: var(--s3); min-width: 0; padding: var(--s4); border: 1px solid var(--line-strong); border-left: 4px solid var(--accent); border-radius: var(--r-md); background: var(--surface); }
+.wallet-card--connected { border-left-color: var(--moss); }
+.wallet-card__copy { min-width: 0; }
+.wallet-card__copy h2 { margin-bottom: var(--s2); font-family: var(--font-display); font-size: var(--text-lg); line-height: 1.1; overflow-wrap: anywhere; }
+.wallet-card__copy p:not(.eyebrow) { color: var(--text-muted); font-size: var(--text-sm); line-height: var(--leading); overflow-wrap: anywhere; }
+.wallet-card__invite { margin-top: var(--s2); }
+.wallet-card__status { display: flex; align-items: center; gap: var(--s2); min-width: 0; padding: var(--s2) var(--s3); background: var(--surface-sunken); border-radius: var(--r-sm); }
+.wallet-card__dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--moss); }
+.wallet-card__address { min-width: 0; overflow: hidden; color: var(--text); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+.wallet-card__change { flex: 0 0 auto; margin-left: auto; color: var(--accent); font-size: var(--text-xs); font-weight: 750; }
+.wallet-card__action { min-width: 0; height: auto; min-height: 46px; padding-block: var(--s3); line-height: 1.25; white-space: normal; overflow-wrap: anywhere; }
+.wallet-card__next { color: var(--moss); font-size: var(--text-xs); line-height: var(--leading); overflow-wrap: anywhere; }
 
 /* -- submit -------------------------------------------------------------- */
 

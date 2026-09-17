@@ -17,6 +17,10 @@ Sharing, exports, local editing, and team workspaces are free. An owner can send
 a direct NIM reward to a named teammate after completed work; Cairn never holds
 the funds.
 
+There is no signup. The landing screen selects a Nimiq wallet address, which is
+the person's Cairn identity. A separate one-time signature protects generation
+and team access. An invited teammate does not need to create a plan.
+
 ## Links
 
 * [Open Cairn](https://cairn.cairn-planner.workers.dev/)

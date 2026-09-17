@@ -10,6 +10,8 @@
 ## Phone and wallet gate
 
 - [ ] Open the production URL in a portrait phone and Nimiq Pay
+- [ ] Connect a wallet on the landing screen without generating a plan
+- [ ] Open a team invite with the added wallet and confirm no plan is required
 - [ ] Generate a plan and confirm all four workspaces render
 - [ ] Confirm generation and refinement work without payment
 - [ ] Complete one task and test a small direct reward with two test wallets

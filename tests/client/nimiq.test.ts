@@ -1,14 +1,16 @@
 import assert from 'node:assert/strict'
 import { afterEach, describe, it } from 'node:test'
 import HubApi from '@nimiq/hub-api'
-import { sendPaymentInBrowser } from '../../src/lib/nimiq.ts'
+import { chooseAddressInBrowser, sendPaymentInBrowser } from '../../src/lib/nimiq.ts'
 import { bindPayment, samePaymentAddress } from '../../src/lib/payment-session.ts'
 
 const originalCheckout = HubApi.prototype.checkout
+const originalChooseAddress = HubApi.prototype.chooseAddress
 const originalWindow = globalThis.window
 
 afterEach(() => {
   HubApi.prototype.checkout = originalCheckout
+  HubApi.prototype.chooseAddress = originalChooseAddress
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     value: originalWindow,
@@ -16,6 +18,32 @@ afterEach(() => {
 })
 
 describe('browser Nimiq checkout', () => {
+  it('selects a wallet address without signing a message', async () => {
+    const popup = {
+      closed: false,
+      close() { this.closed = true },
+      location: { href: 'about:blank' },
+    }
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: {
+        open: () => popup,
+        localStorage: {
+          getItem: () => null,
+          setItem: () => undefined,
+        },
+        sessionStorage: {
+          getItem: () => null,
+          setItem: () => undefined,
+        },
+      },
+    })
+    HubApi.prototype.chooseAddress = async () => ({ address: 'NQ selected' }) as Awaited<ReturnType<HubApi['chooseAddress']>>
+
+    assert.equal(await chooseAddressInBrowser(), 'NQ selected')
+    assert.equal(popup.closed, true)
+  })
+
   it('lets Hub refresh or reselect the payer and returns the signed sender', async () => {
     const popup = {
       closed: false,

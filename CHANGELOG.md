@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.0 — 2026-09-17
+
+- Add an explicit Nimiq wallet connection step at the top of the landing form.
+- Keep one-time signature verification separate from wallet selection.
+- Let invited teammates connect, sign, and open Track without creating a plan.
+- Add narrow-screen wrapping and overflow protection to the wallet identity panel.
+
 ## 1.1.1 — 2026-09-16
 
 - Remove the Cairn donation button and optional support checkout from the app.

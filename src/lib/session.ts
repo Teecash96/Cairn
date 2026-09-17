@@ -7,9 +7,9 @@
  *                authentication. Only the local Vite preview uses
  *                the synthetic wallet and offline generator.
  *
- * Nothing here prompts at boot. Wallet sign in starts on the first action that
- * needs identity. Planning never requires a payment. Direct teammate rewards
- * path uses the same wallet bridge when the user explicitly chooses it.
+ * Nothing here prompts at boot. The landing-page connect action selects the
+ * wallet address. A protected action then signs a one-time challenge. Planning
+ * never requires a payment. Direct teammate rewards use the same wallet bridge.
  */
 import { computed, readonly, ref } from 'vue'
 import { clearAuthToken, getAuthChallenge, hasAuthToken, setAuthToken, verifyAuth } from './api'
@@ -96,7 +96,23 @@ export function useSession() {
 
   /** Returns the connected address, or null if the user declined. */
   async function connect(): Promise<string | null> {
-    if (mode.value === 'booting') await boot()
+    if (mode.value === 'booting') {
+      // Keep the original tap's user activation in standalone browsers. Hub
+      // must open its popup before the asynchronous provider probe finishes.
+      if (isInsideNimiqPay()) await boot()
+      else {
+        mode.value = 'preview'
+        void boot()
+      }
+    }
+
+    // A mobile WebView can inject its native bridge after the first paint.
+    if (mode.value === 'preview' && isInsideNimiqPay()) {
+      bootPromise = null
+      mode.value = 'booting'
+      await boot()
+    }
+
     if (address.value) return address.value
     lastError.value = null
 
@@ -104,7 +120,25 @@ export function useSession() {
       address.value = PREVIEW_ADDRESS
       return address.value
     }
-    if (mode.value === 'preview') return null
+    if (mode.value === 'preview') {
+      connecting.value = true
+      try {
+        const selected = await chooseAddressInBrowser()
+        browserSigner.value = selected
+        address.value = selected
+        return selected
+      } catch (error) {
+        lastError.value =
+          error instanceof ProviderError && error.isDenied
+            ? 'Choose a Nimiq wallet to continue.'
+            : error instanceof Error
+              ? error.message
+              : 'Could not reach Nimiq Hub.'
+        return null
+      } finally {
+        connecting.value = false
+      }
+    }
     if (!provider) return null
 
     connecting.value = true
@@ -114,7 +148,7 @@ export function useSession() {
     } catch (error) {
       lastError.value =
         error instanceof ProviderError && error.isDenied
-          ? 'Connect your Nimiq wallet to generate a plan.'
+          ? 'Connect your Nimiq wallet to continue.'
           : error instanceof Error
             ? error.message
             : 'Could not reach your wallet.'
