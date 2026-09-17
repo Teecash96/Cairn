@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0 — 2026-09-17
+
+- Separate Routes into Personal work and Teammate work.
+- Remember protected teammate routes on the device for the wallet that opened them.
+- Reopen remembered team work through the existing wallet-signature gate.
+- Add compact empty states, role labels, route counts, and mobile overflow protection.
+
 ## 1.2.0 — 2026-09-17
 
 - Add an explicit Nimiq wallet connection step at the top of the landing form.

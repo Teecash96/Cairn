@@ -122,6 +122,12 @@ Nimiq wallet** selects the address. Generating a plan—or opening a protected
 team invite—then asks that wallet to sign a one-time Cairn verification message.
 An invited teammate can therefore open Track directly without creating a plan.
 
+Routes separates **Personal work** from **Teammate work**. After an invited
+teammate successfully opens a protected team, Cairn remembers that locator on
+the device for that wallet. The remembered row does not grant access: reopening
+it still requires the matching wallet signature. Owner-created plans remain in
+Personal work.
+
 Team members see and, when allowed, edit Track only. The shared snapshot contains
 milestones, task text, status, labels, dates, and the owner's milestone blocker
 flag. It does not contain the PRD, user flow, Build summary, private notes,

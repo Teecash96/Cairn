@@ -7,8 +7,8 @@
  * plan; a store would be indirection for its own sake, and keeping the sequence
  * in one file is what makes the ordering rules below checkable at a glance.
  *
- * The wallet prompt fires on the first generate tap, never at boot. It proves
- * identity for free planning and protected team actions.
+ * Wallet selection starts only from a user action, never at boot. A separate
+ * signature proves identity for generation and protected team actions.
  *
  * Editing autosaves. There is no save button, and the deep watcher that does it
  * is guarded so that stamping `updatedAt` cannot retrigger itself.
@@ -65,6 +65,7 @@ import { clearPendingReward, loadPendingReward, savePendingReward } from './lib/
 import { mergeRefinement, snapshotPlan } from './lib/refinement'
 import { createExamplePlan } from './lib/example'
 import { stubGenerate, stubRefinement } from './lib/stub'
+import { forgetTeamRoute, listTeamRoutes, rememberTeamRoute, type TeamRoute } from './lib/team-library'
 
 type View = 'new' | 'workspace' | 'library'
 type Tone = 'info' | 'success' | 'error'
@@ -73,6 +74,7 @@ const session = useSession()
 
 const view = ref<View>('new')
 const plans = ref<Plan[]>([])
+const teamRoutes = ref<TeamRoute[]>([])
 const current = ref<Plan | null>(null)
 const persistent = ref(true)
 
@@ -173,6 +175,7 @@ function messageOf(error: unknown): string {
 async function connectIdentity(): Promise<void> {
   const address = await session.connect()
   if (address) {
+    teamRoutes.value = listTeamRoutes(address)
     notify('Wallet connected. Your address is your Cairn identity.', 'success')
   } else {
     notify(session.lastError.value ?? 'Choose a Nimiq wallet to continue.', 'error')
@@ -181,6 +184,7 @@ async function connectIdentity(): Promise<void> {
 
 function disconnectIdentity(): void {
   session.disconnect()
+  teamRoutes.value = []
   notify('Wallet disconnected', 'info')
 }
 
@@ -200,6 +204,7 @@ async function requireAuth(minBalance?: number): Promise<string | null> {
 onMounted(() => {
   persistent.value = libraryIsPersistent()
   plans.value = listPlans()
+  teamRoutes.value = listTeamRoutes(session.address.value)
   readLink()
   // Deliberately not awaited: the first paint must not wait on the SDK's poll.
   void session.boot()
@@ -286,6 +291,8 @@ async function loadTeamLink(teamId: string): Promise<void> {
     const result = await getTeam(teamId)
     teamResult.value = result
     teamPlan.value = teamPlanFrom(result)
+    rememberTeamRoute(result, address)
+    teamRoutes.value = listTeamRoutes(address)
     pendingTeamId.value = null
     window.scrollTo(0, 0)
   } catch (error) {
@@ -346,6 +353,7 @@ function goNew(input?: PlanInput): void {
   shared.value = null
   teamPlan.value = null
   teamResult.value = null
+  pendingTeamId.value = null
   view.value = 'new'
 }
 
@@ -357,7 +365,22 @@ function goLibrary(): void {
   teamPlan.value = null
   teamResult.value = null
   plans.value = listPlans()
+  teamRoutes.value = listTeamRoutes(session.address.value)
   view.value = 'library'
+}
+
+function openTeamRoute(teamId: string): void {
+  goNew()
+  pendingTeamId.value = teamId
+  window.scrollTo(0, 0)
+}
+
+function forgetRememberedTeam(teamId: string): void {
+  const wallet = session.address.value
+  if (!wallet) return
+  forgetTeamRoute(teamId, wallet)
+  teamRoutes.value = listTeamRoutes(wallet)
+  notify('Teammate route removed from this device', 'info')
 }
 
 function open(id: string): void {
@@ -649,7 +672,7 @@ function leaveTeam(): void {
   teamPlan.value = null
   teamResult.value = null
   teamError.value = null
-  goNew()
+  goLibrary()
 }
 
 function onTrackChange(build: Plan['build']): void {
@@ -1031,8 +1054,12 @@ function ownIt(): void {
     <Library
       v-else
       :plans="plans"
+      :team-routes="teamRoutes"
+      :wallet-connected="Boolean(session.address.value)"
       :persistent="persistent"
       @open="open"
+      @open-team="openTeamRoute"
+      @forget-team="forgetRememberedTeam"
       @create="goNew()"
       @remove="remove"
       @rename="rename"
@@ -1073,7 +1100,7 @@ function ownIt(): void {
         </g>
       </svg>
       Routes
-      <span v-if="plans.length" class="nav__count mono">{{ plans.length }}</span>
+      <span v-if="plans.length + teamRoutes.length" class="nav__count mono">{{ plans.length + teamRoutes.length }}</span>
     </button>
   </nav>
 

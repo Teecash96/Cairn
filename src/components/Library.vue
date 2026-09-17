@@ -1,10 +1,10 @@
 <script setup lang="ts">
 /**
- * Everything you have made, newest first.
+ * Personal plans and previously opened teammate routes, clearly separated.
  *
  * The spec asks for a sidebar of recent plans; on a portrait phone that is a tab.
  *
- * Plans live in this device's localStorage and nowhere else, which is a feature
+ * Personal plans live in this device's localStorage and nowhere else, which is a feature
  * — no account, nothing uploaded — right up until the WebView is in private mode
  * and refuses to write. Then it is data loss, so the screen says so plainly
  * rather than presenting an empty list as normal.
@@ -12,14 +12,19 @@
 import { ref, watch } from 'vue'
 import CairnMark from './CairnMark.vue'
 import { relativeTime, titleOf, type Plan } from '../lib/plan'
+import type { TeamRoute } from '../lib/team-library'
 
-const { plans, persistent = true } = defineProps<{
+const { plans, teamRoutes, walletConnected = false, persistent = true } = defineProps<{
   plans: Plan[]
+  teamRoutes: TeamRoute[]
+  walletConnected?: boolean
   persistent?: boolean
 }>()
 
 const emit = defineEmits<{
   open: [id: string]
+  'open-team': [id: string]
+  'forget-team': [id: string]
   create: []
   remove: [id: string]
   rename: [id: string, name: string]
@@ -76,7 +81,7 @@ function commitRename(id: string): void {
       <p class="eyebrow">Local atlas</p>
       <h1 class="screen__title">Marked routes</h1>
       <p class="screen__sub">
-        {{ plans.length }} product {{ plans.length === 1 ? 'route' : 'routes' }} saved on this device.
+        Your own plans and the protected team work available to this wallet.
       </p>
     </header>
 
@@ -90,20 +95,21 @@ function commitRename(id: string): void {
       you close the app, so copy anything you want to keep.
     </p>
 
-    <!-- Empty state, designed rather than defaulted. -->
-    <div v-if="!plans.length" class="empty">
-      <CairnMark :size="34" class="empty__mark" />
-      <p class="empty__title">No routes marked yet</p>
-      <p class="empty__body faint">
-        Describe one rough idea. Cairn will map the product and mark the route to its first release.
-      </p>
-      <button type="button" class="btn btn--primary" @click="emit('create')">
-        Map an idea
-      </button>
-    </div>
+    <section class="route-group" aria-labelledby="personal-routes-title">
+      <div class="route-group__heading">
+        <h2 id="personal-routes-title">Personal work</h2>
+        <span class="route-group__count mono">{{ plans.length }}</span>
+      </div>
 
-    <ul v-else class="list">
-      <li v-for="plan in plans" :key="plan.id" class="item">
+      <div v-if="!plans.length" class="empty empty--compact">
+        <CairnMark :size="30" class="empty__mark" />
+        <p class="empty__title">No personal routes yet</p>
+        <p class="empty__body faint">Map a rough idea and Cairn will keep its route on this device.</p>
+        <button type="button" class="btn btn--primary btn--sm" @click="emit('create')">Map an idea</button>
+      </div>
+
+      <ul v-else class="list">
+        <li v-for="plan in plans" :key="plan.id" class="item">
         <div class="row">
           <button type="button" class="open" @click="emit('open', plan.id)">
             <span class="name">{{ titleOf(plan) }}</span>
@@ -174,8 +180,45 @@ function commitRename(id: string): void {
             </button>
           </div>
         </div>
-      </li>
-    </ul>
+        </li>
+      </ul>
+    </section>
+
+    <section class="route-group" aria-labelledby="team-routes-title">
+      <div class="route-group__heading">
+        <h2 id="team-routes-title">Teammate work</h2>
+        <span class="route-group__count mono">{{ teamRoutes.length }}</span>
+      </div>
+
+      <div v-if="!teamRoutes.length" class="team-empty">
+        <p class="team-empty__title">No teammate routes here yet</p>
+        <p class="faint">
+          {{ walletConnected
+            ? 'A protected team appears here after you open its invitation with this wallet.'
+            : 'Connect your Nimiq wallet on Map, then open a protected team invitation.' }}
+        </p>
+      </div>
+
+      <ul v-else class="list team-list">
+        <li v-for="route in teamRoutes" :key="route.teamId" class="item team-item">
+          <button type="button" class="open" @click="emit('open-team', route.teamId)">
+            <span class="name">{{ route.name }}</span>
+            <span class="meta faint">
+              <span class="badge">{{ route.role === 'editor' ? 'Editor' : 'Viewer' }}</span>
+              <span>Protected Track</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            class="forget"
+            :aria-label="`Remove ${route.name} from this device`"
+            @click="emit('forget-team', route.teamId)"
+          >
+            Forget
+          </button>
+        </li>
+      </ul>
+    </section>
 
     <button v-if="plans.length" type="button" class="btn btn--primary btn--block" @click="emit('create')">
       Map another idea
@@ -225,6 +268,18 @@ function commitRename(id: string): void {
   line-height: var(--leading-loose);
 }
 
+.empty--compact { padding: var(--s7) var(--s4); border: 1px solid var(--line); border-radius: var(--r-md); }
+
+/* -- route groups -------------------------------------------------------- */
+
+.route-group { min-width: 0; margin-top: var(--s6); }
+.route-group__heading { display: flex; align-items: center; gap: var(--s2); min-width: 0; margin-bottom: var(--s3); }
+.route-group__heading h2 { min-width: 0; font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 800; letter-spacing: .09em; overflow-wrap: anywhere; text-transform: uppercase; }
+.route-group__count { flex: 0 0 auto; display: grid; place-items: center; min-width: 24px; height: 24px; padding-inline: var(--s2); border: 1px solid var(--line); border-radius: 999px; color: var(--text-muted); font-size: .68rem; }
+.team-empty { min-width: 0; padding: var(--s4); border: 1px dashed var(--line-strong); border-radius: var(--r-md); }
+.team-empty p { overflow-wrap: anywhere; }
+.team-empty__title { margin-bottom: var(--s1); font-size: var(--text-sm); font-weight: 750; }
+
 /* -- list ---------------------------------------------------------------- */
 
 .list {
@@ -246,6 +301,11 @@ function commitRename(id: string): void {
   display: flex;
   align-items: stretch;
 }
+
+.team-item { display: flex; align-items: stretch; min-width: 0; }
+.team-item .open { min-width: 0; }
+.forget { flex: 0 0 auto; align-self: stretch; padding: 0 var(--s3); border-left: 1px solid var(--line); color: var(--text-faint); font-size: var(--text-xs); font-weight: 700; white-space: normal; overflow-wrap: anywhere; }
+.forget:hover { background: var(--surface-hover); color: var(--text); }
 
 .open {
   flex: 1;
