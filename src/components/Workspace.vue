@@ -9,8 +9,16 @@ import TeamPanel from './TeamPanel.vue'
 import VisualPrd from './VisualPrd.vue'
 import { copyText, canDownload, downloadFile, downloadText } from '../lib/clipboard'
 import { buildToText, flowToText, planToMarkdown, prdToText, trackToText } from '../lib/markdown'
-import type { RefineAction, TeamMember, TeamRole } from '../lib/api'
+import type { RefineAction, TeamActivity, TeamMember, TeamRole } from '../lib/api'
 import { exportPlanBackup, relativeTime, slugOf, titleOf, type BuildPlan, type Plan } from '../lib/plan'
+
+export interface TeamContext {
+  address: string
+  role: 'owner' | TeamRole
+  members: TeamMember[]
+  activity: TeamActivity[]
+  busy: boolean
+}
 
 export interface TeamPanelState {
   teamId: string | null
@@ -30,7 +38,9 @@ const {
   refining = false,
   teamOnly = false,
   teamPanel,
+  teamContext,
   teamSyncing = false,
+  teamSaveState = 'idle',
 } = defineProps<{
   plan: Plan
   readOnly?: boolean
@@ -39,7 +49,9 @@ const {
   refining?: boolean
   teamOnly?: boolean
   teamPanel?: TeamPanelState
+  teamContext?: TeamContext
   teamSyncing?: boolean
+  teamSaveState?: 'idle' | 'saving' | 'saved' | 'error'
 }>()
 
 const emit = defineEmits<{
@@ -59,6 +71,8 @@ const emit = defineEmits<{
   'team-reward': [address: string]
   'team-delete': []
   'track-change': [build: BuildPlan]
+  'team-retry': []
+  'team-task': [taskId: string, operation: 'assign' | 'submit' | 'approve' | 'return', value?: string]
 }>()
 
 type Tab = 'plan' | 'flow' | 'build' | 'track' | 'team'
@@ -84,9 +98,17 @@ const metaLabel = computed(() => {
   return readOnly ? 'shared with you' : `edited ${edited.value}`
 })
 const availableTabs = computed<Tab[]>(() => teamOnly ? ['track'] : ['plan', 'flow', 'build', 'track'])
+function compactAddress(address: string): string {
+  return address.length > 15 ? `${address.slice(0, 8)}…${address.slice(-5)}` : address
+}
+
+function relayTeamTask(taskId: string, operation: 'assign' | 'submit' | 'approve' | 'return', value?: string): void {
+  emit('team-task', taskId, operation, value)
+}
+
 const completedTasks = computed(() => plan.build.milestones.flatMap((milestone) => milestone.tasks)
   .filter((task) => task.status === 'done')
-  .map((task) => ({ id: task.id, text: task.text, rewarded: Boolean(task.reward) })))
+  .map((task) => ({ id: task.id, text: task.text, rewarded: Boolean(task.reward), assignee: task.assignee, approved: task.approvalStatus === 'approved' })))
 
 watch(
   () => plan.id,
@@ -293,7 +315,35 @@ function onTabKey(event: KeyboardEvent): void {
       </section>
 
       <section v-else-if="tab === 'track'" id="panel-track" role="tabpanel" aria-labelledby="tab-track" tabindex="0">
-        <MilestoneTracker v-model="plan.build" :read-only="readOnly" :editing="editing" :team-mode="teamOnly" @update:model-value="emit('track-change', $event)" />
+        <div v-if="teamOnly && teamSaveState !== 'idle'" class="team-save" role="status" aria-live="polite">
+          <span>{{ teamSaveState === 'saving' ? 'Saving team changes…' : teamSaveState === 'saved' ? 'All team changes saved' : 'Team changes were not saved.' }}</span>
+          <button v-if="teamSaveState === 'error'" type="button" class="btn btn--secondary btn--sm" @click="emit('team-retry')">Retry save</button>
+        </div>
+        <MilestoneTracker
+          v-model="plan.build"
+          :read-only="readOnly"
+          :editing="editing"
+          :team-mode="teamOnly || Boolean(teamContext)"
+          :team-address="teamContext?.address"
+          :team-role="teamContext?.role"
+          :team-members="teamContext?.members"
+          :team-busy="teamContext?.busy"
+          @update:model-value="emit('track-change', $event)"
+          @team-task="relayTeamTask"
+        />
+        <section v-if="teamContext?.activity.length" class="activity-log" aria-labelledby="activity-title">
+          <div class="activity-log__head">
+            <p class="eyebrow">Signed history</p>
+            <h3 id="activity-title">Team activity</h3>
+          </div>
+          <ol class="activity-log__list">
+            <li v-for="entry in teamContext.activity.slice(0, 12)" :key="entry.id" class="activity-log__item">
+              <span class="activity-log__action">{{ entry.action.replace('_', ' ') }}</span>
+              <span class="activity-log__task">{{ entry.taskText || entry.detail || 'Tracker' }}</span>
+              <span class="activity-log__meta mono">{{ compactAddress(entry.address) }} · {{ relativeTime(entry.createdAt) }}</span>
+            </li>
+          </ol>
+        </section>
       </section>
 
       <section v-else-if="tab === 'team' && teamPanel" id="panel-team" tabindex="0">
@@ -386,4 +436,16 @@ function onTabKey(event: KeyboardEvent): void {
   .context-action .mono { display: none; }
   .context-action .btn { width: 100%; }
 }
+.team-save { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); min-width: 0; margin-bottom: var(--s3); padding: var(--s3) var(--s4); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-sunken); color: var(--text-muted); font-size: var(--text-sm); }
+.team-save span { min-width: 0; overflow-wrap: anywhere; }
+</style>
+
+<style scoped>
+.activity-log { margin-top: 1.25rem; padding: 1rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+.activity-log__head h3 { margin: .15rem 0 .75rem; }
+.activity-log__list { display: grid; gap: .65rem; margin: 0; padding: 0; list-style: none; }
+.activity-log__item { display: grid; grid-template-columns: minmax(5.5rem, auto) minmax(0, 1fr); gap: .2rem .7rem; padding-top: .65rem; border-top: 1px solid var(--line); }
+.activity-log__action { color: var(--accent); font-weight: 800; text-transform: capitalize; }
+.activity-log__task { min-width: 0; overflow-wrap: anywhere; }
+.activity-log__meta { grid-column: 1 / -1; color: var(--muted); font-size: .78rem; overflow-wrap: anywhere; }
 </style>

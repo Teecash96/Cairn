@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.0 — 2026-09-17
+
+- Discover protected teammate work automatically from the connected Nimiq wallet.
+- Assign tasks to an Editor wallet and add a personal **My tasks** filter.
+- Let assignees submit completion proof for owner approval or return with feedback.
+- Record authenticated team activity with wallet identity and server timestamps.
+- Allow direct NIM rewards only for the approved task assignee.
+- Queue overlapping team edits and show saving, saved, error, and retry states.
+- Explain device-local personal plans and JSON backup in Routes.
+- Prevent removal of teammates who still own open tasks.
+
+
 ## 1.3.0 — 2026-09-17
 
 - Separate Routes into Personal work and Teammate work.

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import worker from '../../worker/index.ts'
-import { addMember, createTeam, deleteTeam, getTeam, recordReward, removeMember, TeamCoordinator, TeamError, updateMember, updateTracker } from '../../worker/team.ts'
+import { addMember, createTeam, deleteTeam, getTeam, listTeams, recordReward, removeMember, TeamCoordinator, TeamError, updateMember, updateTeamTask, updateTracker } from '../../worker/team.ts'
 import { addressFromPublicKey } from '../../worker/http.ts'
 import type { Env, TeamRecord } from '../../worker/types.ts'
 
@@ -16,6 +16,10 @@ class MemoryKV {
 
   async put(key: string, value: string): Promise<void> {
     this.values.set(key, value)
+  }
+
+  async delete(key: string): Promise<void> {
+    this.values.delete(key)
   }
 }
 
@@ -94,6 +98,24 @@ function build() {
     }],
   }
 }
+
+
+test('discovers current teams for each signed wallet', async () => {
+  const kv = new MemoryKV()
+  const testEnv = env(kv)
+  const owner = address(20)
+  const member = address(21)
+  const created = await createTeam(testEnv, owner, {
+    planId: 'discoverable-plan', name: 'Discovered team', build: build(),
+  }, 'https://cairn.example')
+
+  assert.deepEqual((await listTeams(testEnv, owner, 'https://cairn.example')).map((team) => team.teamId), [created.teamId])
+  await addMember(testEnv, created.teamId, owner, member, 'editor', 'https://cairn.example')
+  assert.deepEqual((await listTeams(testEnv, member, 'https://cairn.example')).map((team) => team.name), ['Discovered team'])
+
+  await removeMember(testEnv, created.teamId, owner, member, 'https://cairn.example')
+  assert.deepEqual(await listTeams(testEnv, member, 'https://cairn.example'), [])
+})
 
 test('creates a protected team with a Track only projection', async () => {
   const kv = new MemoryKV()
@@ -305,10 +327,18 @@ test('records a verified reward once and preserves it across tracker edits', asy
     planId: 'reward-plan', name: 'Reward team', build: build(),
   }, 'https://cairn.example')
   const joined = await addMember(testEnv, created.teamId, owner, member, 'editor', 'https://cairn.example')
-  const doneBuild = build()
-  doneBuild.milestones[0]!.tasks[0]!.status = 'done'
-  const completed = await updateTracker(testEnv, created.teamId, member, doneBuild, joined.revision, 'https://cairn.example')
-  const taskId = completed.build.milestones[0]!.tasks[0]!.id
+  const taskId = joined.build.milestones[0]!.tasks[0]!.id
+  const assigned = await updateTeamTask(testEnv, created.teamId, owner, taskId, 'assign', { assignee: member }, 'https://cairn.example')
+  const submitted = await updateTeamTask(testEnv, created.teamId, member, taskId, 'submit', { note: 'Proof: https://example.com/work' }, 'https://cairn.example')
+  assert.equal(submitted.build.milestones[0]!.tasks[0]!.approvalStatus, 'pending')
+  await assert.rejects(
+    () => updateTeamTask(testEnv, created.teamId, address(99), taskId, 'submit', { note: 'Not my work' }, 'https://cairn.example'),
+    (error: unknown) => error instanceof TeamError && error.code === 'forbidden',
+  )
+  const completed = await updateTeamTask(testEnv, created.teamId, owner, taskId, 'approve', {}, 'https://cairn.example')
+  assert.equal(completed.build.milestones[0]!.tasks[0]!.status, 'done')
+  assert.equal(completed.build.milestones[0]!.tasks[0]!.approvalStatus, 'approved')
+  assert.deepEqual(completed.activity.slice(-3).map((entry) => entry.action), ['assigned', 'submitted', 'approved'])
   const rewarded = await recordReward(testEnv, created.teamId, owner, {
     taskId, recipient: member, amountLuna: 100_000, transactionHash: 'ab'.repeat(32), revision: completed.revision,
   }, 'https://cairn.example')

@@ -80,6 +80,23 @@ export interface TeamMember {
 
 export type TeamAccess = 'owner' | TeamRole
 
+export interface TeamActivity {
+  id: string
+  address: string
+  action: 'updated' | 'assigned' | 'submitted' | 'approved' | 'returned' | 'rewarded'
+  taskId?: string
+  taskText?: string
+  detail?: string
+  createdAt: number
+}
+
+export interface TeamSummary {
+  teamId: string
+  name: string
+  role: TeamAccess
+  updatedAt: number
+}
+
 /** Protected team state. Only the public Track projection is returned. */
 export interface TeamResult {
   teamId: string
@@ -90,7 +107,9 @@ export interface TeamResult {
   members: TeamMember[]
   build: PublicBuildPlan
   revision: number
+  updatedAt: number
   inviteUrl: string
+  activity: TeamActivity[]
 }
 
 export type RefineAction =
@@ -371,6 +390,12 @@ export function createTeam(body: {
   })
 }
 
+/** Discover every current team for the authenticated wallet. */
+export async function listTeams(): Promise<TeamSummary[]> {
+  const result = await request<{ teams: TeamSummary[] }>('/team', { auth: true })
+  return result.teams
+}
+
 /** Read a protected team. The wallet session determines access and role. */
 export function getTeam(teamId: string): Promise<TeamResult> {
   return request<TeamResult>(`/team/${encodeURIComponent(teamId)}`, { auth: true })
@@ -395,6 +420,18 @@ export function updateTeamMember(teamId: string, address: string, role: TeamRole
 export function removeTeamMember(teamId: string, address: string): Promise<TeamResult> {
   return request<TeamResult>(`/team/${encodeURIComponent(teamId)}/members/${encodeURIComponent(address)}`, {
     method: 'DELETE',
+    auth: true,
+  })
+}
+
+export function updateTeamTask(teamId: string, taskId: string, body: {
+  operation: 'assign' | 'submit' | 'approve' | 'return'
+  assignee?: string
+  note?: string
+}): Promise<TeamResult> {
+  return request<TeamResult>(`/team/${encodeURIComponent(teamId)}/tasks/${encodeURIComponent(taskId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
     auth: true,
   })
 }

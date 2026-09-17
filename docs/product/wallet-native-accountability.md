@@ -19,14 +19,15 @@ address that the owner added to the team.
 - The teammate opens the protected link, selects that wallet, and signs the
   one-time message without creating a plan.
 - Editors update the shared Track board; Viewers can follow progress.
-- The owner can send NIM directly to a named member for a completed task.
+- The connected wallet discovers its protected team routes on any device.
+- The owner assigns each task to one Editor wallet.
+- An assignee submits completion proof; the owner approves it or returns it.
+- A signed activity feed records protected changes and server timestamps.
+- The owner can send NIM only to the approved task assignee.
 - Cairn verifies the public transaction and attaches its proof to the task.
 - Cairn never holds teammate reward funds.
 
-Today, the owner selects the reward recipient manually. Cairn does not yet
-prove which editor performed or completed a specific task.
-
-## Next accountability milestone
+## Accountability workflow
 
 ### 1. Wallet assignment
 

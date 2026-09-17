@@ -28,6 +28,7 @@ import {
   generatePlan,
   getSharedPlan,
   getTeam,
+  listTeams as discoverTeams,
   refinePlan,
   removeTeamMember,
   recordTeamReward,
@@ -35,6 +36,7 @@ import {
   revokeSharedPlan,
   sharePlan,
   updateTeamMember,
+  updateTeamTask,
   updateTeamTracker,
 } from './lib/api'
 import type { RefineAction, TeamResult, TeamRole } from './lib/api'
@@ -114,6 +116,8 @@ const pendingTeamId = ref<string | null>(null)
 const teamLoading = ref(false)
 const teamError = ref<string | null>(null)
 const teamSyncing = ref(false)
+const teamSaveState = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
+let pendingTeamBuild: Plan['build'] | null = null
 const rewardRecipient = ref<string | null>(null)
 const rewardBusy = ref(false)
 const rewardStatus = ref('')
@@ -344,6 +348,34 @@ onUnmounted(() => {
 
 // -- navigation -------------------------------------------------------------
 
+async function refreshTeamRoutes(): Promise<void> {
+  const wallet = session.address.value
+  const local = listTeamRoutes(wallet)
+  if (!wallet) {
+    teamRoutes.value = []
+    return
+  }
+  try {
+    const remote = (await discoverTeams())
+      .filter((team) => team.role !== 'owner')
+      .map((team): TeamRoute => ({
+        teamId: team.teamId,
+        name: team.name,
+        role: team.role as 'viewer' | 'editor',
+        wallet: wallet.replace(/\s+/g, '').toUpperCase(),
+        updatedAt: team.updatedAt,
+      }))
+    const merged = new Map(local.map((route) => [route.teamId, route]))
+    for (const route of remote) merged.set(route.teamId, route)
+    teamRoutes.value = [...merged.values()].sort((a, b) => b.updatedAt - a.updatedAt)
+  } catch (error) {
+    teamRoutes.value = local
+    if (!(error instanceof ApiError) || error.code !== 'auth_required') {
+      notify('Could not refresh teammate work. Showing saved routes.', 'error')
+    }
+  }
+}
+
 function goNew(input?: PlanInput): void {
   clearRefinementUndo()
   showingExample.value = false
@@ -357,7 +389,7 @@ function goNew(input?: PlanInput): void {
   view.value = 'new'
 }
 
-function goLibrary(): void {
+async function goLibrary(): Promise<void> {
   clearRefinementUndo()
   showingExample.value = false
   flush()
@@ -367,6 +399,10 @@ function goLibrary(): void {
   plans.value = listPlans()
   teamRoutes.value = listTeamRoutes(session.address.value)
   view.value = 'library'
+  if (session.address.value) {
+    const authenticated = await session.authenticate()
+    if (authenticated) await refreshTeamRoutes()
+  }
 }
 
 function openTeamRoute(teamId: string): void {
@@ -540,7 +576,7 @@ function openTeamReward(address: string): void {
   const plan = current.value
   if (!plan) return
   const available = plan.build.milestones.flatMap((milestone) => milestone.tasks)
-    .some((task) => task.status === 'done' && !task.reward)
+    .some((task) => task.status === 'done' && task.approvalStatus === 'approved' && task.assignee === address && !task.reward)
   if (!available) {
     notify('Complete an unrewarded task first.', 'info')
     return
@@ -568,7 +604,7 @@ async function sendTeamReward(value: { taskId: string; amountLuna: number }): Pr
   const state = teamResult.value
   if (!teamId || !recipient || !plan || !state || rewardBusy.value) return
   const task = plan.build.milestones.flatMap((milestone) => milestone.tasks).find((item) => item.id === value.taskId)
-  if (!task || task.status !== 'done' || task.reward) return
+  if (!task || task.status !== 'done' || task.approvalStatus !== 'approved' || task.assignee !== recipient || task.reward) return
 
   rewardBusy.value = true
   rewardError.value = null
@@ -672,34 +708,110 @@ function leaveTeam(): void {
   teamPlan.value = null
   teamResult.value = null
   teamError.value = null
-  goLibrary()
+  void goLibrary()
 }
 
 function onTrackChange(build: Plan['build']): void {
-  if (teamSyncing.value || !teamResult.value) return
+  if (!teamResult.value) return
   const teamId = teamPlan.value?.teamId ?? current.value?.teamId
   if (!teamId || teamResult.value.teamId !== teamId) return
+  pendingTeamBuild = build
+  teamSaveState.value = 'saving'
   if (teamSyncTimer !== undefined) clearTimeout(teamSyncTimer)
   teamSyncTimer = setTimeout(() => {
     teamSyncTimer = undefined
-    void pushTeamBuild(teamId, build)
+    void pushPendingTeamBuild(teamId)
   }, 700)
 }
 
-async function pushTeamBuild(teamId: string, build: Plan['build']): Promise<void> {
+async function pushPendingTeamBuild(teamId: string): Promise<void> {
+  if (teamSyncing.value || !pendingTeamBuild) return
   const state = teamResult.value
-  if (!state || state.teamId !== teamId || teamSyncing.value) return
+  if (!state || state.teamId !== teamId) return
+  const build = pendingTeamBuild
+  pendingTeamBuild = null
   teamSyncing.value = true
+  teamSaveState.value = 'saving'
   try {
     const result = await updateTeamTracker(teamId, publicTrackOf(build), state.revision)
     teamResult.value = result
+    teamSaveState.value = 'saved'
     if (teamPlan.value?.teamId === teamId) {
       teamPlan.value.build = hydratePublicBuild(result.build)
       teamPlan.value.updatedAt = Date.now()
     }
   } catch (error) {
+    pendingTeamBuild = build
+    teamSaveState.value = 'error'
     teamError.value = error instanceof ApiError && error.code === 'conflict'
       ? 'Someone changed the tracker. Open the team link again to refresh it.'
+      : messageOf(error)
+    notify(teamError.value, 'error')
+  } finally {
+    teamSyncing.value = false
+    if (pendingTeamBuild && teamSaveState.value !== 'error') void pushPendingTeamBuild(teamId)
+  }
+}
+
+function applyTeamAccountability(plan: Plan, build: TeamResult['build']): void {
+  const serverTasks = new Map(build.milestones.flatMap((milestone) => milestone.tasks).map((task) => [task.id, task]))
+  for (const task of plan.build.milestones.flatMap((milestone) => milestone.tasks)) {
+    const server = serverTasks.get(task.id)
+    if (!server) continue
+    task.status = server.status
+    task.assignee = server.assignee
+    task.approvalStatus = server.approvalStatus
+    task.completionNote = server.completionNote
+    task.reviewNote = server.reviewNote
+    task.reward = server.reward
+  }
+  plan.updatedAt = Date.now()
+}
+
+function retryTeamSave(): void {
+  const teamId = teamPlan.value?.teamId ?? current.value?.teamId
+  if (!teamId || !pendingTeamBuild) return
+  teamSaveState.value = 'saving'
+  void pushPendingTeamBuild(teamId)
+}
+
+async function teamTaskAction(
+  taskId: string,
+  operation: 'assign' | 'submit' | 'approve' | 'return',
+  value?: string,
+): Promise<void> {
+  const state = teamResult.value
+  const teamId = teamPlan.value?.teamId ?? current.value?.teamId
+  if (!state || !teamId || teamSyncing.value) return
+  teamSyncing.value = true
+  teamSaveState.value = 'saving'
+  try {
+    const result = await updateTeamTask(teamId, taskId, {
+      operation,
+      assignee: operation === 'assign' ? value : undefined,
+      note: operation === 'submit' || operation === 'return' ? value : undefined,
+    })
+    teamResult.value = result
+    if (teamPlan.value?.teamId === teamId) {
+      teamPlan.value.build = hydratePublicBuild(result.build)
+      teamPlan.value.updatedAt = Date.now()
+    }
+    if (current.value?.teamId === teamId) {
+      applyTeamAccountability(current.value, result.build)
+      flush()
+    }
+    teamSaveState.value = 'saved'
+    const messages = {
+      assign: 'Task assignment saved',
+      submit: 'Work submitted for approval',
+      approve: 'Work approved. The task can now be rewarded.',
+      return: 'Task returned with feedback',
+    }
+    notify(messages[operation], 'success')
+  } catch (error) {
+    teamSaveState.value = 'error'
+    teamError.value = error instanceof ApiError && error.code === 'conflict'
+      ? 'The team tracker changed. Reopen it, then try again.'
       : messageOf(error)
     notify(teamError.value, 'error')
   } finally {
@@ -990,9 +1102,13 @@ function ownIt(): void {
     :plan="teamPlan"
     :team-only="true"
     :team-syncing="teamSyncing"
+    :team-save-state="teamSaveState"
+    :team-context="teamResult ? { address: session.address.value || '', role: teamResult.role, members: teamResult.members, activity: teamResult.activity || [], busy: teamSyncing } : undefined"
     :read-only="teamResult?.role === 'viewer'"
     @back="leaveTeam"
     @track-change="onTrackChange"
+    @team-retry="retryTeamSave"
+    @team-task="teamTaskAction"
     @notify="notify"
   >
     <template #banner>
@@ -1032,7 +1148,9 @@ function ownIt(): void {
       :regenerating="generating"
       :refining="refineBusy"
       :team-panel="ownerTeamPanel"
+      :team-context="teamResult && current.teamId === teamResult.teamId ? { address: session.address.value || '', role: teamResult.role, members: teamResult.members, activity: teamResult.activity || [], busy: teamSyncing } : undefined"
       :team-syncing="teamSyncing"
+      :team-save-state="teamSaveState"
       @back="back"
       @share="share"
       @share-revoke="revokeShare"
@@ -1047,6 +1165,8 @@ function ownIt(): void {
       @team-copy="copyTeamInvite"
       @team-reward="openTeamReward"
       @team-delete="deleteOwnerTeam"
+      @team-task="teamTaskAction"
+      @team-retry="retryTeamSave"
       @track-change="onTrackChange"
       @notify="notify"
     />
@@ -1119,7 +1239,7 @@ function ownIt(): void {
   <RewardSheet
     v-if="rewardRecipient && current"
     :recipient="rewardRecipient"
-    :tasks="current.build.milestones.flatMap((milestone) => milestone.tasks).filter((task) => task.status === 'done' && !task.reward).map((task) => ({ id: task.id, text: task.text }))"
+    :tasks="current.build.milestones.flatMap((milestone) => milestone.tasks).filter((task) => task.status === 'done' && task.approvalStatus === 'approved' && task.assignee === rewardRecipient && !task.reward).map((task) => ({ id: task.id, text: task.text }))"
     :busy="rewardBusy"
     :status="rewardStatus"
     :error="rewardError"
