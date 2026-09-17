@@ -576,7 +576,7 @@ function openTeamReward(address: string): void {
   const plan = current.value
   if (!plan) return
   const available = plan.build.milestones.flatMap((milestone) => milestone.tasks)
-    .some((task) => task.status === 'done' && !task.reward)
+    .some((task) => task.status === 'done' && task.approvalStatus === 'approved' && task.assignee === address && !task.reward)
   if (!available) {
     notify('Complete an unrewarded task first.', 'info')
     return
@@ -604,7 +604,7 @@ async function sendTeamReward(value: { taskId: string; amountLuna: number }): Pr
   const state = teamResult.value
   if (!teamId || !recipient || !plan || !state || rewardBusy.value) return
   const task = plan.build.milestones.flatMap((milestone) => milestone.tasks).find((item) => item.id === value.taskId)
-  if (!task || task.status !== 'done' || task.reward) return
+  if (!task || task.status !== 'done' || task.approvalStatus !== 'approved' || task.assignee !== recipient || task.reward) return
 
   rewardBusy.value = true
   rewardError.value = null
@@ -1239,7 +1239,7 @@ function ownIt(): void {
   <RewardSheet
     v-if="rewardRecipient && current"
     :recipient="rewardRecipient"
-    :tasks="current.build.milestones.flatMap((milestone) => milestone.tasks).filter((task) => task.status === 'done' && !task.reward).map((task) => ({ id: task.id, text: task.text }))"
+    :tasks="current.build.milestones.flatMap((milestone) => milestone.tasks).filter((task) => task.status === 'done' && task.approvalStatus === 'approved' && task.assignee === rewardRecipient && !task.reward).map((task) => ({ id: task.id, text: task.text }))"
     :busy="rewardBusy"
     :status="rewardStatus"
     :error="rewardError"
