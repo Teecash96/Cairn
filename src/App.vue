@@ -775,7 +775,6 @@ async function teamTaskAction(
       operation,
       assignee: operation === 'assign' ? value : undefined,
       note: operation === 'submit' || operation === 'return' ? value : undefined,
-      revision: state.revision,
     })
     teamResult.value = result
     if (teamPlan.value?.teamId === teamId) {
