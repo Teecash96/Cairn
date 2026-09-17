@@ -36,6 +36,7 @@ import {
   revokeSharedPlan,
   sharePlan,
   updateTeamMember,
+  updateTeamTask,
   updateTeamTracker,
 } from './lib/api'
 import type { RefineAction, TeamResult, TeamRole } from './lib/api'
@@ -759,6 +760,47 @@ function retryTeamSave(): void {
   void pushPendingTeamBuild(teamId)
 }
 
+async function teamTaskAction(
+  taskId: string,
+  operation: 'assign' | 'submit' | 'approve' | 'return',
+  value?: string,
+): Promise<void> {
+  const state = teamResult.value
+  const teamId = teamPlan.value?.teamId
+  if (!state || !teamId || teamSyncing.value) return
+  teamSyncing.value = true
+  teamSaveState.value = 'saving'
+  try {
+    const result = await updateTeamTask(teamId, taskId, {
+      operation,
+      assignee: operation === 'assign' ? value : undefined,
+      note: operation === 'submit' || operation === 'return' ? value : undefined,
+      revision: state.revision,
+    })
+    teamResult.value = result
+    if (teamPlan.value?.teamId === teamId) {
+      teamPlan.value.build = hydratePublicBuild(result.build)
+      teamPlan.value.updatedAt = Date.now()
+    }
+    teamSaveState.value = 'saved'
+    const messages = {
+      assign: 'Task assignment saved',
+      submit: 'Work submitted for approval',
+      approve: 'Work approved. The task can now be rewarded.',
+      return: 'Task returned with feedback',
+    }
+    notify(messages[operation], 'success')
+  } catch (error) {
+    teamSaveState.value = 'error'
+    teamError.value = error instanceof ApiError && error.code === 'conflict'
+      ? 'The team tracker changed. Reopen it, then try again.'
+      : messageOf(error)
+    notify(teamError.value, 'error')
+  } finally {
+    teamSyncing.value = false
+  }
+}
+
 // -- generation -------------------------------------------------------------
 
 /**
@@ -1043,10 +1085,12 @@ function ownIt(): void {
     :team-only="true"
     :team-syncing="teamSyncing"
     :team-save-state="teamSaveState"
+    :team-context="teamResult ? { address: session.address.value || '', role: teamResult.role, members: teamResult.members, activity: teamResult.activity || [], busy: teamSyncing } : undefined"
     :read-only="teamResult?.role === 'viewer'"
     @back="leaveTeam"
     @track-change="onTrackChange"
     @team-retry="retryTeamSave"
+    @team-task="teamTaskAction"
     @notify="notify"
   >
     <template #banner>
