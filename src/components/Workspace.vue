@@ -31,6 +31,7 @@ const {
   teamOnly = false,
   teamPanel,
   teamSyncing = false,
+  teamSaveState = 'idle',
 } = defineProps<{
   plan: Plan
   readOnly?: boolean
@@ -40,6 +41,7 @@ const {
   teamOnly?: boolean
   teamPanel?: TeamPanelState
   teamSyncing?: boolean
+  teamSaveState?: 'idle' | 'saving' | 'saved' | 'error'
 }>()
 
 const emit = defineEmits<{
@@ -59,6 +61,7 @@ const emit = defineEmits<{
   'team-reward': [address: string]
   'team-delete': []
   'track-change': [build: BuildPlan]
+  'team-retry': []
 }>()
 
 type Tab = 'plan' | 'flow' | 'build' | 'track' | 'team'
@@ -293,6 +296,10 @@ function onTabKey(event: KeyboardEvent): void {
       </section>
 
       <section v-else-if="tab === 'track'" id="panel-track" role="tabpanel" aria-labelledby="tab-track" tabindex="0">
+        <div v-if="teamOnly && teamSaveState !== 'idle'" class="team-save" role="status" aria-live="polite">
+          <span>{{ teamSaveState === 'saving' ? 'Saving team changes…' : teamSaveState === 'saved' ? 'All team changes saved' : 'Team changes were not saved.' }}</span>
+          <button v-if="teamSaveState === 'error'" type="button" class="btn btn--secondary btn--sm" @click="emit('team-retry')">Retry save</button>
+        </div>
         <MilestoneTracker v-model="plan.build" :read-only="readOnly" :editing="editing" :team-mode="teamOnly" @update:model-value="emit('track-change', $event)" />
       </section>
 
@@ -386,4 +393,6 @@ function onTabKey(event: KeyboardEvent): void {
   .context-action .mono { display: none; }
   .context-action .btn { width: 100%; }
 }
+.team-save { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); min-width: 0; margin-bottom: var(--s3); padding: var(--s3) var(--s4); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-sunken); color: var(--text-muted); font-size: var(--text-sm); }
+.team-save span { min-width: 0; overflow-wrap: anywhere; }
 </style>
