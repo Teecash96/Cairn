@@ -626,7 +626,7 @@ function applyTeamCommand(record: TeamRecord, command: TeamCommand): CommandResu
           ...record,
           build: preserveVerifiedRewards(clampTeamBuild(command.build, record.id), record.build),
           revision: record.revision + 1,
-          updatedAt: result.value.updatedAt,
+          updatedAt: Date.now(),
           activity: appendActivity(record, { address, action: 'updated', detail: 'Updated the team tracker' }),
         },
       }
@@ -835,7 +835,7 @@ export async function listTeams(env: Env, addressValue: string, appUrl: string):
   const teamIds = await readWalletTeams(env, address)
   const results = await Promise.allSettled(teamIds.map((teamId) => getTeam(env, teamId, address, appUrl)))
   const teams = results.flatMap((result) => result.status === 'fulfilled'
-    ? [{ teamId: result.value.teamId, name: result.value.name, role: result.value.role, updatedAt: Date.now() }]
+    ? [{ teamId: result.value.teamId, name: result.value.name, role: result.value.role, updatedAt: result.value.updatedAt }]
     : [])
   if (teams.length !== teamIds.length) {
     const validIds = teams.map((team) => team.teamId)
