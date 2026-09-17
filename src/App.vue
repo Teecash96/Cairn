@@ -753,6 +753,21 @@ async function pushPendingTeamBuild(teamId: string): Promise<void> {
   }
 }
 
+function applyTeamAccountability(plan: Plan, build: TeamResult['build']): void {
+  const serverTasks = new Map(build.milestones.flatMap((milestone) => milestone.tasks).map((task) => [task.id, task]))
+  for (const task of plan.build.milestones.flatMap((milestone) => milestone.tasks)) {
+    const server = serverTasks.get(task.id)
+    if (!server) continue
+    task.status = server.status
+    task.assignee = server.assignee
+    task.approvalStatus = server.approvalStatus
+    task.completionNote = server.completionNote
+    task.reviewNote = server.reviewNote
+    task.reward = server.reward
+  }
+  plan.updatedAt = Date.now()
+}
+
 function retryTeamSave(): void {
   const teamId = teamPlan.value?.teamId ?? current.value?.teamId
   if (!teamId || !pendingTeamBuild) return
@@ -766,7 +781,7 @@ async function teamTaskAction(
   value?: string,
 ): Promise<void> {
   const state = teamResult.value
-  const teamId = teamPlan.value?.teamId
+  const teamId = teamPlan.value?.teamId ?? current.value?.teamId
   if (!state || !teamId || teamSyncing.value) return
   teamSyncing.value = true
   teamSaveState.value = 'saving'
@@ -780,6 +795,10 @@ async function teamTaskAction(
     if (teamPlan.value?.teamId === teamId) {
       teamPlan.value.build = hydratePublicBuild(result.build)
       teamPlan.value.updatedAt = Date.now()
+    }
+    if (current.value?.teamId === teamId) {
+      applyTeamAccountability(current.value, result.build)
+      flush()
     }
     teamSaveState.value = 'saved'
     const messages = {
@@ -1129,7 +1148,9 @@ function ownIt(): void {
       :regenerating="generating"
       :refining="refineBusy"
       :team-panel="ownerTeamPanel"
+      :team-context="teamResult && current.teamId === teamResult.teamId ? { address: session.address.value || '', role: teamResult.role, members: teamResult.members, activity: teamResult.activity || [], busy: teamSyncing } : undefined"
       :team-syncing="teamSyncing"
+      :team-save-state="teamSaveState"
       @back="back"
       @share="share"
       @share-revoke="revokeShare"
@@ -1144,6 +1165,8 @@ function ownIt(): void {
       @team-copy="copyTeamInvite"
       @team-reward="openTeamReward"
       @team-delete="deleteOwnerTeam"
+      @team-task="teamTaskAction"
+      @team-retry="retryTeamSave"
       @track-change="onTrackChange"
       @notify="notify"
     />
