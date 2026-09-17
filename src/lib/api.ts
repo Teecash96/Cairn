@@ -107,6 +107,7 @@ export interface TeamResult {
   members: TeamMember[]
   build: PublicBuildPlan
   revision: number
+  updatedAt: number
   inviteUrl: string
   activity: TeamActivity[]
 }
