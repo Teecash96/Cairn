@@ -51,6 +51,7 @@ export interface TeamView {
   members: TeamMember[]
   build: PublicBuildPlan
   revision: number
+  updatedAt: number
   inviteUrl: string
   activity: TeamActivity[]
 }
@@ -198,6 +199,7 @@ function viewOf(record: TeamRecord, address: string, appUrl: string): TeamView {
     members: record.members.map((member) => ({ ...member })),
     build: record.build,
     revision: record.revision,
+    updatedAt: record.updatedAt,
     inviteUrl: `${baseUrl(appUrl)}/?t=${encodeURIComponent(record.id)}`,
     activity: Array.isArray(record.activity) ? record.activity.slice(-100).map((item) => ({ ...item })) : [],
   }
@@ -421,6 +423,7 @@ async function rawRecordReward(
   task.reward = { recipient, amountLuna: amountValue as number, transactionHash, createdAt: Date.now() }
   record.revision += 1
   record.updatedAt = Date.now()
+  record.activity = appendActivity(record, { address: owner, action: 'rewarded', taskId: task.id, taskText: task.text, detail: recipient })
   await writeRecord(env, record)
   return viewOf(record, owner, appUrl)
 }
@@ -623,7 +626,7 @@ function applyTeamCommand(record: TeamRecord, command: TeamCommand): CommandResu
           ...record,
           build: preserveVerifiedRewards(clampTeamBuild(command.build, record.id), record.build),
           revision: record.revision + 1,
-          updatedAt: Date.now(),
+          updatedAt: result.value.updatedAt,
           activity: appendActivity(record, { address, action: 'updated', detail: 'Updated the team tracker' }),
         },
       }
@@ -667,6 +670,7 @@ function applyTeamCommand(record: TeamRecord, command: TeamCommand): CommandResu
           },
           revision: record.revision + 1,
           updatedAt: now,
+          activity: appendActivity(record, { address: owner, action: 'rewarded', taskId: task.id, taskText: task.text, detail: recipient }),
         },
       }
     }
@@ -819,7 +823,10 @@ export async function getTeam(
   address: string,
   appUrl: string,
 ): Promise<TeamView> {
-  return coordinated(env, { action: 'get', teamId, address, appUrl })
+  const result = await coordinated(env, { action: 'get', teamId, address, appUrl })
+  const normalized = normalizeAddress(address)
+  if (normalized) await addWalletTeam(env, normalized, teamId)
+  return result
 }
 
 export async function listTeams(env: Env, addressValue: string, appUrl: string): Promise<TeamSummary[]> {
