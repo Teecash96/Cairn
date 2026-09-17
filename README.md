@@ -122,11 +122,12 @@ Nimiq wallet** selects the address. Generating a plan—or opening a protected
 team invite—then asks that wallet to sign a one-time Cairn verification message.
 An invited teammate can therefore open Track directly without creating a plan.
 
-Routes separates **Personal work** from **Teammate work**. After an invited
-teammate successfully opens a protected team, Cairn remembers that locator on
-the device for that wallet. The remembered row does not grant access: reopening
-it still requires the matching wallet signature. Owner-created plans remain in
-Personal work.
+Routes separates **Personal work** from **Teammate work**. After wallet
+verification, Cairn discovers that wallet's protected teams from the server on
+any device. Cairn also remembers recently opened locators on the current device.
+A route row never grants access: opening it requires the matching wallet
+signature. Owner-created plans remain in Personal work and can be exported as a
+JSON backup.
 
 Team members see and, when allowed, edit Track only. The shared snapshot contains
 milestones, task text, status, labels, dates, and the owner's milestone blocker
@@ -135,14 +136,17 @@ priorities, or dependency details. Owner changes to the team board sync through 
 revision check, so a stale editor cannot overwrite a newer update. Public Share
 links remain separate and read only.
 
-After a member completes a task, the owner can send a NIM reward directly to
-that member's wallet. Cairn checks the public transaction, records its proof on
-the completed task, and never holds the funds. Slow confirmations keep polling
-automatically; resuming confirmation reuses the receipt and does not request a
-second payment. Owners can also delete a team workspace and revoke its link.
+The owner assigns each task to an Editor wallet. Teammates can filter **My
+tasks**, submit completion proof, and wait for owner review. The owner approves
+the work or returns it with a short reason. Cairn records each protected action
+with the authenticated wallet and server time.
 
-The next team milestone adds wallet-assigned tasks, signed activity history,
-completion approval, and rewards that can go only to the approved assignee. See
+Only approved work can receive a NIM reward, and the recipient is locked to the
+task's assigned wallet. Cairn checks the public transaction, records its proof
+on the task, and never holds the funds. Slow confirmations keep polling
+automatically; resuming confirmation reuses the receipt and does not request a
+second payment. Owners can delete a workspace, revoke its link, and must
+reassign a teammate's open tasks before removing that wallet. See
 [wallet-native teammate accountability](docs/product/wallet-native-accountability.md)
 for the product contract and acceptance criteria.
 
