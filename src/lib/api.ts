@@ -80,6 +80,16 @@ export interface TeamMember {
 
 export type TeamAccess = 'owner' | TeamRole
 
+export interface TeamActivity {
+  id: string
+  address: string
+  action: 'updated' | 'assigned' | 'submitted' | 'approved' | 'returned' | 'rewarded'
+  taskId?: string
+  taskText?: string
+  detail?: string
+  createdAt: number
+}
+
 export interface TeamSummary {
   teamId: string
   name: string
@@ -98,6 +108,7 @@ export interface TeamResult {
   build: PublicBuildPlan
   revision: number
   inviteUrl: string
+  activity: TeamActivity[]
 }
 
 export type RefineAction =
@@ -408,6 +419,18 @@ export function updateTeamMember(teamId: string, address: string, role: TeamRole
 export function removeTeamMember(teamId: string, address: string): Promise<TeamResult> {
   return request<TeamResult>(`/team/${encodeURIComponent(teamId)}/members/${encodeURIComponent(address)}`, {
     method: 'DELETE',
+    auth: true,
+  })
+}
+
+export function updateTeamTask(teamId: string, taskId: string, body: {
+  operation: 'assign' | 'submit' | 'approve' | 'return'
+  assignee?: string
+  note?: string
+}): Promise<TeamResult> {
+  return request<TeamResult>(`/team/${encodeURIComponent(teamId)}/tasks/${encodeURIComponent(taskId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
     auth: true,
   })
 }
