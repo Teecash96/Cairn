@@ -108,7 +108,7 @@ function relayTeamTask(taskId: string, operation: 'assign' | 'submit' | 'approve
 
 const completedTasks = computed(() => plan.build.milestones.flatMap((milestone) => milestone.tasks)
   .filter((task) => task.status === 'done')
-  .map((task) => ({ id: task.id, text: task.text, rewarded: Boolean(task.reward) })))
+  .map((task) => ({ id: task.id, text: task.text, rewarded: Boolean(task.reward), assignee: task.assignee, approved: task.approvalStatus === 'approved' })))
 
 watch(
   () => plan.id,
