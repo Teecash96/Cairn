@@ -353,6 +353,9 @@ async function rawRemoveMember(
   requireOwner(record, owner)
   const index = record.members.findIndex((item) => item.address === member)
   if (index < 0) throw new TeamError('not_found', 'That wallet is not a team member.', 404)
+  const hasOpenAssignments = record.build.milestones.some((milestone) =>
+    milestone.tasks.some((task) => task.assignee === member && task.status !== 'done'))
+  if (hasOpenAssignments) throw new TeamError('conflict', 'Reassign this teammate’s open tasks before removing them.', 409)
   record.members.splice(index, 1)
   record.updatedAt = Date.now()
   record.revision += 1
@@ -577,6 +580,9 @@ function applyTeamCommand(record: TeamRecord, command: TeamCommand): CommandResu
       if (!record.members.some((item) => item.address === member)) {
         throw new TeamError('not_found', 'That wallet is not a team member.', 404)
       }
+      const hasOpenAssignments = record.build.milestones.some((milestone) =>
+        milestone.tasks.some((task) => task.assignee === member && task.status !== 'done'))
+      if (hasOpenAssignments) throw new TeamError('conflict', 'Reassign this teammate’s open tasks before removing them.', 409)
       const now = Date.now()
       return {
         address: owner,
