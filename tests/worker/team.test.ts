@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import worker from '../../worker/index.ts'
-import { addMember, createTeam, deleteTeam, getTeam, recordReward, removeMember, TeamCoordinator, TeamError, updateMember, updateTracker } from '../../worker/team.ts'
+import { addMember, createTeam, deleteTeam, getTeam, listTeams, recordReward, removeMember, TeamCoordinator, TeamError, updateMember, updateTracker } from '../../worker/team.ts'
 import { addressFromPublicKey } from '../../worker/http.ts'
 import type { Env, TeamRecord } from '../../worker/types.ts'
 
@@ -16,6 +16,10 @@ class MemoryKV {
 
   async put(key: string, value: string): Promise<void> {
     this.values.set(key, value)
+  }
+
+  async delete(key: string): Promise<void> {
+    this.values.delete(key)
   }
 }
 
@@ -94,6 +98,24 @@ function build() {
     }],
   }
 }
+
+
+test('discovers current teams for each signed wallet', async () => {
+  const kv = new MemoryKV()
+  const testEnv = env(kv)
+  const owner = address(20)
+  const member = address(21)
+  const created = await createTeam(testEnv, owner, {
+    planId: 'discoverable-plan', name: 'Discovered team', build: build(),
+  }, 'https://cairn.example')
+
+  assert.deepEqual((await listTeams(testEnv, owner, 'https://cairn.example')).map((team) => team.teamId), [created.teamId])
+  await addMember(testEnv, created.teamId, owner, member, 'editor', 'https://cairn.example')
+  assert.deepEqual((await listTeams(testEnv, member, 'https://cairn.example')).map((team) => team.name), ['Discovered team'])
+
+  await removeMember(testEnv, created.teamId, owner, member, 'https://cairn.example')
+  assert.deepEqual(await listTeams(testEnv, member, 'https://cairn.example'), [])
+})
 
 test('creates a protected team with a Track only projection', async () => {
   const kv = new MemoryKV()
