@@ -9,7 +9,7 @@ import { generateWithGemini, refineWithGemini } from './generate'
 import { inspectPayment, type PaymentInspection } from './payments'
 import { clampPlan, isInvalid, readPlanInput } from './shape'
 import { createShare, publicPlan, readShare, revokeShare } from './share'
-import { addMember, createTeam, deleteTeam, getTeam, recordReward, removeMember, TeamError, updateMember, updateTracker } from './team'
+import { addMember, createTeam, deleteTeam, getTeam, listTeams, recordReward, removeMember, TeamError, updateMember, updateTracker } from './team'
 import type { Env, PlanInput, RefineAction } from './types'
 
 function bodyRecord(value: unknown): Record<string, unknown> | null {
@@ -272,6 +272,16 @@ async function handleTeamCreate(env: Env, request: Request, cors: Record<string,
   }
 }
 
+async function handleTeamList(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
+  const session = await requireSession(env, request)
+  if (!session) return authRequired(cors)
+  try {
+    return json({ teams: await listTeams(env, session.address, teamBaseUrl(env, request)) }, 200, cors)
+  } catch (error) {
+    return teamFailure(error, cors)
+  }
+}
+
 async function handleTeamRead(env: Env, request: Request, teamId: string, cors: Record<string, string>): Promise<Response> {
   const session = await requireSession(env, request)
   if (!session) return authRequired(cors)
@@ -411,6 +421,7 @@ async function route(env: Env, request: Request): Promise<Response> {
   if (url.pathname === '/api/refine' && request.method === 'POST') return handleRefine(env, request, cors)
   if (url.pathname === '/api/redeem' && request.method === 'POST') return handleRedeem(env, request, cors)
   if (url.pathname === '/api/share' && request.method === 'POST') return handleShare(env, request, cors)
+  if (url.pathname === '/api/team' && request.method === 'GET') return handleTeamList(env, request, cors)
   if (url.pathname === '/api/team' && request.method === 'POST') return handleTeamCreate(env, request, cors)
   const teamMatch = /^\/api\/team\/([a-z2-9]{16,32})$/i.exec(url.pathname)
   if (teamMatch?.[1] && request.method === 'GET') return handleTeamRead(env, request, teamMatch[1], cors)
