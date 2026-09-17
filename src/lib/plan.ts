@@ -66,6 +66,8 @@ export interface FlowStep {
   branches?: [FlowBranch, FlowBranch]
 }
 
+export type TaskApprovalStatus = 'none' | 'pending' | 'approved' | 'changes_requested'
+
 export interface Task {
   /** Client-authored stable identity. Never supplied by the model. */
   id: string
@@ -78,6 +80,11 @@ export interface Task {
   dueDate?: string
   /** Task ids in this same plan. */
   dependsOn: string[]
+  /** Wallet assigned by the team owner. */
+  assignee?: string
+  approvalStatus?: TaskApprovalStatus
+  completionNote?: string
+  reviewNote?: string
   /** Public proof of an owner-sent NIM reward for this completed task. */
   reward?: TaskReward
 }
@@ -120,6 +127,10 @@ export interface PublicTask {
   status: TaskStatus
   labels: string[]
   dueDate?: string
+  assignee?: string
+  approvalStatus?: TaskApprovalStatus
+  completionNote?: string
+  reviewNote?: string
   reward?: TaskReward
 }
 
@@ -328,6 +339,12 @@ function normalizeTask(task: unknown): Task | null {
   const status = validStatus(raw.status) ? raw.status : raw.done === true ? 'done' : 'todo'
   const notes = typeof raw.notes === 'string' ? raw.notes.slice(0, TRACKER_NOTES_MAX) : ''
   const reward = normalizeReward(raw.reward)
+  const assignee = typeof raw.assignee === 'string' ? raw.assignee.replace(/\s+/g, '').toUpperCase() : ''
+  const approvalStatus = raw.approvalStatus === 'pending' || raw.approvalStatus === 'approved' || raw.approvalStatus === 'changes_requested'
+    ? raw.approvalStatus
+    : 'none'
+  const completionNote = typeof raw.completionNote === 'string' ? raw.completionNote.trim().slice(0, 500) : ''
+  const reviewNote = typeof raw.reviewNote === 'string' ? raw.reviewNote.trim().slice(0, 500) : ''
   return {
     id: typeof raw.id === 'string' && raw.id ? raw.id : newId(),
     text,
@@ -337,6 +354,10 @@ function normalizeTask(task: unknown): Task | null {
     notes,
     ...(optionalDate(raw.dueDate) ? { dueDate: raw.dueDate as string } : {}),
     dependsOn: dependencies(raw.dependsOn),
+    ...(/^NQ[0-9A-Z]{34}$/.test(assignee) ? { assignee } : {}),
+    ...(approvalStatus !== 'none' ? { approvalStatus } : {}),
+    ...(completionNote ? { completionNote } : {}),
+    ...(reviewNote ? { reviewNote } : {}),
     ...(reward ? { reward } : {}),
   }
 }
@@ -749,6 +770,10 @@ export function publicBuildOf(build: BuildPlan): PublicBuildPlan {
         status: task.status,
         labels: task.labels.slice(0, TRACKER_LABEL_MAX),
         ...(task.dueDate ? { dueDate: task.dueDate } : {}),
+        ...(task.assignee ? { assignee: task.assignee } : {}),
+        ...(task.approvalStatus ? { approvalStatus: task.approvalStatus } : {}),
+        ...(task.completionNote ? { completionNote: task.completionNote } : {}),
+        ...(task.reviewNote ? { reviewNote: task.reviewNote } : {}),
         ...(task.reward ? { reward: { ...task.reward } } : {}),
       })),
       ...(milestone.startDate ? { startDate: milestone.startDate } : {}),
