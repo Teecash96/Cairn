@@ -18,18 +18,27 @@ import {
   TASK_STATUS_LABEL,
   type MilestoneStatus,
 } from '../lib/tracker'
-import { formatNim } from '../lib/units'
+import { formatNim, shortAddress } from '../lib/units'
+import type { TeamAccess, TeamMember } from '../lib/api'
 
 const build = defineModel<BuildPlan>({ required: true })
-const { readOnly = false, editing = false, teamMode = false } = defineProps<{
+const { readOnly = false, editing = false, teamMode = false, teamAddress = '', teamRole, teamMembers = [], teamBusy = false } = defineProps<{
   readOnly?: boolean
   editing?: boolean
   /** Team workspaces expose only the public tracker fields. */
   teamMode?: boolean
+  teamAddress?: string
+  teamRole?: TeamAccess
+  teamMembers?: TeamMember[]
+  teamBusy?: boolean
+}>()
+
+const emit = defineEmits<{
+  'team-task': [taskId: string, operation: 'assign' | 'submit' | 'approve' | 'return', value?: string]
 }>()
 
 type View = 'board' | 'timeline'
-type Filter = 'all' | TaskStatus | 'blocked'
+type Filter = 'all' | TaskStatus | 'blocked' | 'mine'
 type EditorState =
   | { mode: 'task'; milestoneId: string; task?: Task }
   | { mode: 'milestone'; milestone?: Milestone }
@@ -37,6 +46,7 @@ type EditorState =
 
 const view = ref<View>('board')
 const filter = ref<Filter>('all')
+const filterOptions = computed<Filter[]>(() => teamMode ? ['all', 'mine', 'todo', 'in_progress', 'done', 'blocked'] : ['all', 'todo', 'in_progress', 'done', 'blocked'])
 const editor = ref<EditorState>(null)
 
 const stats = computed(() => projectStats(build.value))
@@ -61,6 +71,11 @@ function cloneTask(task: Task): Task {
     notes: task.notes,
     ...(task.dueDate ? { dueDate: task.dueDate } : {}),
     dependsOn: [...task.dependsOn],
+    ...(task.assignee ? { assignee: task.assignee } : {}),
+    ...(task.approvalStatus ? { approvalStatus: task.approvalStatus } : {}),
+    ...(task.completionNote ? { completionNote: task.completionNote } : {}),
+    ...(task.reviewNote ? { reviewNote: task.reviewNote } : {}),
+    ...(task.reward ? { reward: { ...task.reward } } : {}),
   }
 }
 
@@ -99,6 +114,7 @@ function taskBlocked(task: Task): boolean {
 function matches(task: Task, milestone: Milestone): boolean {
   if (filter.value === 'all') return true
   if (filter.value === 'blocked') return taskBlocked(task) || milestone.blocked
+  if (filter.value === 'mine') return Boolean(teamAddress) && task.assignee === teamAddress.replace(/\s+/g, '').toUpperCase()
   return task.status === filter.value
 }
 
@@ -233,6 +249,21 @@ function newTask(milestoneId: string): void {
 function newMilestone(): void {
   openMilestone({ id: newId(), title: '', outcome: '', tasks: [], blocked: false })
 }
+
+function assignTask(taskId: string, event: Event): void {
+  const value = (event.target as HTMLSelectElement).value
+  if (value) emit('team-task', taskId, 'assign', value)
+}
+
+function submitTask(task: Task): void {
+  const note = window.prompt('Add a completion note or proof link for the owner.')?.trim()
+  if (note) emit('team-task', task.id, 'submit', note)
+}
+
+function returnTask(task: Task): void {
+  const note = window.prompt('Tell the assignee what must change.')?.trim()
+  if (note) emit('team-task', task.id, 'return', note)
+}
 </script>
 
 <template>
@@ -274,8 +305,8 @@ function newMilestone(): void {
     </div>
 
     <div class="filters" role="group" aria-label="Filter tasks">
-      <button v-for="option in (['all', 'todo', 'in_progress', 'done', 'blocked'] as Filter[])" :key="option" type="button" class="filter" :class="{ 'filter--on': filter === option }" :aria-pressed="filter === option" @click="filter = option">
-        {{ option === 'all' ? 'All' : option === 'in_progress' ? 'In progress' : option === 'todo' ? 'To do' : option === 'done' ? 'Done' : 'Blocked' }}
+      <button v-for="option in filterOptions" :key="option" type="button" class="filter" :class="{ 'filter--on': filter === option }" :aria-pressed="filter === option" @click="filter = option">
+        {{ option === 'all' ? 'All' : option === 'mine' ? 'My tasks' : option === 'in_progress' ? 'In progress' : option === 'todo' ? 'To do' : option === 'done' ? 'Done' : 'Blocked' }}
       </button>
     </div>
 
@@ -311,11 +342,28 @@ function newMilestone(): void {
             </button>
             <div class="task-meta">
               <span v-for="label in task.labels" :key="label" class="badge badge--label">{{ label }}</span>
+              <span v-if="teamMode && task.assignee" class="badge badge--assignee">Assigned {{ shortAddress(task.assignee) }}</span>
+              <span v-if="teamMode && task.approvalStatus === 'pending'" class="badge badge--pending">Awaiting approval</span>
+              <span v-if="teamMode && task.approvalStatus === 'approved'" class="badge badge--approved">Approved</span>
+              <span v-if="teamMode && task.approvalStatus === 'changes_requested'" class="badge badge--blocked">Changes requested</span>
               <span v-if="task.dueDate" class="due" :class="{ 'due--late': isOverdue(task) }">{{ isOverdue(task) ? 'Overdue' : 'Due' }} {{ displayDate(task.dueDate) }}</span>
               <a v-if="task.reward" class="badge badge--reward" :href="`https://nimiq.watch/#${task.reward.transactionHash}`" target="_blank" rel="noopener noreferrer" @click.stop>Rewarded {{ formatNim(task.reward.amountLuna) }} NIM ↗</a>
             </div>
+            <div v-if="teamMode && task.completionNote" class="task-proof"><strong>Completion:</strong> {{ task.completionNote }}</div>
+            <div v-if="teamMode && task.reviewNote" class="task-proof task-proof--return"><strong>Owner:</strong> {{ task.reviewNote }}</div>
+            <div v-if="teamMode && !readOnly" class="team-task-actions">
+              <select v-if="teamRole === 'owner'" class="input assignment-select" :value="task.assignee ?? ''" :disabled="teamBusy" aria-label="Assign task" @change="assignTask(task.id, $event)">
+                <option value="" disabled>Assign teammate</option>
+                <option v-for="member in teamMembers" :key="member.address" :value="member.address">{{ shortAddress(member.address) }} · {{ member.role }}</option>
+              </select>
+              <button v-if="teamRole === 'editor' && task.assignee === teamAddress.replace(/\s+/g, '').toUpperCase() && task.approvalStatus !== 'pending' && task.approvalStatus !== 'approved'" type="button" class="btn btn--secondary btn--sm" :disabled="teamBusy" @click="submitTask(task)">Submit work</button>
+              <template v-if="teamRole === 'owner' && task.approvalStatus === 'pending'">
+                <button type="button" class="btn btn--primary btn--sm" :disabled="teamBusy" @click="emit('team-task', task.id, 'approve')">Approve</button>
+                <button type="button" class="btn btn--secondary btn--sm" :disabled="teamBusy" @click="returnTask(task)">Return</button>
+              </template>
+            </div>
             <div class="task-actions">
-              <button type="button" class="status-button" :disabled="readOnly" :aria-label="`Change status, currently ${TASK_STATUS_LABEL[task.status]}`" @click.stop="cycleStatus(task)">{{ TASK_STATUS_LABEL[task.status] }}</button>
+              <button type="button" class="status-button" :disabled="readOnly || teamMode" :aria-label="`Change status, currently ${TASK_STATUS_LABEL[task.status]}`" @click.stop="cycleStatus(task)">{{ TASK_STATUS_LABEL[task.status] }}</button>
               <template v-if="editing && !readOnly">
                 <button type="button" class="icon-btn icon-btn--small" :disabled="taskPosition(milestone, task.id) === 0" aria-label="Move task up" @click="moveTask(milestone.id, task.id, -1)">↑</button>
                 <button type="button" class="icon-btn icon-btn--small" :disabled="taskPosition(milestone, task.id) === milestone.tasks.length - 1" aria-label="Move task down" @click="moveTask(milestone.id, task.id, 1)">↓</button>
@@ -487,4 +535,11 @@ function newMilestone(): void {
   .task-actions { justify-content: space-between; }
 }
 @media (prefers-reduced-motion: reduce) { .progress-track__fill { transition: none; } }
+.badge--assignee { background: var(--accent-soft); color: var(--accent); }
+.badge--pending { background: var(--warning-subtle); color: var(--text); }
+.badge--approved { background: var(--success-subtle); color: var(--text); }
+.team-task-actions { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; min-width: 0; }
+.assignment-select { width: auto; min-width: 0; max-width: 100%; height: 36px; padding-block: 0; font-size: var(--text-xs); }
+.task-proof { min-width: 0; padding: var(--s2) var(--s3); border-radius: var(--r-sm); background: var(--surface-sunken); font-size: var(--text-xs); line-height: var(--leading); overflow-wrap: anywhere; }
+.task-proof--return { border-left: 3px solid var(--danger); }
 </style>
