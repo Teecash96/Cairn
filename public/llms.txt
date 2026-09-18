@@ -1,10 +1,10 @@
 # Cairn
 
-> Cairn turns a rough product idea into a clear product brief, user flow, builder pack, and reality check.
+> Cairn turns a rough product idea into daily work, evidence, wallet-native teamwork, and a route to release.
 
 ## Product
 
-Cairn is a mobile first web app designed for the Nimiq Pay mini app environment. A person describes an idea in plain language. Cairn maps it into an editable product plan, a five to eight step user flow, practical milestones and tasks, acceptance tests, and a reality check.
+Cairn is a mobile first web app designed for the Nimiq Pay mini app environment. A person describes an idea in plain language. Cairn maps it into an editable product plan, a five to eight step user flow, practical milestones and tasks, acceptance tests, and a reality check. Today then recommends one available task, records check-ins and validation evidence, supports progress-aware replanning, coordinates wallet-identified teammates, and prepares a release pack.
 
 ## Privacy
 

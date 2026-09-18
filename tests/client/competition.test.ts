@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { createExamplePlan } from '../../src/lib/example.ts'
 import { refinementDifferences, removedRefinementTasks, mergeRefinement } from '../../src/lib/refinement.ts'
@@ -72,4 +73,24 @@ test('unchanged proposals produce no differences and each sample has independent
   const second = createExamplePlan()
   assert.notEqual(first.id, second.id)
   assert.equal(second.build.milestones[0]!.tasks[0]!.status, 'todo')
+})
+
+test('the social preview is a valid 1200 by 630 PNG', () => {
+  const image = readFileSync(new URL('../../public/social-card.png', import.meta.url))
+  assert.deepEqual([...image.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10])
+  assert.equal(image.readUInt32BE(16), 1200)
+  assert.equal(image.readUInt32BE(20), 630)
+})
+
+test('public metadata describes the free execution product', () => {
+  const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8')
+  assert.match(html, /Turn the idea into work that ships/)
+  const viewport = html.match(/<meta\s+name="viewport"\s+content="([^"]+)"/)
+  assert.ok(viewport?.[1])
+  assert.doesNotMatch(viewport[1], /maximum-scale|user-scalable=no/)
+  const block = html.match(/<script type="application\/ld\+json">\s*([\s\S]*?)\s*<\/script>/)
+  assert.ok(block?.[1])
+  const schema = JSON.parse(block[1]) as { isAccessibleForFree?: boolean; offers?: unknown }
+  assert.equal(schema.isAccessibleForFree, true)
+  assert.equal(schema.offers, undefined)
 })

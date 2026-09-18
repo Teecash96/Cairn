@@ -28,7 +28,8 @@
   --ink: #151713;
   --text: #151713;
   --text-muted: #565d54;
-  --text-faint: #7d847a;
+  /* Small labels still meet WCAG AA against both atlas surfaces. */
+  --text-faint: #60675e;
 
   --line: #d8d1c2;
   --line-strong: #b8b0a1;
@@ -111,7 +112,7 @@
     --ink: #f2efe7;
     --text: #f2efe7;
     --text-muted: #a7afa4;
-    --text-faint: #747d72;
+    --text-faint: #8d958b;
 
     --line: #30372f;
     --line-strong: #4a5348;

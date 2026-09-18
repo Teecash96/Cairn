@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.0 — 2026-09-18
+
+- Reframe the product from plan generation to an idea-to-release execution loop.
+- Add a three-step first-run guide and open the sample route on Today.
+- Correct structured data that incorrectly advertised a 1 NIM product price.
+- Replace the invalid social preview file with a reproducible 1200 × 630 brand asset.
+- Remind builders with meaningful progress to save a restorable JSON backup.
+- Add sampled privacy-safe service diagnostics without prompts, URLs, identifiers, wallets, bodies, or network addresses.
+- Add Playwright mobile overflow, product-route, metadata, and WCAG A/AA checks to CI.
+- Refresh public descriptions, examples, repository documentation, and social metadata.
+
 ## 1.5.0 — 2026-09-18
 
 - Add a Today workspace with one recommended next task and live project signals.

@@ -491,11 +491,46 @@ async function route(env: Env, request: Request): Promise<Response> {
   })
 }
 
+function operationOf(request: Request): string | null {
+  const path = new URL(request.url).pathname
+  if (!path.startsWith('/api/')) return null
+  if (path.startsWith('/api/auth/')) return 'auth'
+  if (path === '/api/generate') return 'generate'
+  if (path === '/api/refine') return 'refine'
+  if (path.startsWith('/api/team')) return 'team'
+  if (path.startsWith('/api/share')) return 'share'
+  if (path === '/api/redeem' || path === '/api/credits') return 'legacy_credit'
+  return 'other_api'
+}
+
+function reportOperation(request: Request, response: Response, startedAt: number): void {
+  const operation = operationOf(request)
+  if (!operation) return
+  // Deliberately exclude URLs, ids, wallet addresses, bodies, and network
+  // addresses. Cloudflare samples these coarse service-health records.
+  console.info(JSON.stringify({
+    event: 'cairn_operation',
+    operation,
+    method: request.method,
+    status: response.status,
+    durationMs: Date.now() - startedAt,
+  }))
+}
+
 export default { async fetch(request: Request, env: Env): Promise<Response> {
-  try { return await route(env, request) } catch (error) {
+  const startedAt = Date.now()
+  try {
+    const response = await route(env, request)
+    reportOperation(request, response, startedAt)
+    return response
+  } catch (error) {
     if (error instanceof CreditLedgerUnavailable) {
-      return fail('server', 'Credit service maintenance. Please try again later; do not send another payment.', 503, corsHeaders(request))
+      const response = fail('server', 'Credit service maintenance. Please try again later; do not send another payment.', 503, corsHeaders(request))
+      reportOperation(request, response, startedAt)
+      return response
     }
+    const operation = operationOf(request)
+    if (operation) console.error(JSON.stringify({ event: 'cairn_operation_failed', operation, durationMs: Date.now() - startedAt }))
     throw error
   }
 } }

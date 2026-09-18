@@ -11,6 +11,15 @@ name = "cairn"
 main = "worker/index.ts"
 compatibility_date = "2026-08-01"
 
+# Keep enough privacy-safe service health data to detect slow or failing API
+# categories. Invocation logs are disabled because they can include request
+# metadata. Cairn emits only category, method, status, and duration, sampled at
+# ten percent; it never logs prompts, URLs, ids, wallets, or request bodies.
+[observability.logs]
+enabled = true
+head_sampling_rate = 0.1
+invocation_logs = false
+
 # Static assets. Route them through the Worker so the response security headers
 # apply to the app, not only to API responses. The asset binding still serves the
 # file from Cloudflare's edge; `run_worker_first` only keeps the header policy in
@@ -39,8 +48,9 @@ preview_id = "e9d8888ac4344658be9fa668ab85bd0d"
 # deployed Worker cannot silently drift to different model behavior.
 GEMINI_MODEL = "gemini-3.1-flash-lite"
 
-# Required NIM payment bundle. 1 NIM equals 100,000 Luna and unlocks ten
-# successful AI generations or refinements.
+# Legacy credit quote retained for old paid receipts and ledger compatibility.
+# New plans and refinements are free. Direct teammate rewards use the assigned
+# teammate's address instead of this legacy receiving address.
 PAY_TO = "NQ19 E39Q Y9EQ 937E YQYC 13D2 4LCC UPTN 3VPS"
 PRICE_LUNA = "100000"
 PLANS_PER_PAYMENT = "10"
