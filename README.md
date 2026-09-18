@@ -9,6 +9,7 @@
 [Competition](https://miniappscompetition.com/submissions/cycle2) ·
 [Architecture](docs/architecture.md) ·
 [Daily execution](docs/product/daily-execution-loop.md) ·
+[Competition improvements](docs/product/competition-improvements.md) ·
 [Release checklist](docs/release-checklist.md)
 
 ![Cairn turns a rough idea into work that ships through planning, focus, validation, collaboration, rewards, and release.](docs/screenshots/cairn-01-social-preview.png)

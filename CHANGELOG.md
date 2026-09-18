@@ -10,6 +10,7 @@
 - Add sampled privacy-safe service diagnostics without prompts, URLs, identifiers, wallets, bodies, or network addresses.
 - Add Playwright mobile overflow, product-route, metadata, and WCAG A/AA checks to CI.
 - Refresh public descriptions, examples, repository documentation, and social metadata.
+- Document the competition-readiness improvements, their purpose, verification evidence, and remaining manual wallet tests.
 
 ## 1.5.0 — 2026-09-18
 
