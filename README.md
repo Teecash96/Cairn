@@ -22,7 +22,7 @@ a private execution workspace an indie builder can use through release.
 Cairn is not only a plan generator. It keeps the plan connected to the work,
 evidence, team accountability, rewards, and release:
 
-**Idea → Plan → Focus → Execute → Check in → Validate → Replan → Approve → Reward → Release**
+**Idea → Plan → Focus → Execute → Check in → Validate → Report → Replan → Approve → Reward → Release**
 
 | Stage | What Cairn provides |
 | --- | --- |
@@ -124,9 +124,11 @@ session and no payment wall.
    notes. Changes save on this device.
 8. Choose **Replan from progress** after a check-in. Cairn uses the task state,
    blocker, and validation evidence to propose the smallest useful adjustment.
-9. Use **Release mode** to check readiness and copy a launch pack with release
+9. Open **Reports** in Today to draft an editable progress update, milestone
+   review, validation report, or stakeholder brief from the work already recorded.
+10. Use **Release mode** to check readiness and copy a launch pack with release
    notes, product copy, social copy, a demo outline, known issues, and metrics.
-10. Copy the plan as Markdown, share a public read only link, or create a protected
+11. Copy the plan as Markdown, share a public read only link, or create a protected
    team workspace for Track.
 
 ### Daily execution
@@ -142,6 +144,31 @@ not added to public shares or protected team Track snapshots. Choosing
 **Replan from progress** sends a compact check-in summary plus task status,
 task due dates, and milestone blocker state to Gemini. It never sends private
 notes, priorities, dependencies, wallet assignments, or reward data.
+
+### Project reports
+
+The **Reports** section in Today turns the current route into a report without
+making the owner reconstruct the project from memory. Choose one of four formats:
+
+| Report | Best used for |
+| --- | --- |
+| **Progress update** | A regular summary of completed work, evidence, blockers, changes, team activity, and next steps |
+| **Milestone review** | Status and outcomes across the plan's milestones, including incomplete or blocked work |
+| **Validation report** | Hypotheses, tests, observed evidence, decisions, and the next experiment |
+| **Stakeholder brief** | A concise update for a client, sponsor, judge, or community |
+
+**Draft from progress** uses only information already recorded in Cairn: task
+status, check-ins, validation results, blockers, decisions, next steps,
+assignments, approvals, and rewards. Private task notes are never inserted into
+the generated report.
+
+The owner can edit the report type, title, audience, reporting period, and every
+word of the body. **Copy report** produces Markdown for an email, document,
+issue, or public update. Cairn does not publish or send it automatically.
+
+The current draft remains in the private local route and is included in a JSON
+backup. It is excluded from public plan shares and protected Track-only team
+workspaces. It leaves the device only when the owner copies it.
 
 ### Planner follow ups
 
