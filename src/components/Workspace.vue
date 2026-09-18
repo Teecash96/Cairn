@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import BuildView from './BuildView.vue'
 import CairnMark from './CairnMark.vue'
+import ExecuteView from './ExecuteView.vue'
 import FlowDiagram from './FlowDiagram.vue'
 import MilestoneTracker from './MilestoneTracker.vue'
 import PrdView from './PrdView.vue'
@@ -75,16 +76,17 @@ const emit = defineEmits<{
   'team-task': [taskId: string, operation: 'assign' | 'submit' | 'approve' | 'return', value?: string]
 }>()
 
-type Tab = 'plan' | 'flow' | 'build' | 'track' | 'team'
+type Tab = 'today' | 'plan' | 'flow' | 'build' | 'track' | 'team'
 type PlanView = 'map' | 'details'
 
-const tab = ref<Tab>(teamOnly ? 'track' : 'plan')
+const tab = ref<Tab>(teamOnly ? 'track' : readOnly ? 'plan' : 'today')
 const planView = ref<PlanView>('map')
 const editing = ref(false)
 const confirmingRemove = ref(false)
 const actionsOpen = ref(false)
 const downloadable = canDownload()
 const routeTabs: Array<{ id: Exclude<Tab, 'team'>; label: string }> = [
+  { id: 'today', label: 'Today' },
   { id: 'plan', label: 'Plan' },
   { id: 'flow', label: 'Flow' },
   { id: 'build', label: 'Build' },
@@ -97,13 +99,18 @@ const metaLabel = computed(() => {
   if (teamOnly) return `Track only · ${readOnly ? 'viewer' : 'editor'}`
   return readOnly ? 'shared with you' : `edited ${edited.value}`
 })
-const availableTabs = computed<Tab[]>(() => teamOnly ? ['track'] : ['plan', 'flow', 'build', 'track'])
+const availableTabs = computed<Tab[]>(() => teamOnly ? ['track'] : readOnly ? ['plan', 'flow', 'build', 'track'] : ['today', 'plan', 'flow', 'build', 'track'])
+const visibleRouteTabs = computed(() => routeTabs.filter((item) => availableTabs.value.includes(item.id)))
 function compactAddress(address: string): string {
   return address.length > 15 ? `${address.slice(0, 8)}…${address.slice(-5)}` : address
 }
 
 function relayTeamTask(taskId: string, operation: 'assign' | 'submit' | 'approve' | 'return', value?: string): void {
   emit('team-task', taskId, operation, value)
+}
+
+function relayNotify(message: string, tone?: 'info' | 'success' | 'error'): void {
+  emit('notify', message, tone)
 }
 
 const completedTasks = computed(() => plan.build.milestones.flatMap((milestone) => milestone.tasks)
@@ -113,7 +120,7 @@ const completedTasks = computed(() => plan.build.milestones.flatMap((milestone) 
 watch(
   () => plan.id,
   () => {
-    tab.value = teamOnly ? 'track' : 'plan'
+    tab.value = teamOnly ? 'track' : readOnly ? 'plan' : 'today'
     planView.value = 'map'
     editing.value = false
     confirmingRemove.value = false
@@ -198,7 +205,7 @@ function onTabKey(event: KeyboardEvent): void {
   const tabs = availableTabs.value
   const currentIndex = tabs.indexOf(tab.value)
   const offset = event.key === 'ArrowRight' ? 1 : -1
-  tab.value = tabs[(currentIndex + offset + tabs.length) % tabs.length] ?? tabs[0] ?? 'plan'
+  tab.value = tabs[(currentIndex + offset + tabs.length) % tabs.length] ?? tabs[0] ?? 'today'
 }
 </script>
 
@@ -269,14 +276,18 @@ function onTabKey(event: KeyboardEvent): void {
     </div>
 
     <div v-if="!teamOnly && tab !== 'team'" class="route-tabs" role="tablist" aria-label="Product route" @keydown="onTabKey">
-      <button v-for="(item, index) in routeTabs" :id="`tab-${item.id}`" :key="item.id" type="button" role="tab" class="route-tab" :class="{ 'route-tab--on': tab === item.id }" :aria-selected="tab === item.id" :aria-controls="`panel-${item.id}`" :tabindex="tab === item.id ? 0 : -1" @click="select(item.id)">
+      <button v-for="(item, index) in visibleRouteTabs" :id="`tab-${item.id}`" :key="item.id" type="button" role="tab" class="route-tab" :class="{ 'route-tab--on': tab === item.id }" :aria-selected="tab === item.id" :aria-controls="`panel-${item.id}`" :tabindex="tab === item.id ? 0 : -1" @click="select(item.id)">
         <span class="route-tab__number">0{{ index + 1 }}</span>
         <span>{{ item.label }}</span>
       </button>
     </div>
 
     <div class="body">
-      <section v-if="tab === 'plan' && !teamOnly" id="panel-plan" role="tabpanel" aria-labelledby="tab-plan" tabindex="0">
+      <section v-if="tab === 'today' && !teamOnly" id="panel-today" role="tabpanel" aria-labelledby="tab-today" tabindex="0">
+        <ExecuteView :plan="plan" :read-only="readOnly" :refining="refining" @replan="emit('refine', 'replan_from_progress')" @open-track="select('track')" @notify="relayNotify" />
+      </section>
+
+      <section v-else-if="tab === 'plan' && !teamOnly" id="panel-plan" role="tabpanel" aria-labelledby="tab-plan" tabindex="0">
         <div class="plan-tools">
           <div class="plan-switch" aria-label="Plan view">
             <button type="button" :class="{ on: planView === 'map' }" :aria-pressed="planView === 'map'" @click="planView = 'map'">Map</button>
@@ -354,7 +365,7 @@ function onTabKey(event: KeyboardEvent): void {
         <TeamPanel :team-id="teamPanel.teamId" :owner="teamPanel.owner" :role="teamPanel.role" :members="teamPanel.members" :invite-url="teamPanel.inviteUrl" :loading="teamPanel.loading" :error="teamPanel.error" :syncing="teamSyncing" :completed-tasks="completedTasks" @create="emit('team-create')" @add="teamAdd" @update="teamUpdate" @remove="emit('team-remove', $event)" @copy="emit('team-copy', $event)" @reward="emit('team-reward', $event)" @delete="emit('team-delete')" />
       </section>
 
-      <div v-if="tab !== 'team'" class="context-action">
+      <div v-if="tab !== 'team' && tab !== 'today'" class="context-action">
         <span class="mono">EXPORT CURRENT STOP</span>
         <button type="button" class="btn btn--secondary btn--sm" @click="copy(teamOnly || tab === 'track' ? 'track' : tab === 'plan' ? 'prd' : tab === 'flow' ? 'flow' : 'build')">
           {{ teamOnly || tab === 'track' ? 'Copy tracker' : tab === 'plan' ? 'Copy plan' : tab === 'flow' ? 'Copy flow' : 'Copy builder pack' }}
@@ -400,7 +411,7 @@ function onTabKey(event: KeyboardEvent): void {
 .name { font-family: var(--font-display); font-size: clamp(1.7rem, 6vw, 3.5rem); font-weight: 700; }
 .meta { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); font-size: var(--text-xs); }
 .eyebrow { margin: 0 0 var(--s2); color: var(--accent); font-family: var(--font-mono); font-size: .7rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
-.route-tabs { position: sticky; top: calc(var(--safe-top) + 58px); z-index: 20; display: grid; grid-template-columns: repeat(4, 1fr); padding: 0 var(--workspace-pad); background: var(--bg); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.route-tabs { position: sticky; top: calc(var(--safe-top) + 58px); z-index: 20; display: grid; grid-template-columns: repeat(auto-fit, minmax(58px, 1fr)); padding: 0 var(--workspace-pad); background: var(--bg); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .route-tab { position: relative; display: flex; align-items: baseline; gap: .45rem; min-width: 0; padding: var(--s3) var(--s2); color: var(--text-faint); font-size: var(--text-sm); font-weight: 750; text-align: left; border-right: 1px solid var(--line); }
 .route-tab:first-child { border-left: 1px solid var(--line); }
 .route-tab::after { content: ''; position: absolute; right: 0; bottom: -1px; left: 0; height: 3px; background: transparent; }
