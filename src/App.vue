@@ -44,6 +44,7 @@ import { copyText, shareLink } from './lib/clipboard'
 import {
   createPlan,
   deletePlan,
+  emptyExecutionState,
   getPlan,
   libraryIsPersistent,
   listPlans,
@@ -53,6 +54,7 @@ import {
   normalizeSharedPlan,
   renamePlan,
   savePlan,
+  syncTaskJournal,
   publicTrackOf,
   titleOf,
   type BuildPlanDraft,
@@ -254,6 +256,7 @@ async function loadShared(shareId: string): Promise<void> {
 
 function teamPlanFrom(result: TeamResult): Plan {
   const now = Date.now()
+  const build = hydratePublicBuild(result.build)
   return {
     id: `team-${result.teamId}`,
     name: result.name,
@@ -272,8 +275,9 @@ function teamPlanFrom(result: TeamResult): Plan {
       outOfScope: [],
     },
     flow: [],
-    build: hydratePublicBuild(result.build),
+    build,
     realityCheck: [],
+    execution: emptyExecutionState(build),
     teamId: result.teamId,
   }
 }
@@ -323,6 +327,7 @@ function flush(): void {
 
   // Guarded: the watcher below would otherwise see this stamp as a fresh edit.
   saving = true
+  syncTaskJournal(plan)
   plan.updatedAt = Date.now()
   if (!savePlan(plan)) persistent.value = false
   plans.value = listPlans()
@@ -920,6 +925,26 @@ function openRefine(action: RefineAction): void {
   if (action !== 'custom') void runRefinement(action)
 }
 
+function progressSummary(plan: Plan): string {
+  const tasks = plan.build.milestones.flatMap((milestone) => milestone.tasks)
+  const counts = {
+    todo: tasks.filter((task) => task.status === 'todo').length,
+    active: tasks.filter((task) => task.status === 'in_progress').length,
+    done: tasks.filter((task) => task.status === 'done').length,
+  }
+  const latest = plan.execution.checkIns.at(-1)
+  const openExperiments = plan.execution.experiments.filter((item) => item.decision === 'open')
+  const decided = plan.execution.experiments.filter((item) => item.decision !== 'open').slice(-2)
+  return [
+    `Tasks: ${counts.done} done, ${counts.active} active, ${counts.todo} to do.`,
+    latest?.blocker ? `Blocker: ${latest.blocker}` : '',
+    latest?.changed ? `Changed: ${latest.changed}` : '',
+    latest?.nextStep ? `Builder next step: ${latest.nextStep}` : '',
+    openExperiments.length ? `${openExperiments.length} validation experiment(s) still open.` : '',
+    decided.length ? `Recent evidence: ${decided.map((item) => `${item.hypothesis}: ${item.result || item.decision}`).join('; ')}` : '',
+  ].filter(Boolean).join(' ').slice(0, 500)
+}
+
 async function runRefinement(action: RefineAction, question?: string): Promise<void> {
   const plan = current.value
   if (!plan || refineBusy.value) return
@@ -932,14 +957,15 @@ async function runRefinement(action: RefineAction, question?: string): Promise<v
       return
     }
 
+    const progressQuestion = action === 'replan_from_progress' ? progressSummary(plan) : question
     if (localPreview) {
-      const stub = stubRefinement(plan, action, question)
+      const stub = stubRefinement(plan, action, progressQuestion)
       refineExplanation.value = stub.explanation
       refineAnswer.value = stub.answer ?? ''
       refineChanges.value = stub.changes
       return
     }
-    const result = await refinePlan({ address, plan, action, question })
+    const result = await refinePlan({ address, plan, action, question: progressQuestion })
     refineExplanation.value = result.explanation
     refineAnswer.value = result.answer ?? ''
     refineChanges.value = result.changes
