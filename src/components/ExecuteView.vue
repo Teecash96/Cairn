@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { copyText } from '../lib/clipboard'
+import { buildProjectReport, REPORT_KIND_LABELS } from '../lib/report'
 import {
   EXECUTION_EXPERIMENT_MAX,
   newId,
@@ -8,6 +9,7 @@ import {
   titleOf,
   type BuildJournalEntry,
   type Plan,
+  type ReportKind,
   type Task,
   type ValidationExperiment,
 } from '../lib/plan'
@@ -67,6 +69,7 @@ const releaseChecklist = computed(() => [
 ])
 const checkInReady = computed(() => [completed.value, blocker.value, changed.value, nextStep.value].some((value) => value.trim().length >= 2))
 const experimentReady = computed(() => hypothesis.value.trim().length >= 8 && method.value.trim().length >= 8 && successMetric.value.trim().length >= 4)
+const reportKinds = Object.entries(REPORT_KIND_LABELS) as Array<[ReportKind, string]>
 
 function addJournal(entry: Omit<BuildJournalEntry, 'id' | 'createdAt'>): void {
   plan.execution.journal.push({ id: newId(), createdAt: Date.now(), ...entry })
@@ -132,6 +135,33 @@ function updateExperiment(experiment: ValidationExperiment): void {
 function recordExperimentDecision(experiment: ValidationExperiment): void {
   updateExperiment(experiment)
   if (experiment.decision !== 'open') addJournal({ kind: 'experiment', title: `Decision: ${experiment.decision}`, detail: `${experiment.hypothesis}${experiment.result ? ` · ${experiment.result}` : ''}` })
+}
+
+function draftReport(): void {
+  if (readOnly) return
+  const report = plan.execution.report
+  const now = Date.now()
+  report.title = `${REPORT_KIND_LABELS[report.kind]} · ${titleOf(plan)}`
+  report.body = buildProjectReport(plan, report.kind)
+  report.updatedAt = now
+  emit('notify', 'Editable report drafted from current progress', 'success')
+}
+
+function updateReport(): void {
+  if (!readOnly) plan.execution.report.updatedAt = Date.now()
+}
+
+async function copyReport(): Promise<void> {
+  const report = plan.execution.report
+  const heading = report.title.trim() ? `# ${report.title.trim()}` : `# ${REPORT_KIND_LABELS[report.kind]}`
+  const context = [report.period.trim() && `**Period:** ${report.period.trim()}`, report.audience.trim() && `**For:** ${report.audience.trim()}`].filter(Boolean).join('\n')
+  const output = [heading, context, report.body.trim()].filter(Boolean).join('\n\n')
+  if (!report.body.trim()) {
+    emit('notify', 'Draft or write the report before copying it.', 'error')
+    return
+  }
+  if (await copyText(output)) emit('notify', 'Report copied as Markdown', 'success')
+  else emit('notify', 'This browser would not let Cairn copy the report.', 'error')
 }
 
 function releaseMarkdown(): string {
@@ -242,6 +272,23 @@ function markShipped(): void {
       <p v-if="plan.execution.release.shippedAt" class="muted">Last shipped {{ relativeTime(plan.execution.release.shippedAt) }}.</p>
     </section>
 
+    <section class="execution-section report-card card" aria-labelledby="report-heading">
+      <div class="section-heading">
+        <div><p class="eyebrow">Reports</p><h3 id="report-heading">Write an update from real progress</h3></div>
+        <span v-if="plan.execution.report.updatedAt" class="faint">Updated {{ relativeTime(plan.execution.report.updatedAt) }}</span>
+      </div>
+      <p class="muted">Cairn drafts from tasks, check-ins, evidence, blockers, decisions, and teammate activity. Edit every word before you share it.</p>
+      <div class="report-grid">
+        <label><span>Report type</span><select v-model="plan.execution.report.kind" class="input" :disabled="readOnly" @change="updateReport"><option v-for="[value, label] in reportKinds" :key="value" :value="value">{{ label }}</option></select></label>
+        <label><span>Reporting period</span><input v-model="plan.execution.report.period" class="input" :readonly="readOnly" maxlength="120" placeholder="For example: 12–18 September" @input="updateReport" /></label>
+        <label><span>Title</span><input v-model="plan.execution.report.title" class="input" :readonly="readOnly" maxlength="180" placeholder="Progress update" @input="updateReport" /></label>
+        <label><span>Audience</span><input v-model="plan.execution.report.audience" class="input" :readonly="readOnly" maxlength="300" placeholder="Team, client, judges, or community" @input="updateReport" /></label>
+        <label class="report-wide"><span>Report</span><textarea v-model="plan.execution.report.body" class="textarea report-body" :readonly="readOnly" maxlength="12000" rows="14" placeholder="Draft from current progress or write the report here." @input="updateReport" /></label>
+      </div>
+      <div class="button-row"><button v-if="!readOnly" type="button" class="btn btn--primary btn--sm" @click="draftReport">Draft from progress</button><button type="button" class="btn btn--secondary btn--sm" :disabled="!plan.execution.report.body.trim()" @click="copyReport">Copy report</button></div>
+      <p class="faint">The report stays in this local route and its JSON backup until you copy it.</p>
+    </section>
+
     <section class="execution-section">
       <div class="section-heading"><div><p class="eyebrow">Build journal</p><h3>What actually happened</h3></div><span v-if="latestCheckIn" class="faint">Last check-in {{ relativeTime(latestCheckIn.createdAt) }}</span></div>
       <ol v-if="journal.length" class="journal">
@@ -263,15 +310,18 @@ function markShipped(): void {
 .today-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s2); font-size: var(--text-xs); }
 .today-stats span { min-width: 0; overflow-wrap: anywhere; }
 .today-stats strong { display: block; font-size: var(--text-lg); }
-.focus-card, .release-card, .execution-form, .experiment { display: grid; gap: var(--s3); padding: var(--s4); }
+.focus-card, .release-card, .report-card, .execution-form, .experiment { display: grid; gap: var(--s3); padding: var(--s4); }
 .focus-card h3, .execution-form h3 { overflow-wrap: anywhere; }
 .today-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
-.execution-form label, .experiment label, .release-grid label { display: grid; gap: var(--s1); min-width: 0; font-size: var(--text-sm); font-weight: 700; }
+.execution-form label, .experiment label, .release-grid label, .report-grid label { display: grid; gap: var(--s1); min-width: 0; font-size: var(--text-sm); font-weight: 700; }
 .execution-section { display: grid; gap: var(--s3); padding-top: var(--s3); }
 .experiment-list { display: grid; gap: var(--s3); }
 .experiment__head strong { min-width: 0; overflow-wrap: anywhere; }
 .release-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
 .release-wide { grid-column: 1 / -1; }
+.report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+.report-wide { grid-column: 1 / -1; }
+.report-body { min-height: 19rem; font-family: var(--font-mono); font-size: var(--text-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
 .release-checklist { display: grid; gap: var(--s2); margin: 0; padding: 0; list-style: none; }
 .release-checklist li { display: flex; gap: var(--s2); color: var(--text-muted); }
 .release-checklist li.done { color: var(--success, #19724a); }
@@ -280,5 +330,5 @@ function markShipped(): void {
 .journal__mark { width: 10px; height: 10px; margin-top: .35rem; border: 2px solid var(--accent); border-radius: 50%; box-shadow: 0 1.5rem 0 -4px var(--line); }
 .journal p { margin: var(--s1) 0; }
 .empty { padding: var(--s4); border: 1px dashed var(--line); border-radius: var(--r-md); }
-@media (max-width: 520px) { .today-stats { grid-template-columns: 1fr 1fr; } .today-actions, .release-grid { grid-template-columns: 1fr; } .release-wide { grid-column: auto; } .button-row { align-items: stretch; flex-direction: column; } .button-row .btn { width: 100%; } }
+@media (max-width: 520px) { .today-stats { grid-template-columns: 1fr 1fr; } .today-actions, .release-grid, .report-grid { grid-template-columns: 1fr; } .release-wide, .report-wide { grid-column: auto; } .button-row { align-items: stretch; flex-direction: column; } .button-row .btn { width: 100%; } }
 </style>

@@ -22,6 +22,7 @@ teamwork, task approval, direct teammate rewards, and release preparation.
 | Product proof | The sample route opens on **Today** and exposes Today, Plan, Flow, Build, and Track | Judges can inspect the execution loop without a wallet or generated plan |
 | Daily execution | Today recommends one available task and shows progress, blockers, reviews, and active experiments | Cairn helps a builder act instead of stopping at a generated document |
 | Learning loop | Check-ins, validation experiments, the build journal, and progress-aware replanning are connected | Decisions can respond to evidence without replacing completed work |
+| Reporting | Progress, milestone, validation, and stakeholder drafts are built from recorded execution data and remain fully editable | Builders can communicate what happened without reconstructing the project from memory |
 | Teamwork | Nimiq wallet identity supports team discovery, roles, assignments, proof, owner review, and activity history | Named teammates can work in a protected Track workspace without creating Cairn accounts |
 | Rewards | An owner can reward approved work directly to the assigned teammate's Nimiq address | Payment is tied to verified contribution and Cairn never holds the funds |
 | Release | Release mode checks readiness and creates product copy, social copy, a demo outline, known issues, metrics, and release notes | The workspace continues through launch instead of ending at planning |

@@ -67,6 +67,18 @@ Each experiment connects:
 This prevents the plan from becoming a static list of assumptions. Evidence can
 change the next task and support a targeted replan.
 
+## Project reports
+
+The Reports section in Today turns the current execution state into an editable
+Markdown draft. The owner can choose a progress update, milestone review,
+validation report, or stakeholder brief. Cairn drafts from recorded tasks,
+check-ins, evidence, blockers, decisions, next steps, assignments, approvals,
+and rewards. It does not use private task notes.
+
+The title, audience, reporting period, and full report remain editable. The
+draft stays in the local route and its JSON backup until the owner copies it.
+Cairn does not publish or send a report automatically.
+
 ## Replan from progress
 
 Replanning uses the current execution state instead of asking the builder to
@@ -117,7 +129,7 @@ shares it.
 
 | Data | Default location | Shared only when |
 | --- | --- | --- |
-| PRD, flow, Build summary, journal, experiments, release drafts | The user's device | Required by an explicit AI action or copied by the user |
+| PRD, flow, Build summary, journal, experiments, report drafts, release drafts | The user's device | Required by an explicit AI action or copied by the user |
 | Task status, labels, and dates | The user's device | The owner creates a public share or protected team workspace |
 | Private notes, priorities, and dependencies | The user's device | Never included in public shares or team snapshots |
 | Team membership, assignments, reviews, and reward proofs | Cairn's server | The owner creates and uses a protected team workspace |

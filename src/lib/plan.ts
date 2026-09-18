@@ -160,11 +160,23 @@ export interface ReleaseState {
   shippedAt?: number
 }
 
+export type ReportKind = 'progress' | 'milestone' | 'validation' | 'stakeholder'
+
+export interface ProjectReportState {
+  kind: ReportKind
+  title: string
+  audience: string
+  period: string
+  body: string
+  updatedAt?: number
+}
+
 export interface ExecutionState {
   focusTaskId?: string
   checkIns: DailyCheckIn[]
   journal: BuildJournalEntry[]
   experiments: ValidationExperiment[]
+  report: ProjectReportState
   release: ReleaseState
   /** Internal snapshot used to turn task status transitions into journal entries. */
   taskStates: Record<string, TaskStatus>
@@ -347,6 +359,7 @@ export function emptyExecutionState(build?: BuildPlan): ExecutionState {
     checkIns: [],
     journal: [],
     experiments: [],
+    report: { kind: 'progress', title: '', audience: '', period: '', body: '' },
     release: { version: '0.1.0', audience: '', knownIssues: '', notes: '' },
     taskStates,
   }
@@ -887,6 +900,7 @@ function normalizeExecution(value: unknown, build: BuildPlan): ExecutionState {
   const raw = value as Record<string, unknown>
   const validKinds: JournalKind[] = ['check_in', 'task_started', 'task_completed', 'task_reopened', 'experiment', 'release']
   const validDecisions: ExperimentDecision[] = ['open', 'continue', 'change', 'stop']
+  const validReportKinds: ReportKind[] = ['progress', 'milestone', 'validation', 'stakeholder']
   const taskIds = new Set(build.milestones.flatMap((milestone) => milestone.tasks.map((task) => task.id)))
 
   const checkIns: DailyCheckIn[] = Array.isArray(raw.checkIns)
@@ -940,6 +954,7 @@ function normalizeExecution(value: unknown, build: BuildPlan): ExecutionState {
     : []
 
   const releaseRaw = typeof raw.release === 'object' && raw.release !== null ? raw.release as Record<string, unknown> : {}
+  const reportRaw = typeof raw.report === 'object' && raw.report !== null ? raw.report as Record<string, unknown> : {}
   const taskStates: Record<string, TaskStatus> = {}
   const storedStates = typeof raw.taskStates === 'object' && raw.taskStates !== null ? raw.taskStates as Record<string, unknown> : {}
   for (const task of build.milestones.flatMap((milestone) => milestone.tasks)) {
@@ -952,6 +967,14 @@ function normalizeExecution(value: unknown, build: BuildPlan): ExecutionState {
     checkIns,
     journal,
     experiments,
+    report: {
+      kind: validReportKinds.includes(reportRaw.kind as ReportKind) ? reportRaw.kind as ReportKind : 'progress',
+      title: cleanExecutionText(reportRaw.title, 180),
+      audience: cleanExecutionText(reportRaw.audience, 300),
+      period: cleanExecutionText(reportRaw.period, 120),
+      body: cleanExecutionText(reportRaw.body, 12000),
+      ...(typeof reportRaw.updatedAt === 'number' && Number.isFinite(reportRaw.updatedAt) ? { updatedAt: reportRaw.updatedAt } : {}),
+    },
     release: {
       version: cleanExecutionText(releaseRaw.version, 30) || '0.1.0',
       audience: cleanExecutionText(releaseRaw.audience, 300),
