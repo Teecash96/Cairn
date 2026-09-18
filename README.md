@@ -8,12 +8,40 @@
 [Open Cairn](https://cairn.cairn-planner.workers.dev/) ·
 [Competition](https://miniappscompetition.com/submissions/cycle2) ·
 [Architecture](docs/architecture.md) ·
+[Daily execution](docs/product/daily-execution-loop.md) ·
 [Release checklist](docs/release-checklist.md)
 
-![Cairn turns a rough idea into a clear route from Plan to Track.](docs/screenshots/cairn-01-social-preview.png)
+![Cairn turns a rough idea into a clear route from planning through release.](docs/screenshots/cairn-01-social-preview.png)
 
 Cairn is a Nimiq Pay mini app that turns a few sentences about a product idea into
-a builder pack an indie builder can act on:
+a private execution workspace an indie builder can use through release.
+
+## What Cairn does now
+
+Cairn is not only a plan generator. It keeps the plan connected to the work,
+evidence, team accountability, rewards, and release:
+
+**Idea → Plan → Focus → Execute → Check in → Validate → Replan → Approve → Reward → Release**
+
+| Stage | What Cairn provides |
+| --- | --- |
+| **Plan** | An editable PRD, Visual PRD, user flow, MVP, milestones, risks, acceptance tests, and initial tasks |
+| **Focus** | A Today workspace with progress signals, active blockers, reviews, experiments, and one recommended next task |
+| **Execute** | A board and timeline with task status, dates, labels, dependencies, priorities, and private notes |
+| **Learn** | Daily check-ins, a chronological build journal, and validation experiments that connect hypotheses to evidence and decisions |
+| **Adapt** | Progress-aware AI replanning that proposes the smallest useful change without replacing completed work |
+| **Collaborate** | Wallet-native team discovery, Viewer and Editor roles, assignments, My Tasks, completion proof, owner review, and a signed activity trail |
+| **Reward** | Direct NIM rewards for approved work, locked to the assigned teammate and verified on the public network |
+| **Release** | A readiness check and launch pack with product copy, social copy, demo outline, known issues, metrics, and release notes |
+| **Recover and share** | JSON backup and restore, revocable read-only links, and protected Track-only team workspaces |
+
+There are no Cairn accounts. A Nimiq wallet is the user's identity, team key,
+and reward address. The private plan stays on the device by default; Cairn sends
+only the data required for an action the user chooses.
+
+## Generated builder pack
+
+The first generation creates:
 
 - a **product requirements document** — summary, problem, target user, core
   features, user stories, success criteria, and an explicit list of what it
