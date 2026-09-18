@@ -120,6 +120,56 @@ export interface BuildPlan {
   nextAction: string
 }
 
+export type ExperimentDecision = 'open' | 'continue' | 'change' | 'stop'
+export type JournalKind = 'check_in' | 'task_started' | 'task_completed' | 'task_reopened' | 'experiment' | 'release'
+
+export interface DailyCheckIn {
+  id: string
+  createdAt: number
+  completed: string
+  blocker: string
+  changed: string
+  nextStep: string
+}
+
+export interface BuildJournalEntry {
+  id: string
+  createdAt: number
+  kind: JournalKind
+  title: string
+  detail?: string
+  taskId?: string
+}
+
+export interface ValidationExperiment {
+  id: string
+  createdAt: number
+  updatedAt: number
+  hypothesis: string
+  method: string
+  successMetric: string
+  result: string
+  decision: ExperimentDecision
+}
+
+export interface ReleaseState {
+  version: string
+  audience: string
+  knownIssues: string
+  notes: string
+  shippedAt?: number
+}
+
+export interface ExecutionState {
+  focusTaskId?: string
+  checkIns: DailyCheckIn[]
+  journal: BuildJournalEntry[]
+  experiments: ValidationExperiment[]
+  release: ReleaseState
+  /** Internal snapshot used to turn task status transitions into journal entries. */
+  taskStates: Record<string, TaskStatus>
+}
+
 /** Fields that may leave an owner's device for a team or public share. */
 export interface PublicTask {
   id: string
@@ -219,6 +269,7 @@ export interface Plan {
   flow: FlowStep[]
   build: BuildPlan
   realityCheck: RealityCheckItem[]
+  execution: ExecutionState
   /** Set once the plan has been shared. Absent means it has never left the device. */
   shareId?: string
   /** Set when the owner creates a protected team workspace. */
@@ -242,6 +293,8 @@ export const TRACKER_LABEL_LENGTH = 24
 export const TRACKER_NOTES_MAX = 1000
 export const TRACKER_DEPENDENCY_MAX = 4
 export const TRACKER_MILESTONE_MAX = 12
+export const EXECUTION_HISTORY_MAX = 100
+export const EXECUTION_EXPERIMENT_MAX = 20
 
 // -- identity ---------------------------------------------------------------
 
@@ -282,6 +335,20 @@ export function emptyBuildPlan(): BuildPlan {
     risks: [],
     acceptanceTests: [],
     nextAction: '',
+  }
+}
+
+export function emptyExecutionState(build?: BuildPlan): ExecutionState {
+  const taskStates: Record<string, TaskStatus> = {}
+  for (const task of build?.milestones.flatMap((milestone) => milestone.tasks) ?? []) {
+    taskStates[task.id] = task.status
+  }
+  return {
+    checkIns: [],
+    journal: [],
+    experiments: [],
+    release: { version: '0.1.0', audience: '', knownIssues: '', notes: '' },
+    taskStates,
   }
 }
 
@@ -810,6 +877,108 @@ export function hydratePublicBuild(value: unknown): BuildPlan {
   return normalizeBuild(value)
 }
 
+function cleanExecutionText(value: unknown, max = 600): string {
+  return typeof value === 'string' ? value.trim().slice(0, max) : ''
+}
+
+function normalizeExecution(value: unknown, build: BuildPlan): ExecutionState {
+  const fallback = emptyExecutionState(build)
+  if (typeof value !== 'object' || value === null) return fallback
+  const raw = value as Record<string, unknown>
+  const validKinds: JournalKind[] = ['check_in', 'task_started', 'task_completed', 'task_reopened', 'experiment', 'release']
+  const validDecisions: ExperimentDecision[] = ['open', 'continue', 'change', 'stop']
+  const taskIds = new Set(build.milestones.flatMap((milestone) => milestone.tasks.map((task) => task.id)))
+
+  const checkIns: DailyCheckIn[] = Array.isArray(raw.checkIns)
+    ? raw.checkIns.slice(-EXECUTION_HISTORY_MAX).flatMap((item) => {
+      if (typeof item !== 'object' || item === null) return []
+      const entry = item as Record<string, unknown>
+      if (typeof entry.createdAt !== 'number' || !Number.isFinite(entry.createdAt)) return []
+      return [{
+        id: typeof entry.id === 'string' && entry.id ? entry.id : newId(),
+        createdAt: entry.createdAt,
+        completed: cleanExecutionText(entry.completed),
+        blocker: cleanExecutionText(entry.blocker),
+        changed: cleanExecutionText(entry.changed),
+        nextStep: cleanExecutionText(entry.nextStep),
+      }]
+    })
+    : []
+
+  const journal: BuildJournalEntry[] = Array.isArray(raw.journal)
+    ? raw.journal.slice(-EXECUTION_HISTORY_MAX).flatMap((item) => {
+      if (typeof item !== 'object' || item === null) return []
+      const entry = item as Record<string, unknown>
+      const kind = validKinds.includes(entry.kind as JournalKind) ? entry.kind as JournalKind : null
+      const title = cleanExecutionText(entry.title, 180)
+      if (!kind || !title || typeof entry.createdAt !== 'number' || !Number.isFinite(entry.createdAt)) return []
+      const detail = cleanExecutionText(entry.detail)
+      const taskId = typeof entry.taskId === 'string' && taskIds.has(entry.taskId) ? entry.taskId : undefined
+      return [{ id: typeof entry.id === 'string' && entry.id ? entry.id : newId(), createdAt: entry.createdAt, kind, title, ...(detail ? { detail } : {}), ...(taskId ? { taskId } : {}) }]
+    })
+    : []
+
+  const experiments: ValidationExperiment[] = Array.isArray(raw.experiments)
+    ? raw.experiments.slice(-EXECUTION_EXPERIMENT_MAX).flatMap((item) => {
+      if (typeof item !== 'object' || item === null) return []
+      const entry = item as Record<string, unknown>
+      const hypothesis = cleanExecutionText(entry.hypothesis)
+      if (!hypothesis) return []
+      const createdAt = typeof entry.createdAt === 'number' && Number.isFinite(entry.createdAt) ? entry.createdAt : Date.now()
+      const updatedAt = typeof entry.updatedAt === 'number' && Number.isFinite(entry.updatedAt) ? entry.updatedAt : createdAt
+      return [{
+        id: typeof entry.id === 'string' && entry.id ? entry.id : newId(),
+        createdAt,
+        updatedAt,
+        hypothesis,
+        method: cleanExecutionText(entry.method),
+        successMetric: cleanExecutionText(entry.successMetric),
+        result: cleanExecutionText(entry.result),
+        decision: validDecisions.includes(entry.decision as ExperimentDecision) ? entry.decision as ExperimentDecision : 'open',
+      }]
+    })
+    : []
+
+  const releaseRaw = typeof raw.release === 'object' && raw.release !== null ? raw.release as Record<string, unknown> : {}
+  const taskStates: Record<string, TaskStatus> = {}
+  const storedStates = typeof raw.taskStates === 'object' && raw.taskStates !== null ? raw.taskStates as Record<string, unknown> : {}
+  for (const task of build.milestones.flatMap((milestone) => milestone.tasks)) {
+    taskStates[task.id] = validStatus(storedStates[task.id]) ? storedStates[task.id] as TaskStatus : task.status
+  }
+
+  const focusTaskId = typeof raw.focusTaskId === 'string' && taskIds.has(raw.focusTaskId) ? raw.focusTaskId : undefined
+  return {
+    ...(focusTaskId ? { focusTaskId } : {}),
+    checkIns,
+    journal,
+    experiments,
+    release: {
+      version: cleanExecutionText(releaseRaw.version, 30) || '0.1.0',
+      audience: cleanExecutionText(releaseRaw.audience, 300),
+      knownIssues: cleanExecutionText(releaseRaw.knownIssues, 1200),
+      notes: cleanExecutionText(releaseRaw.notes, 2000),
+      ...(typeof releaseRaw.shippedAt === 'number' && Number.isFinite(releaseRaw.shippedAt) ? { shippedAt: releaseRaw.shippedAt } : {}),
+    },
+    taskStates,
+  }
+}
+
+export function syncTaskJournal(plan: Plan, now = Date.now()): void {
+  const execution = plan.execution ?? emptyExecutionState(plan.build)
+  const currentTasks = plan.build.milestones.flatMap((milestone) => milestone.tasks)
+  const nextStates: Record<string, TaskStatus> = {}
+  for (const task of currentTasks) {
+    nextStates[task.id] = task.status
+    const previous = execution.taskStates[task.id]
+    if (!previous || previous === task.status) continue
+    const kind: JournalKind = task.status === 'done' ? 'task_completed' : task.status === 'in_progress' ? 'task_started' : 'task_reopened'
+    execution.journal.push({ id: newId(), createdAt: now, kind, title: task.text, taskId: task.id })
+  }
+  execution.taskStates = nextStates
+  execution.journal = execution.journal.slice(-EXECUTION_HISTORY_MAX)
+  plan.execution = execution
+}
+
 function normalizePlan(value: unknown): Plan | null {
   if (typeof value !== 'object' || value === null) return null
   const plan = value as Partial<Plan>
@@ -828,11 +997,13 @@ function normalizePlan(value: unknown): Plan | null {
   const { teamId, ...withoutTeamId } = copied
   const safeTeamId = typeof teamId === 'string' && /^[a-z2-9]{16,32}$/i.test(teamId) ? teamId : undefined
 
+  const build = normalizeBuild(plan.build)
   return {
     ...withoutTeamId,
     ...(safeTeamId ? { teamId: safeTeamId } : {}),
-    build: normalizeBuild(plan.build),
+    build,
     realityCheck: normalizeRealityCheck(plan.realityCheck),
+    execution: normalizeExecution(plan.execution, build),
   }
 }
 
@@ -934,6 +1105,7 @@ export function createPlan(
   realityCheck: RealityCheckItem[] = [],
 ): Plan {
   const now = Date.now()
+  const build = materializeBuildPlan(buildDraft)
   return {
     id: newId(),
     name: input.name.trim(),
@@ -942,8 +1114,9 @@ export function createPlan(
     input: clone(input),
     prd: clone(prd),
     flow: clone(flow),
-    build: materializeBuildPlan(buildDraft),
+    build,
     realityCheck: clone(realityCheck),
+    execution: emptyExecutionState(build),
   }
 }
 
@@ -956,9 +1129,11 @@ export function savePlan(plan: Plan): boolean {
   // Normalize at the write boundary as well as on read. Editors validate their
   // own fields, but this keeps programmatic callers from storing invalid dates,
   // stale done flags, unknown dependencies, or overlong tracker values.
+  const normalizedBuild = normalizeBuild(copyOfPlan.build)
   const stamped: Plan = {
     ...copyOfPlan,
-    build: normalizeBuild(copyOfPlan.build),
+    build: normalizedBuild,
+    execution: normalizeExecution(copyOfPlan.execution, normalizedBuild),
     updatedAt: Date.now(),
   }
   const plans = read()

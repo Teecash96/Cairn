@@ -117,6 +117,7 @@ export type RefineAction =
   | 'break_into_tasks'
   | 'find_missing_risks'
   | 'improve_acceptance_tests'
+  | 'replan_from_progress'
   | 'custom'
 
 export interface RefineRequest {

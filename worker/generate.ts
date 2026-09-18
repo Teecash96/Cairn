@@ -259,16 +259,22 @@ Main problem: ${input.problem || '(not provided)'}
 Primary goal: ${input.goal || '(not provided)'}`
 }
 
-function planJson(plan: Plan | PublicPlan): string {
-  // Tracker state belongs to the builder's device. Refinement receives task
-  // ids and text only, so private notes, dates, labels, priorities, dependencies,
-  // and completion state cannot leak to Gemini or influence a later AI rewrite.
+function planJson(plan: Plan | PublicPlan, includeProgress = false): string {
+  // Tracker state belongs to the builder's device. Normal refinements receive
+  // task ids and text only. An explicit progress replan also receives status,
+  // due date, and milestone blocker state, but never private notes, priorities,
+  // dependencies, wallet assignments, or reward details.
   const build = {
     mvpScope: plan.build.mvpScope,
     milestones: plan.build.milestones.map((milestone) => ({
       title: milestone.title,
       outcome: milestone.outcome,
-      tasks: milestone.tasks.map((task) => ({ id: task.id, text: task.text })),
+      ...(includeProgress ? { blocked: milestone.blocked } : {}),
+      tasks: milestone.tasks.map((task) => ({
+        id: task.id,
+        text: task.text,
+        ...(includeProgress ? { status: task.status, dueDate: task.dueDate } : {}),
+      })),
     })),
     risks: plan.build.risks,
     acceptanceTests: plan.build.acceptanceTests,
@@ -289,6 +295,7 @@ function actionInstruction(action: RefineAction, question?: string): string {
   if (action === 'break_into_tasks') return 'Break the current milestones into smaller, observable tasks. Return replacement milestones only. Keep 8 to 12 total tasks.'
   if (action === 'find_missing_risks') return 'Find the most important untested risks. Return risks and exactly 3 realityCheck items. Do not rewrite unrelated fields.'
   if (action === 'improve_acceptance_tests') return 'Rewrite acceptance tests so they are observable and falsifiable. Return acceptanceTests only, with up to 5 items.'
+  if (action === 'replan_from_progress') return `Use the real progress summary below to choose the smallest useful adjustment. Protect completed work. Resolve blockers, reduce scope when needed, and return only affected milestones, risks, acceptance tests, or next action. Progress summary: ${question ?? 'No check-in was recorded.'}`
   return `Answer this question directly for the builder. If a change would materially help, include only that targeted change in changes. Question: ${question ?? ''}`
 }
 
@@ -326,7 +333,7 @@ Return this shape:
 }
 
 Current plan:
-${planJson(plan)}`
+${planJson(plan, action === 'replan_from_progress')}`
 }
 
 function parseJson(value: string): unknown {

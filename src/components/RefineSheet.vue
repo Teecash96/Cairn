@@ -36,6 +36,7 @@ const labels: Record<RefineAction, string> = {
   break_into_tasks: 'Break work into smaller tasks',
   find_missing_risks: 'Find missing risks',
   improve_acceptance_tests: 'Improve acceptance tests',
+  replan_from_progress: 'Replan from progress',
   custom: 'Ask Cairn a question',
 }
 

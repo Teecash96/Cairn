@@ -26,6 +26,7 @@ function refineAction(value: unknown): RefineAction | null {
     value === 'break_into_tasks' ||
     value === 'find_missing_risks' ||
     value === 'improve_acceptance_tests' ||
+    value === 'replan_from_progress' ||
     value === 'custom'
   ) return value
   return null

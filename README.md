@@ -24,6 +24,8 @@ a builder pack an indie builder can act on:
   finished task, including one real decision point with both outcomes
 - a **Build plan** — a small MVP scope, three milestones, risks, acceptance
   tests, and the next action
+- a **Today workspace** — one recommended task, progress signals, daily
+  check-ins, validation experiments, a private build journal, and release mode
 - a **Track workspace** — a local project board and timeline for milestones,
   task status, due dates, labels, priorities, notes, and simple blockers
 - a **Reality check** — three prioritized concerns with the smallest test or fix
@@ -42,7 +44,7 @@ is what a PRD is for.
 | --- | --- |
 | Produces a useful answer that becomes another document to manage | Produces one connected, editable product workspace |
 | Requires the builder to invent the planning structure and prompts | Creates the PRD, visual map, user flow, MVP, milestones, risks, and tasks together |
-| Ends when the response is complete | Continues into a board, timeline, next action, and targeted refinements |
+| Ends when the response is complete | Continues into a daily execution loop, evidence, release preparation, and targeted replanning |
 | Shares a conversation or copied text | Shares a read-only plan or wallet-protected Track workspace with Viewer and Editor roles |
 | Depends on an account and cloud history | Keeps the private plan local by default and uses a Nimiq wallet for identity, teams, and teammate rewards |
 
@@ -77,15 +79,33 @@ session and no payment wall.
    same signature flow. This creates a short lived server session. The prompt
    happens on the action you already chose to take.
 3. Gemini writes the full builder pack. It takes about twenty seconds.
-4. Edit anything. It autosaves to your device.
-5. Open **Plan** and choose **Map** for a one page view of the problem, user,
+4. Open **Today** for the next useful task, progress, blockers, approvals, and
+   active validation tests. Add a short check-in when reality changes.
+5. Edit anything. It autosaves to your device.
+6. Open **Plan** and choose **Map** for a one page view of the problem, user,
    promise, first release, proof, and guardrails.
-6. Open **Track** to update task status, dates, labels, blockers, and private
+7. Open **Track** to update task status, dates, labels, blockers, and private
    notes. Changes save on this device.
-7. Open **Build** for the builder pack summary, or ask Cairn to sharpen one part
-   of the plan.
-8. Copy it out as Markdown, share a public read only link, or create a protected
+8. Choose **Replan from progress** after a check-in. Cairn uses the task state,
+   blocker, and validation evidence to propose the smallest useful adjustment.
+9. Use **Release mode** to check readiness and copy a launch pack with release
+   notes, product copy, social copy, a demo outline, known issues, and metrics.
+10. Copy the plan as Markdown, share a public read only link, or create a protected
    team workspace for Track.
+
+### Daily execution
+
+The **Today** tab is Cairn's return loop. It recommends one available task,
+summarizes progress and blockers, and stores short check-ins. Task transitions,
+check-ins, experiments, decisions, and releases form a chronological build
+journal. Validation experiments connect a hypothesis to a smallest test, a
+success target, evidence, and a continue/change/stop decision.
+
+These records remain in the private local plan and its JSON backup. They are
+not added to public shares or protected team Track snapshots. Choosing
+**Replan from progress** sends a compact check-in summary plus task status,
+task due dates, and milestone blocker state to Gemini. It never sends private
+notes, priorities, dependencies, wallet assignments, or reward data.
 
 ### Planner follow ups
 
@@ -188,7 +208,8 @@ Stated plainly, because it matters:
 | --- | --- |
 | The idea you type | Google's Gemini API, via Cairn's server, to write the plan |
 | The finished plan and private Track data | Your device's local storage. **Nothing else**, unless you use a planner follow up, public Share, or a protected team workspace |
-| A plan you refine | Cairn's server and Google's Gemini API for that one follow up. The PRD, flow, and text only builder pack are sent so the change can be targeted. Private tracker metadata is not sent |
+| A normal plan refinement | Cairn's server and Google's Gemini API for that one follow up. The PRD, flow, and text-only builder pack are sent so the change can be targeted. Private tracker metadata is not sent |
+| **Replan from progress** | Cairn's server and Gemini receive a compact check-in summary, task status and due dates, and milestone blocker state. Private notes, priorities, dependencies, wallet assignments, rewards, the full journal, and release drafts stay on the device |
 | A plan you tap **Share** on | Cairn's server, so the link can be opened until you revoke it. Progress, milestone dates, task due dates, labels, and recorded reward proofs are shared. Notes, priorities, and dependencies are not shared |
 | A protected team workspace | Cairn's server, so named wallet members can use Track until the owner deletes it. Milestones, task text, status, labels, dates, milestone blocker flags, and recorded reward proofs are shared. The PRD, flow, Build summary, notes, priorities, and dependencies are not shared |
 | Your wallet address | Cairn's server, as the identity bound to your short lived wallet session and protected team access |

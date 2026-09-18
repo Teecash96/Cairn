@@ -2,11 +2,13 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   getPlan,
+  emptyExecutionState,
   exportPlanBackup,
   importPlanBackup,
   listPlans,
   materializeBuildPlan,
   savePlan,
+  syncTaskJournal,
   type BuildPlan,
   type Plan,
 } from '../../src/lib/plan.ts'
@@ -388,4 +390,39 @@ test('exports and restores a route without inheriting share or team control', ()
   assert.equal(restored?.teamId, undefined)
   assert.equal(restored?.build.milestones[0]?.tasks[0]?.reward?.transactionHash, 'ab'.repeat(32))
   assert.equal(importPlanBackup('{broken'), null)
+})
+
+test('records task transitions in the private build journal without duplicates', () => {
+  const build = buildWithCompletedTask()
+  const plan: Plan = {
+    ...legacyPlan(),
+    build,
+    realityCheck: [],
+    execution: emptyExecutionState(build),
+  }
+
+  build.milestones[0]!.tasks[1]!.status = 'in_progress'
+  syncTaskJournal(plan, 1000)
+  syncTaskJournal(plan, 2000)
+  build.milestones[0]!.tasks[1]!.status = 'done'
+  syncTaskJournal(plan, 3000)
+
+  assert.deepEqual(plan.execution.journal.map((entry) => entry.kind), ['task_started', 'task_completed'])
+  assert.deepEqual(plan.execution.journal.map((entry) => entry.createdAt), [1000, 3000])
+})
+
+test('keeps check-ins and validation experiments in portable backups', () => {
+  const build = buildWithCompletedTask()
+  const plan: Plan = {
+    ...legacyPlan(),
+    build,
+    realityCheck: [],
+    execution: emptyExecutionState(build),
+  }
+  plan.execution.checkIns.push({ id: 'check-1', createdAt: 100, completed: 'Interviewed a user', blocker: '', changed: 'Pricing is unclear', nextStep: 'Test two prices' })
+  plan.execution.experiments.push({ id: 'test-1', createdAt: 100, updatedAt: 200, hypothesis: 'Users will pay', method: 'Show two prices to five users', successMetric: 'Three choose a paid option', result: 'Four chose paid', decision: 'continue' })
+
+  const restored = importPlanBackup(JSON.stringify(exportPlanBackup(plan)))
+  assert.equal(restored?.execution.checkIns[0]?.nextStep, 'Test two prices')
+  assert.equal(restored?.execution.experiments[0]?.decision, 'continue')
 })
