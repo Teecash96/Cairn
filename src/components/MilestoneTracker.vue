@@ -53,6 +53,7 @@ const stats = computed(() => projectStats(build.value))
 const recommendation = computed(() => recommendedTask(build.value))
 const projectTasks = computed(() => allTasks(build.value))
 const projectTaskMap = computed(() => taskMap(build.value))
+const assignableMembers = computed(() => teamMembers.filter((member) => member.role === 'editor'))
 const datedMilestones = computed(() => build.value.milestones.filter((milestone) => milestone.startDate || milestone.dueDate))
 const undatedMilestones = computed(() => build.value.milestones.filter((milestone) => !milestone.startDate && !milestone.dueDate))
 const editorMilestoneTitle = computed(() => {
@@ -304,6 +305,8 @@ function returnTask(task: Task): void {
       <button type="button" class="toggle" :class="{ 'toggle--on': view === 'timeline' }" :aria-pressed="view === 'timeline'" @click="view = 'timeline'">Timeline</button>
     </div>
 
+    <p v-if="teamMode && view === 'timeline' && teamRole === 'owner'" class="assignment-help muted">Switch to Board to assign tasks and review teammate submissions.</p>
+
     <div class="filters" role="group" aria-label="Filter tasks">
       <button v-for="option in filterOptions" :key="option" type="button" class="filter" :class="{ 'filter--on': filter === option }" :aria-pressed="filter === option" @click="filter = option">
         {{ option === 'all' ? 'All' : option === 'mine' ? 'My tasks' : option === 'in_progress' ? 'In progress' : option === 'todo' ? 'To do' : option === 'done' ? 'Done' : 'Blocked' }}
@@ -352,10 +355,11 @@ function returnTask(task: Task): void {
             <div v-if="teamMode && task.completionNote" class="task-proof"><strong>Completion:</strong> {{ task.completionNote }}</div>
             <div v-if="teamMode && task.reviewNote" class="task-proof task-proof--return"><strong>Owner:</strong> {{ task.reviewNote }}</div>
             <div v-if="teamMode && !readOnly" class="team-task-actions">
-              <select v-if="teamRole === 'owner'" class="input assignment-select" :value="task.assignee ?? ''" :disabled="teamBusy" aria-label="Assign task" @change="assignTask(task.id, $event)">
-                <option value="" disabled>Assign teammate</option>
-                <option v-for="member in teamMembers" :key="member.address" :value="member.address">{{ shortAddress(member.address) }} · {{ member.role }}</option>
+              <select v-if="teamRole === 'owner' && assignableMembers.length" class="input assignment-select" :value="task.assignee ?? ''" :disabled="teamBusy" aria-label="Assign task to an Editor" @change="assignTask(task.id, $event)">
+                <option value="" disabled>Assign an Editor</option>
+                <option v-for="member in assignableMembers" :key="member.address" :value="member.address">{{ shortAddress(member.address) }}</option>
               </select>
+              <span v-else-if="teamRole === 'owner'" class="assignment-empty muted">Add an Editor to assign this task.</span>
               <button v-if="teamRole === 'editor' && task.assignee === teamAddress.replace(/\s+/g, '').toUpperCase() && task.approvalStatus !== 'pending' && task.approvalStatus !== 'approved'" type="button" class="btn btn--secondary btn--sm" :disabled="teamBusy" @click="submitTask(task)">Submit work</button>
               <template v-if="teamRole === 'owner' && task.approvalStatus === 'pending'">
                 <button type="button" class="btn btn--primary btn--sm" :disabled="teamBusy" @click="emit('team-task', task.id, 'approve')">Approve</button>
@@ -472,6 +476,7 @@ function returnTask(task: Task): void {
 .progress-track { height: 6px; overflow: hidden; border-radius: var(--r-full); background: var(--surface-sunken); }
 .progress-track__fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 220ms ease; }
 .view-toggle { display: flex; gap: var(--s1); padding: 3px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-sunken); }
+.assignment-help { padding: var(--s3); border: 1px solid var(--accent-line); border-radius: var(--r-sm); background: var(--accent-subtle); font-size: var(--text-xs); line-height: var(--leading); }
 .toggle { flex: 1; min-height: 38px; border-radius: var(--r-sm); color: var(--text-muted); font-size: var(--text-sm); font-weight: 650; }
 .toggle--on { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(16 18 27 / 7%); }
 .filters { display: flex; gap: var(--s2); overflow-x: auto; padding-bottom: 2px; }
@@ -512,6 +517,7 @@ function returnTask(task: Task): void {
 .status-button:not(:disabled):hover { border-color: var(--accent-line); color: var(--accent); }
 .empty-lane { padding: var(--s2) 0; font-size: var(--text-xs); }
 .add-task { align-self: stretch; }
+.assignment-empty { font-size: var(--text-xs); line-height: var(--leading); }
 .timeline { gap: var(--s5); }
 .timeline-group { display: flex; flex-direction: column; gap: var(--s3); }
 .timeline-lane { display: grid; grid-template-columns: 4px 1fr; gap: var(--s3); }

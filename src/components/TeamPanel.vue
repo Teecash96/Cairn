@@ -33,10 +33,13 @@ const emit = defineEmits<{
   copy: [url: string]
   reward: [address: string]
   delete: []
+  'open-track': []
 }>()
 
 const address = ref('')
-const memberRole = ref<TeamRole>('viewer')
+// Teammates who receive work need Editor access. Viewer remains available for
+// stakeholders who only need to follow progress.
+const memberRole = ref<TeamRole>('editor')
 const confirming = ref<string | null>(null)
 const confirmingDelete = ref(false)
 
@@ -96,7 +99,7 @@ function confirmRemove(member: TeamMember): void {
       <form class="member-form card" @submit.prevent="add">
         <div>
           <h4>Add a member</h4>
-          <p class="muted">Use the full Nimiq address. There are no email invitations.</p>
+          <p class="muted">Use the full Nimiq address. Choose Editor for anyone who will receive and submit tasks.</p>
         </div>
         <label class="field">
           <span class="field__label">Wallet address</span>
@@ -106,8 +109,8 @@ function confirmRemove(member: TeamMember): void {
         <label class="field">
           <span class="field__label">Permission</span>
           <select v-model="memberRole" class="input">
-            <option value="viewer">Viewer · can see Track</option>
             <option value="editor">Editor · can change Track</option>
+            <option value="viewer">Viewer · can only see Track</option>
           </select>
         </label>
         <button type="submit" class="btn btn--primary btn--block" :disabled="loading || !address.trim()">Add member</button>
@@ -143,6 +146,16 @@ function confirmRemove(member: TeamMember): void {
         </div>
         <p v-if="!members.length" class="empty-team muted">No members yet. Copy the link after adding someone.</p>
       </section>
+
+      <div v-if="role === 'owner'" class="team-assign card">
+        <div>
+          <strong>Assign the work</strong>
+          <p class="muted">Open Track in Board view. Each task will list the Editors who can complete and submit it.</p>
+        </div>
+        <button type="button" class="btn btn--primary btn--sm" :disabled="loading || !members.some((member) => member.role === 'editor')" @click="emit('open-track')">
+          {{ members.some((member) => member.role === 'editor') ? 'Open Track' : 'Add an Editor first' }}
+        </button>
+      </div>
 
       <section v-if="role === 'owner'" class="team-danger card">
         <div><strong>Delete team workspace</strong><p class="muted">This revokes the protected link and removes the server copy of Track.</p></div>
@@ -180,11 +193,16 @@ function confirmRemove(member: TeamMember): void {
 .member-row__actions { display: flex; align-items: center; gap: var(--s2); }
 .role-select { min-height: 38px; padding: 0 var(--s2); border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); color: var(--text); font-size: var(--text-xs); }
 .empty-team { padding: var(--s3); font-size: var(--text-sm); text-align: center; }
+.team-assign { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
+.team-assign > div { min-width: 0; }
+.team-assign p { margin-top: var(--s1); font-size: var(--text-xs); line-height: var(--leading); }
+.team-assign .btn { flex: 0 0 auto; }
 .team-danger { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); }
 .team-danger p { margin-top: var(--s1); font-size: var(--text-xs); }
 .team-danger__actions { display: flex; gap: var(--s2); }
 @media (max-width: 28rem) {
   .member-row { align-items: flex-start; flex-direction: column; }
   .member-row__actions { align-self: stretch; justify-content: flex-end; }
+  .team-assign { align-items: stretch; flex-direction: column; }
 }
 </style>

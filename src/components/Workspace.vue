@@ -215,10 +215,15 @@ function openTeam(): void {
 
 function goBack(): void {
   if (tab.value === 'team') {
-    tab.value = 'plan'
+    tab.value = 'track'
     return
   }
   emit('back')
+}
+
+function openTrackFromTeam(): void {
+  tab.value = 'track'
+  actionsOpen.value = false
 }
 
 function teamAdd(address: string, role: TeamRole): void {
@@ -367,6 +372,16 @@ function onTabKey(event: KeyboardEvent): void {
       </section>
 
       <section v-else-if="tab === 'track'" id="panel-track" role="tabpanel" aria-labelledby="tab-track" tabindex="0">
+        <div v-if="!teamOnly && teamPanel?.teamId" class="team-track card">
+          <div>
+            <p class="eyebrow">Team assignments</p>
+            <strong>{{ teamContext ? `${teamContext.members.filter((member) => member.role === 'editor').length} Editors available` : 'Load the protected team board' }}</strong>
+            <p class="muted">Only Editors can receive and submit tasks. Assignment controls appear on each task in Board view.</p>
+          </div>
+          <button type="button" class="btn btn--secondary btn--sm" @click="openTeam">
+            {{ teamContext ? 'Manage teammates' : 'Load teammates' }}
+          </button>
+        </div>
         <div v-if="teamOnly && teamSaveState !== 'idle'" class="team-save" role="status" aria-live="polite">
           <span>{{ teamSaveState === 'saving' ? 'Saving team changes…' : teamSaveState === 'saved' ? 'All team changes saved' : 'Team changes were not saved.' }}</span>
           <button v-if="teamSaveState === 'error'" type="button" class="btn btn--secondary btn--sm" @click="emit('team-retry')">Retry save</button>
@@ -403,7 +418,7 @@ function onTabKey(event: KeyboardEvent): void {
           <p class="eyebrow">Secondary workspace</p>
           <h3>Team access</h3>
         </div>
-        <TeamPanel :team-id="teamPanel.teamId" :owner="teamPanel.owner" :role="teamPanel.role" :members="teamPanel.members" :invite-url="teamPanel.inviteUrl" :loading="teamPanel.loading" :error="teamPanel.error" :syncing="teamSyncing" :completed-tasks="completedTasks" @create="emit('team-create')" @add="teamAdd" @update="teamUpdate" @remove="emit('team-remove', $event)" @copy="emit('team-copy', $event)" @reward="emit('team-reward', $event)" @delete="emit('team-delete')" />
+        <TeamPanel :team-id="teamPanel.teamId" :owner="teamPanel.owner" :role="teamPanel.role" :members="teamPanel.members" :invite-url="teamPanel.inviteUrl" :loading="teamPanel.loading" :error="teamPanel.error" :syncing="teamSyncing" :completed-tasks="completedTasks" @create="emit('team-create')" @add="teamAdd" @update="teamUpdate" @remove="emit('team-remove', $event)" @copy="emit('team-copy', $event)" @reward="emit('team-reward', $event)" @delete="emit('team-delete')" @open-track="openTrackFromTeam" />
       </section>
 
       <div v-if="tab !== 'team' && tab !== 'today'" class="context-action">
@@ -483,6 +498,11 @@ function onTabKey(event: KeyboardEvent): void {
 .quick-actions .btn { flex: 1 1 9rem; }
 .team-route-head { padding-bottom: var(--s4); border-bottom: 1px solid var(--line); }
 .team-route-head h3 { font-family: var(--font-display); font-size: var(--text-xl); }
+.team-track { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s4); }
+.team-track > div { min-width: 0; }
+.team-track strong { display: block; overflow-wrap: anywhere; }
+.team-track .muted { margin-top: var(--s1); font-size: var(--text-xs); line-height: var(--leading); }
+.team-track .btn { flex: 0 0 auto; }
 @media (max-width: 520px) {
   .backup-reminder { align-items: stretch; flex-direction: column; }
   .backup-reminder__actions .btn { flex: 1; }
@@ -492,6 +512,7 @@ function onTabKey(event: KeyboardEvent): void {
   .action-sheet { right: 1rem; }
   .context-action .mono { display: none; }
   .context-action .btn { width: 100%; }
+  .team-track { align-items: stretch; flex-direction: column; }
 }
 .team-save { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); min-width: 0; margin-bottom: var(--s3); padding: var(--s3) var(--s4); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-sunken); color: var(--text-muted); font-size: var(--text-sm); }
 .team-save span { min-width: 0; overflow-wrap: anywhere; }
