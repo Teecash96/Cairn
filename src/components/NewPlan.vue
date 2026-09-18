@@ -142,20 +142,28 @@ function submit(): void {
         <span>Route 01</span>
         <span class="atlas-meta__free">Free to use</span>
       </div>
-      <h1 class="hero">Map the idea before you build it.</h1>
+      <h1 class="hero">Turn the idea into work that ships.</h1>
       <p class="hero-copy">
-        Describe the rough version. Cairn turns it into a clear product map, a route to release,
-        and the next useful move.
+        Describe the rough version once. Cairn maps it, chooses the next useful move,
+        records evidence, coordinates wallet teammates, and prepares the release.
       </p>
 
       <button type="button" class="btn btn--secondary" :disabled="busy" @click="emit('example')">Explore a sample plan · no wallet needed</button>
 
-      <ol class="route-preview" aria-label="Cairn maps an idea into a plan, flow, build path, and tracker">
+      <ol class="route-preview" aria-label="Cairn moves an idea from planning to release">
         <li class="route-preview__stop route-preview__stop--active"><span>01</span>Idea</li>
         <li class="route-preview__stop"><span>02</span>Plan</li>
-        <li class="route-preview__stop"><span>03</span>Build</li>
-        <li class="route-preview__stop"><span>04</span>Track</li>
+        <li class="route-preview__stop"><span>03</span>Focus</li>
+        <li class="route-preview__stop"><span>04</span>Prove</li>
+        <li class="route-preview__stop"><span>05</span>Ship</li>
       </ol>
+
+      <section class="quick-guide" aria-labelledby="quick-guide-title">
+        <h2 id="quick-guide-title" class="visually-hidden">How Cairn works</h2>
+        <article><span class="mono">01 · MAP</span><strong>Plan once</strong><p>Get an editable PRD, flow, MVP, risks, tests, and tasks.</p></article>
+        <article><span class="mono">02 · MOVE</span><strong>Work daily</strong><p>Use Today, check-ins, experiments, and progress-aware replanning.</p></article>
+        <article><span class="mono">03 · SHIP</span><strong>Finish together</strong><p>Assign wallet teammates, approve proof, reward work, and prepare release.</p></article>
+      </section>
     </header>
 
     <form id="new-plan-form" class="form atlas-form" aria-label="Create a product plan" @submit.prevent="submit">
@@ -343,12 +351,17 @@ function submit(): void {
 .atlas-meta__free::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .hero { max-width: 13ch; font-family: var(--font-display); font-size: clamp(2.5rem, 12vw, 4.7rem); font-weight: 600; line-height: .97; letter-spacing: -.055em; }
 .hero-copy { max-width: 38rem; color: var(--text-muted); font-size: var(--text-md); line-height: var(--leading-loose); }
-.route-preview { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); margin: var(--s4) 0 0; padding: 0; list-style: none; }
+.route-preview { position: relative; display: grid; grid-template-columns: repeat(5, 1fr); margin: var(--s4) 0 0; padding: 0; list-style: none; }
 .route-preview::before { content: ''; position: absolute; top: 13px; left: 8%; right: 8%; height: 1px; background: var(--line-strong); }
 .route-preview__stop { position: relative; display: flex; flex-direction: column; align-items: center; gap: var(--s2); color: var(--text-faint); font-size: var(--text-xs); font-weight: 650; }
 .route-preview__stop span { position: relative; z-index: 1; display: grid; place-items: center; width: 27px; height: 27px; color: var(--text-muted); background: var(--bg); border: 1px solid var(--line-strong); border-radius: 50%; font-size: .62rem; }
 .route-preview__stop--active { color: var(--text); }
 .route-preview__stop--active span { color: var(--accent-on); background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 5px var(--accent-subtle); }
+.quick-guide { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin-top: var(--s3); overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--line); }
+.quick-guide article { display: grid; align-content: start; gap: var(--s1); min-width: 0; padding: var(--s3); background: var(--surface); }
+.quick-guide span { color: var(--accent); font-size: .62rem; font-weight: 750; letter-spacing: .08em; }
+.quick-guide strong { font-size: var(--text-sm); }
+.quick-guide p { color: var(--text-muted); font-size: var(--text-xs); line-height: 1.45; overflow-wrap: anywhere; }
 
 .form {
   display: flex;
@@ -376,6 +389,11 @@ function submit(): void {
 .more:hover:not(:disabled) {
   background: none;
   color: var(--accent-hover);
+}
+
+@media (max-width: 520px) {
+  .quick-guide { grid-template-columns: 1fr; }
+  .route-preview__stop { font-size: .68rem; }
 }
 
 /* -- examples ------------------------------------------------------------ */

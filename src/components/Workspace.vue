@@ -38,6 +38,7 @@ const {
   regenerating = false,
   refining = false,
   teamOnly = false,
+  showToday = false,
   teamPanel,
   teamContext,
   teamSyncing = false,
@@ -49,6 +50,7 @@ const {
   regenerating?: boolean
   refining?: boolean
   teamOnly?: boolean
+  showToday?: boolean
   teamPanel?: TeamPanelState
   teamContext?: TeamContext
   teamSyncing?: boolean
@@ -79,11 +81,13 @@ const emit = defineEmits<{
 type Tab = 'today' | 'plan' | 'flow' | 'build' | 'track' | 'team'
 type PlanView = 'map' | 'details'
 
-const tab = ref<Tab>(teamOnly ? 'track' : readOnly ? 'plan' : 'today')
+const tab = ref<Tab>(teamOnly ? 'track' : readOnly && !showToday ? 'plan' : 'today')
 const planView = ref<PlanView>('map')
 const editing = ref(false)
 const confirmingRemove = ref(false)
 const actionsOpen = ref(false)
+const backupReminderDismissed = ref(false)
+const lastBackupAt = ref(readLastBackup(plan.id))
 const downloadable = canDownload()
 const routeTabs: Array<{ id: Exclude<Tab, 'team'>; label: string }> = [
   { id: 'today', label: 'Today' },
@@ -99,7 +103,20 @@ const metaLabel = computed(() => {
   if (teamOnly) return `Track only · ${readOnly ? 'viewer' : 'editor'}`
   return readOnly ? 'shared with you' : `edited ${edited.value}`
 })
-const availableTabs = computed<Tab[]>(() => teamOnly ? ['track'] : readOnly ? ['plan', 'flow', 'build', 'track'] : ['today', 'plan', 'flow', 'build', 'track'])
+const meaningfulProgress = computed(() => plan.execution.checkIns.length > 0
+  || plan.execution.experiments.length > 0
+  || plan.build.milestones.some((milestone) => milestone.tasks.some((task) => task.status !== 'todo')))
+const backupDue = computed(() => !readOnly
+  && !teamOnly
+  && downloadable
+  && meaningfulProgress.value
+  && !backupReminderDismissed.value
+  && (!lastBackupAt.value || plan.updatedAt - lastBackupAt.value > 24 * 60 * 60 * 1000))
+const availableTabs = computed<Tab[]>(() => teamOnly
+  ? ['track']
+  : readOnly && !showToday
+    ? ['plan', 'flow', 'build', 'track']
+    : ['today', 'plan', 'flow', 'build', 'track'])
 const visibleRouteTabs = computed(() => routeTabs.filter((item) => availableTabs.value.includes(item.id)))
 function compactAddress(address: string): string {
   return address.length > 15 ? `${address.slice(0, 8)}…${address.slice(-5)}` : address
@@ -120,11 +137,13 @@ const completedTasks = computed(() => plan.build.milestones.flatMap((milestone) 
 watch(
   () => plan.id,
   () => {
-    tab.value = teamOnly ? 'track' : readOnly ? 'plan' : 'today'
+    tab.value = teamOnly ? 'track' : readOnly && !showToday ? 'plan' : 'today'
     planView.value = 'map'
     editing.value = false
     confirmingRemove.value = false
     actionsOpen.value = false
+    backupReminderDismissed.value = false
+    lastBackupAt.value = readLastBackup(plan.id)
   },
 )
 
@@ -164,9 +183,20 @@ function save(): void {
 function saveBackup(): void {
   const json = JSON.stringify(exportPlanBackup(plan), null, 2)
   if (downloadFile(`${slugOf(plan)}-cairn-backup.json`, json, 'application/json;charset=utf-8')) {
+    lastBackupAt.value = Date.now()
+    try { localStorage.setItem(`cairn:backup:${plan.id}`, String(lastBackupAt.value)) } catch { /* The download still succeeded. */ }
     emit('notify', 'JSON backup saved', 'success')
   } else {
     emit('notify', 'This browser cannot save a backup file.', 'error')
+  }
+}
+
+function readLastBackup(planId: string): number {
+  try {
+    const value = Number(localStorage.getItem(`cairn:backup:${planId}`) ?? '0')
+    return Number.isFinite(value) ? value : 0
+  } catch {
+    return 0
   }
 }
 
@@ -260,6 +290,17 @@ function onTabKey(event: KeyboardEvent): void {
     </div>
 
     <slot name="banner" />
+
+    <aside v-if="backupDue" class="backup-reminder" aria-labelledby="backup-reminder-title">
+      <div>
+        <strong id="backup-reminder-title">Protect your progress</strong>
+        <p>Personal routes stay on this device. Save a restorable JSON copy before changing browsers or devices.</p>
+      </div>
+      <div class="backup-reminder__actions">
+        <button type="button" class="btn btn--primary btn--sm" @click="saveBackup">Save backup</button>
+        <button type="button" class="btn btn--ghost btn--sm" @click="backupReminderDismissed = true">Later</button>
+      </div>
+    </aside>
 
     <div class="titling">
       <p class="eyebrow">Your route to release</p>
@@ -406,6 +447,9 @@ function onTabKey(event: KeyboardEvent): void {
 .action-item:hover { background: var(--surface-hover); }
 .action-item strong { color: var(--text); font-size: var(--text-sm); }
 .action-item span { color: var(--text-muted); font-size: var(--text-xs); line-height: 1.45; }
+.backup-reminder { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); margin: var(--s4) var(--workspace-pad) 0; padding: var(--s3) var(--s4); border: 1px solid var(--line-strong); border-left: 4px solid var(--nim); border-radius: var(--r-md); background: var(--surface); }
+.backup-reminder p { margin-top: var(--s1); color: var(--text-muted); font-size: var(--text-xs); line-height: 1.45; }
+.backup-reminder__actions { display: flex; flex: 0 0 auto; gap: var(--s2); }
 .titling { padding: clamp(2rem, 7vw, 4rem) var(--workspace-pad) var(--s5); }
 .titling .screen__title { max-width: 17ch; font-family: var(--font-display); font-size: clamp(2rem, 7vw, 4.4rem); line-height: .98; letter-spacing: -.045em; }
 .name { font-family: var(--font-display); font-size: clamp(1.7rem, 6vw, 3.5rem); font-weight: 700; }
@@ -440,6 +484,8 @@ function onTabKey(event: KeyboardEvent): void {
 .team-route-head { padding-bottom: var(--s4); border-bottom: 1px solid var(--line); }
 .team-route-head h3 { font-family: var(--font-display); font-size: var(--text-xl); }
 @media (max-width: 520px) {
+  .backup-reminder { align-items: stretch; flex-direction: column; }
+  .backup-reminder__actions .btn { flex: 1; }
   .route-tab { flex-direction: column; gap: .1rem; padding: .65rem .4rem; font-size: .76rem; }
   .titling { padding-top: var(--s6); }
   .plan-tools { align-items: flex-start; }

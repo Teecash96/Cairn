@@ -1,6 +1,6 @@
 # Cairn
 
-**Map the idea before you build it.**
+**Turn the idea into work that ships.**
 
 [![CI](https://github.com/Teecash96/cairn/actions/workflows/ci.yml/badge.svg)](https://github.com/Teecash96/cairn/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-2455d6.svg)](LICENSE)
@@ -11,7 +11,7 @@
 [Daily execution](docs/product/daily-execution-loop.md) ·
 [Release checklist](docs/release-checklist.md)
 
-![Cairn turns a rough idea into a clear route from planning through release.](docs/screenshots/cairn-01-social-preview.png)
+![Cairn turns a rough idea into work that ships through planning, focus, validation, collaboration, rewards, and release.](docs/screenshots/cairn-01-social-preview.png)
 
 Cairn is a Nimiq Pay mini app that turns a few sentences about a product idea into
 a private execution workspace an indie builder can use through release.
@@ -38,6 +38,11 @@ evidence, team accountability, rewards, and release:
 There are no Cairn accounts. A Nimiq wallet is the user's identity, team key,
 and reward address. The private plan stays on the device by default; Cairn sends
 only the data required for an action the user chooses.
+
+The landing screen explains this loop in three steps before asking for any data:
+**Plan once**, **Work daily**, and **Finish together**. A sample route opens on
+Today without a wallet so the complete workflow is visible before signup or
+generation.
 
 ## Generated builder pack
 
@@ -242,12 +247,14 @@ Stated plainly, because it matters:
 | A protected team workspace | Cairn's server, so named wallet members can use Track until the owner deletes it. Milestones, task text, status, labels, dates, milestone blocker flags, and recorded reward proofs are shared. The PRD, flow, Build summary, notes, priorities, and dependencies are not shared |
 | Your wallet address | Cairn's server, as the identity bound to your short lived wallet session and protected team access |
 | A teammate reward transaction hash | Cairn's server and the configured Nimiq RPC service, to verify the public reward transaction |
-| A request network address | A short lived abuse counter in Cairn's server. It is not used for analytics |
+| A request network address | A short lived abuse counter in Cairn's server. It is not used for analytics or operational logs |
 
-There is no analytics, no tracking, and no third-party script. The app loads no
-external fonts. The browser talks to Cairn's API and the wallet flow. Cairn's
-Worker sends generation requests to Gemini and public payment lookups to the
-configured Nimiq RPC service on the server side.
+There is no product analytics, advertising tracking, or third-party script. The
+app loads no external fonts. The browser talks to Cairn's API and the wallet
+flow. Cairn's Worker sends generation requests to Gemini and public payment
+lookups to the configured Nimiq RPC service on the server side. A ten-percent
+operational sample contains only API category, method, status, and duration; it
+excludes prompts, URLs, identifiers, wallets, bodies, and network addresses.
 
 Plans are stored per device by design. Clearing the app's storage deletes them,
 and there is no private copy on a server to restore from. Use **Save JSON backup**
@@ -297,6 +304,7 @@ this way rather than only on `localhost`.
 npm run check        # types, tests, secret scan, dependency audit, production build
 npm run build        # vue-tsc -b && vite build
 npm test             # Node's built-in test runner
+npm run test:e2e     # Playwright mobile layout, product route, metadata, and WCAG checks
 ```
 
 ## Layout
@@ -316,7 +324,8 @@ src/
     stub.ts        Offline placeholder generator, dev only
   components/
     NewPlan.vue      Screen one: the description
-    Workspace.vue    One route: Plan, Flow, Build, and Track
+    Workspace.vue    One route: Today, Plan, Flow, Build, Track, and Team
+    ExecuteView.vue  Daily focus, check-ins, experiments, journal, and release mode
     PrdView.vue      The PRD, readable and editable
     VisualPrd.vue    A visual, editable PRD canvas
     FlowDiagram.vue  The flow diagram
@@ -328,6 +337,7 @@ src/
     Library.vue      Everything you have made
   tests/
     client/          Migration, tracker calculations, and targeted merge tests
+    e2e/             Mobile Chromium layout, accessibility, route, and metadata checks
     worker/          Auth, budget, shape, share, and team permission tests
 ```
 
@@ -337,7 +347,7 @@ Vue 3 + TypeScript + Vite on the front, with one Cloudflare Worker serving the
 app and API. KV stores sessions, explicit shares, team workspaces, rate limits,
 and budget counters. A SQLite-backed Durable Object owns atomic credits and
 payment receipt redemption. No component library, CSS framework, webfont, or
-analytics is used. Type checking is strict, including `erasableSyntaxOnly` and
+third-party analytics is used. Type checking is strict, including `erasableSyntaxOnly` and
 `verbatimModuleSyntax`.
 
 Google Analytics is intentionally not included. Cairn is a privacy first mini

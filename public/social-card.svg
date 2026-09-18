@@ -1,16 +1,63 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
-  <title id="title">Cairn</title>
-  <desc id="desc">Map a rough idea into a product route.</desc>
-  <rect width="1200" height="630" fill="#f2efe7" />
-  <rect x="72" y="72" width="104" height="104" rx="52" fill="#f5b72e" />
-  <g fill="#2457d6">
-    <rect x="110" y="95" width="28" height="18" rx="7" />
-    <rect x="98" y="120" width="52" height="18" rx="7" />
-    <rect x="88" y="145" width="72" height="18" rx="7" />
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
+  <title id="title">Cairn. From rough idea to work that ships.</title>
+  <desc id="description">A route connects planning, focus, proof, and release beside a stack of cairn stones.</desc>
+  <defs>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#3974ef"/>
+      <stop offset="1" stop-color="#173b99"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#ffd34e"/>
+      <stop offset="1" stop-color="#f3ad13"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="#f2efe7"/>
+  <path d="M0 552 C145 468 235 518 344 487 S548 416 665 449 S822 512 935 390" fill="none" stroke="#2457d6" stroke-width="10" stroke-linecap="round"/>
+
+  <g font-family="Arial, Helvetica, sans-serif" fill="#11140f">
+    <text x="54" y="76" font-size="34" font-weight="800" letter-spacing="5">CAIRN</text>
+    <text x="54" y="168" font-size="72" font-weight="900" letter-spacing="-3">FROM ROUGH IDEA</text>
+    <text x="54" y="246" font-size="72" font-weight="900" letter-spacing="-3">TO WORK THAT SHIPS.</text>
+    <text x="58" y="304" font-size="23" fill="#5b6257">Plan · Focus · Validate · Collaborate · Reward · Release</text>
   </g>
-  <text x="72" y="300" fill="#151713" font-family="Georgia,'Times New Roman',serif" font-size="86" font-weight="700" letter-spacing="-3">Cairn</text>
-  <text x="76" y="382" fill="#151713" font-family="Georgia,'Times New Roman',serif" font-size="40">Map the idea before you build it.</text>
-  <text x="76" y="460" fill="#2457d6" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="28" font-weight="700">01 PLAN   02 FLOW   03 BUILD   04 TRACK</text>
-  <line x1="76" y1="520" x2="1124" y2="520" stroke="#b8b0a1" stroke-width="3" />
-  <text x="76" y="566" fill="#565d54" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif" font-size="23">Free product planning with Nimiq wallet support</text>
+
+  <g font-family="Arial, Helvetica, sans-serif" font-weight="800" font-size="16">
+    <g transform="translate(70 410)">
+      <rect width="150" height="112" rx="22" fill="#fffdf7"/>
+      <circle cx="28" cy="28" r="12" fill="#f8ba20"/>
+      <text x="50" y="34" fill="#11140f">PLAN</text>
+      <rect x="25" y="59" width="100" height="9" rx="5" fill="#2457d6"/>
+      <rect x="25" y="78" width="72" height="9" rx="5" fill="#11140f"/>
+    </g>
+    <g transform="translate(287 384)">
+      <rect width="150" height="112" rx="22" fill="#fffdf7"/>
+      <circle cx="28" cy="28" r="12" fill="#f8ba20"/>
+      <text x="50" y="34" fill="#11140f">FOCUS</text>
+      <rect x="25" y="59" width="100" height="9" rx="5" fill="#2457d6"/>
+      <rect x="25" y="78" width="52" height="9" rx="5" fill="#11140f"/>
+    </g>
+    <g transform="translate(504 396)">
+      <rect width="150" height="112" rx="22" fill="#fffdf7"/>
+      <circle cx="28" cy="28" r="12" fill="#f8ba20"/>
+      <text x="50" y="34" fill="#11140f">PROVE</text>
+      <rect x="25" y="59" width="100" height="9" rx="5" fill="#2457d6"/>
+      <rect x="25" y="78" width="84" height="9" rx="5" fill="#11140f"/>
+    </g>
+    <g transform="translate(721 430)">
+      <rect width="150" height="112" rx="22" fill="#fffdf7"/>
+      <circle cx="28" cy="28" r="12" fill="#f8ba20"/>
+      <text x="50" y="34" fill="#11140f">SHIP</text>
+      <rect x="25" y="59" width="100" height="9" rx="5" fill="#2457d6"/>
+      <rect x="25" y="78" width="63" height="9" rx="5" fill="#11140f"/>
+    </g>
+  </g>
+
+  <g transform="translate(930 302)">
+    <ellipse cx="120" cy="248" rx="135" ry="18" fill="#d8d3c6"/>
+    <rect x="3" y="170" width="235" height="72" rx="50" fill="url(#gold)"/>
+    <rect x="30" y="102" width="185" height="65" rx="45" fill="url(#blue)"/>
+    <rect x="57" y="45" width="132" height="54" rx="38" fill="url(#gold)"/>
+    <path d="M83 38 C58 22 65 -6 92 -26 C120 -46 146 -36 164 -6 C179 18 166 37 142 42 C120 47 99 46 83 38Z" fill="#11140f"/>
+  </g>
 </svg>

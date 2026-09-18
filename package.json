@@ -1,12 +1,13 @@
 {
   "name": "cairn",
   "private": true,
-  "version": "1.5.0",
+  "version": "1.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "test": "node --experimental-strip-types --experimental-loader ./tests/resolve-loader.mjs --test 'tests/**/*.test.ts'",
+    "test:e2e": "playwright test",
     "security:deps": "npm audit --omit=dev",
     "security:secrets": "node scripts/secret-scan.mjs",
     "typecheck": "vue-tsc -b && tsc -p tsconfig.worker.json",
@@ -23,7 +24,9 @@
     "vue": "^3.5.41"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@cloudflare/workers-types": "^5.20260828.1",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^24.13.3",
     "@vitejs/plugin-vue": "^6.0.8",
     "@vue/tsconfig": "^0.9.1",
@@ -36,5 +39,5 @@
     "node": ">=24 <25"
   },
   "packageManager": "npm@11.9.0",
-  "description": "Turn a rough product idea into an editable plan, user flow, build roadmap, and wallet-gated team tracker."
+  "description": "Turn a rough product idea into daily work, evidence, wallet-native teamwork, rewards, and a release."
 }

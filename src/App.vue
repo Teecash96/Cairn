@@ -1104,6 +1104,7 @@ function ownIt(): void {
     v-if="shared"
     :plan="shared"
     read-only
+    :show-today="showingExample"
     @back="ownIt"
     @notify="notify"
   >
@@ -1114,7 +1115,7 @@ function ownIt(): void {
           {{ showingExample ? 'Sample plan · Meetup tickets' : 'Someone left this for you' }}
         </p>
         <p class="gifted__body">
-          {{ showingExample ? 'A curated illustration, not a customer project or a live AI result. Explore Plan, Flow, Build, and Track without connecting a wallet.' : 'Cairn turns an idea into a product map and a route to release. Explore this plan, then create your own. Planning is free and Nimiq wallet support is built in.' }}
+          {{ showingExample ? 'A curated illustration, not a customer project or a live AI result. Start in Today, then explore Plan, Flow, Build, and Track without connecting a wallet.' : 'Cairn turns an idea into daily work, evidence, and a route to release. Explore this plan, then create your own. Planning is free and Nimiq wallet support is built in.' }}
         </p>
         <button type="button" class="btn btn--primary btn--sm" @click="ownIt">
           Map my own idea

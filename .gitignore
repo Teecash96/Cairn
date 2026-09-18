@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 *.local
+playwright-report/
+test-results/
 
 # Secrets — hardcoded credentials are a competition disqualifier
 .env
