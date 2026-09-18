@@ -17,8 +17,12 @@ flowchart TD
 ## Trust boundaries
 
 - The wallet signs login challenges and payments. Cairn never receives a private key.
-- The browser stores the full private plan and private Track metadata in local storage.
-- Gemini receives idea or plan text only for the AI action the user requests.
+- The browser stores the full private plan, check-ins, build journal, validation
+  experiments, release draft, and private Track metadata in local storage.
+- Gemini receives idea or plan text only for the AI action the user requests. An
+  explicit progress replan also sends a compact check-in summary, task status,
+  task due dates, and milestone blocker state. It does not send the full journal
+  or private tracker metadata.
 - The Nimiq RPC receives a public transaction lookup during payment verification.
 - Public shares and protected team workspaces are explicit server-side snapshots.
 - Team members receive Track fields only. They do not receive the PRD, flow, Build
