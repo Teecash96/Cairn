@@ -469,8 +469,8 @@ function applyTaskAction(
 
   if (operation === 'assign') {
     requireOwner(record, address)
-    if (!assignee || !record.members.some((member) => member.address === assignee)) {
-      throw new TeamError('invalid_request', 'Assign the task to a current teammate.', 400)
+    if (!assignee || !record.members.some((member) => member.address === assignee && member.role === 'editor')) {
+      throw new TeamError('invalid_request', 'Assign the task to a current Editor.', 400)
     }
     task.assignee = assignee
     task.approvalStatus = 'none'

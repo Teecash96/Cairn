@@ -787,7 +787,14 @@ async function teamTaskAction(
 ): Promise<void> {
   const state = teamResult.value
   const teamId = teamPlan.value?.teamId ?? current.value?.teamId
-  if (!state || !teamId || teamSyncing.value) return
+  if (!state || !teamId) {
+    notify('Load the team workspace before changing an assignment.', 'error')
+    return
+  }
+  if (teamSyncing.value) {
+    notify('The team board is still saving. Try the assignment again in a moment.', 'info')
+    return
+  }
   teamSyncing.value = true
   teamSaveState.value = 'saving'
   try {

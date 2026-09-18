@@ -366,6 +366,27 @@ test('records a verified reward once and preserves it across tracker edits', asy
   )
 })
 
+test('assigns work only to Editors who can submit it', async () => {
+  const testEnv = env(new MemoryKV())
+  const owner = address(20)
+  const viewer = address(21)
+  const editor = address(22)
+  const created = await createTeam(testEnv, owner, {
+    planId: 'assignable-team', name: 'Assignable team', build: build(),
+  }, 'https://cairn.example')
+  const withViewer = await addMember(testEnv, created.teamId, owner, viewer, 'viewer', 'https://cairn.example')
+  const taskId = withViewer.build.milestones[0]!.tasks[0]!.id
+
+  await assert.rejects(
+    () => updateTeamTask(testEnv, created.teamId, owner, taskId, 'assign', { assignee: viewer }, 'https://cairn.example'),
+    (error: unknown) => error instanceof TeamError && error.code === 'invalid_request',
+  )
+
+  await addMember(testEnv, created.teamId, owner, editor, 'editor', 'https://cairn.example')
+  const assigned = await updateTeamTask(testEnv, created.teamId, owner, taskId, 'assign', { assignee: editor }, 'https://cairn.example')
+  assert.equal(assigned.build.milestones[0]!.tasks[0]!.assignee, editor)
+})
+
 test('owner deletion revokes team access and permits a fresh workspace', async () => {
   const kv = new MemoryKV()
   const testEnv = env(kv)
