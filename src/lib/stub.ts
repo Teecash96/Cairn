@@ -289,6 +289,15 @@ export function stubRefinement(plan: Plan, action: RefineAction, question?: stri
     }
   }
 
+  if (action === 'replan_from_progress') {
+    const next = plan.build.milestones.flatMap((milestone) => milestone.tasks)
+      .find((task) => task.status !== 'done')
+    return {
+      explanation: `Local preview: protect completed work and make the next unresolved task explicit. ${question ?? ''}`.slice(0, 500),
+      changes: { build: { nextAction: next?.text ?? 'Review the evidence and prepare the release.' } },
+    }
+  }
+
   return {
     answer: `Local preview answer: test "${question?.trim() || 'the next decision'}" with one real person before adding more scope.`,
     explanation: 'This is a local preview. The deployed Worker will answer from the current plan only.',
