@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add an editable report workspace for progress updates, milestone reviews, validation reports, and stakeholder briefs.
+- Draft reports locally from tasks, check-ins, evidence, blockers, decisions, next steps, and teammate activity.
+- Keep report drafts in the local route and JSON backup until the owner copies them.
+
 ## 1.6.0 — 2026-09-18
 
 - Reframe the product from plan generation to an idea-to-release execution loop.

@@ -30,6 +30,7 @@ evidence, team accountability, rewards, and release:
 | **Focus** | A Today workspace with progress signals, active blockers, reviews, experiments, and one recommended next task |
 | **Execute** | A board and timeline with task status, dates, labels, dependencies, priorities, and private notes |
 | **Learn** | Daily check-ins, a chronological build journal, and validation experiments that connect hypotheses to evidence and decisions |
+| **Report** | Editable progress, milestone, validation, and stakeholder reports drafted from the route's real execution data |
 | **Adapt** | Progress-aware AI replanning that proposes the smallest useful change without replacing completed work |
 | **Collaborate** | Wallet-native team discovery, Viewer and Editor roles, assignments, My Tasks, completion proof, owner review, and a signed activity trail |
 | **Reward** | Direct NIM rewards for approved work, locked to the assigned teammate and verified on the public network |
@@ -59,7 +60,8 @@ The first generation creates:
 - a **Build plan** — a small MVP scope, three milestones, risks, acceptance
   tests, and the next action
 - a **Today workspace** — one recommended task, progress signals, daily
-  check-ins, validation experiments, a private build journal, and release mode
+  check-ins, validation experiments, editable reports, a private build journal,
+  and release mode
 - a **Track workspace** — a local project board and timeline for milestones,
   task status, due dates, labels, priorities, notes, and simple blockers
 - a **Reality check** — three prioritized concerns with the smallest test or fix
@@ -242,6 +244,7 @@ Stated plainly, because it matters:
 | --- | --- |
 | The idea you type | Google's Gemini API, via Cairn's server, to write the plan |
 | The finished plan and private Track data | Your device's local storage. **Nothing else**, unless you use a planner follow up, public Share, or a protected team workspace |
+| An editable project report | Your device's local storage and JSON backup. It leaves the device only when you copy it |
 | A normal plan refinement | Cairn's server and Google's Gemini API for that one follow up. The PRD, flow, and text-only builder pack are sent so the change can be targeted. Private tracker metadata is not sent |
 | **Replan from progress** | Cairn's server and Gemini receive a compact check-in summary, task status and due dates, and milestone blocker state. Private notes, priorities, dependencies, wallet assignments, rewards, the full journal, and release drafts stay on the device |
 | A plan you tap **Share** on | Cairn's server, so the link can be opened until you revoke it. Progress, milestone dates, task due dates, labels, and recorded reward proofs are shared. Notes, priorities, and dependencies are not shared |

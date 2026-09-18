@@ -421,8 +421,11 @@ test('keeps check-ins and validation experiments in portable backups', () => {
   }
   plan.execution.checkIns.push({ id: 'check-1', createdAt: 100, completed: 'Interviewed a user', blocker: '', changed: 'Pricing is unclear', nextStep: 'Test two prices' })
   plan.execution.experiments.push({ id: 'test-1', createdAt: 100, updatedAt: 200, hypothesis: 'Users will pay', method: 'Show two prices to five users', successMetric: 'Three choose a paid option', result: 'Four chose paid', decision: 'continue' })
+  plan.execution.report = { kind: 'stakeholder', title: 'Week one', audience: 'Project sponsor', period: '12–18 September', body: 'The route is moving.', updatedAt: 300 }
 
   const restored = importPlanBackup(JSON.stringify(exportPlanBackup(plan)))
   assert.equal(restored?.execution.checkIns[0]?.nextStep, 'Test two prices')
   assert.equal(restored?.execution.experiments[0]?.decision, 'continue')
+  assert.equal(restored?.execution.report.body, 'The route is moving.')
+  assert.equal(restored?.execution.report.kind, 'stakeholder')
 })
