@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.0 — 2026-09-18
+
+- Add a Today workspace with one recommended next task and live project signals.
+- Add structured daily check-ins that update the next action.
+- Add progress-aware AI replanning with an explicit privacy boundary.
+- Add a private chronological build journal for task, check-in, experiment, and release events.
+- Add validation experiments with hypotheses, smallest tests, targets, results, and decisions.
+- Add release readiness and a copyable launch pack with product copy, social copy, demo outline, known issues, and metrics.
+- Preserve execution history in JSON backup while excluding it from public shares and team Track snapshots.
+
 ## 1.4.0 — 2026-09-17
 
 - Discover protected teammate work automatically from the connected Nimiq wallet.
