@@ -85,6 +85,9 @@ test('the social preview is a valid 1200 by 630 PNG', () => {
 test('public metadata describes the free execution product', () => {
   const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8')
   assert.match(html, /Turn the idea into work that ships/)
+  const viewport = html.match(/<meta\s+name="viewport"\s+content="([^"]+)"/)
+  assert.ok(viewport?.[1])
+  assert.doesNotMatch(viewport[1], /maximum-scale|user-scalable=no/)
   const block = html.match(/<script type="application\/ld\+json">\s*([\s\S]*?)\s*<\/script>/)
   assert.ok(block?.[1])
   const schema = JSON.parse(block[1]) as { isAccessibleForFree?: boolean; offers?: unknown }
