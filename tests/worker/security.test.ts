@@ -106,7 +106,8 @@ test('free generation and refinement do not consult the credit ledger', async ()
       headers,
       body: JSON.stringify({
         address: AUTH_ADDRESS,
-        action: 'cut_mvp_scope',
+        action: 'replan_from_progress',
+        question: 'Tasks: 2 done, 1 active, 5 to do. Blocker: the first user test changed the scope.',
         plan: createExamplePlan(),
       }),
     }), workerEnv)
