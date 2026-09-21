@@ -26,6 +26,7 @@ const {
   initial,
   walletAddress,
   teamInvite = false,
+  teamError = null,
   showDisclosure = true,
 } = defineProps<{
   busy?: boolean
@@ -34,6 +35,7 @@ const {
   initial?: PlanInput
   walletAddress?: string | null
   teamInvite?: boolean
+  teamError?: string | null
   showDisclosure?: boolean
 }>()
 
@@ -130,7 +132,20 @@ function submit(): void {
 
 <template>
   <div class="screen screen--atlas-new">
-    <header class="atlas-hero">
+    <header v-if="teamInvite" class="invite-hero">
+      <div class="brandline">
+        <span class="brandline__symbol">
+          <CairnMark :size="22" class="mark" label="Cairn" />
+        </span>
+        <span class="brandline__name">Cairn</span>
+        <span class="brandline__tag">Protected team</span>
+      </div>
+      <p class="eyebrow">Team invitation</p>
+      <h1>Open the shared work</h1>
+      <p>Connect the exact Nimiq wallet the project owner added. No Cairn account or new plan is required.</p>
+    </header>
+
+    <header v-else class="atlas-hero">
       <div class="brandline">
         <span class="brandline__symbol">
           <CairnMark :size="22" class="mark" label="Cairn" />
@@ -166,7 +181,7 @@ function submit(): void {
       </section>
     </header>
 
-    <form id="new-plan-form" class="form atlas-form" aria-label="Create a product plan" @submit.prevent="submit">
+    <form id="new-plan-form" class="form atlas-form" :class="{ 'atlas-form--team-invite': teamInvite }" :aria-label="teamInvite ? 'Open protected team workspace' : 'Create a product plan'" @submit.prevent="submit">
       <section class="wallet-card" :class="{ 'wallet-card--connected': walletAddress }" aria-labelledby="wallet-title">
         <div class="wallet-card__copy">
           <p class="eyebrow">Wallet identity</p>
@@ -186,7 +201,8 @@ function submit(): void {
         <button
           v-if="!walletAddress"
           type="button"
-          class="btn btn--secondary btn--block wallet-card__action"
+          class="btn btn--block wallet-card__action"
+          :class="teamInvite ? 'btn--primary' : 'btn--secondary'"
           :disabled="busy || walletBusy"
           :aria-busy="walletBusy"
           @click="emit('connect')"
@@ -206,8 +222,10 @@ function submit(): void {
         <p v-else class="wallet-card__next">
           Connected. Generate will ask you to sign a one-time verification message.
         </p>
+        <p v-if="teamInvite && teamError" class="wallet-card__error" role="alert">{{ teamError }}</p>
       </section>
 
+      <template v-if="!teamInvite">
       <div class="field project-field">
         <label class="field__label" for="name">
           Project name
@@ -325,9 +343,10 @@ function submit(): void {
           />
         </div>
       </template>
+      </template>
     </form>
 
-    <p v-if="showDisclosure" class="disclosure faint">
+    <p v-if="showDisclosure && !teamInvite" class="disclosure faint">
       What leaves your phone: the description above, sent to Google's Gemini to write the plan.
       The finished plan is stored on this device only — nothing is uploaded unless you tap Share.
     </p>
@@ -343,6 +362,10 @@ function submit(): void {
 <style scoped>
 .screen--atlas-new { gap: var(--s8); }
 .atlas-hero { position: relative; display: flex; flex-direction: column; gap: var(--s4); padding-bottom: var(--s2); }
+.invite-hero { display: flex; flex-direction: column; gap: var(--s3); padding-bottom: var(--s2); }
+.invite-hero .brandline { margin-bottom: var(--s4); }
+.invite-hero h1 { max-width: 14ch; font-family: var(--font-display); font-size: clamp(2.25rem, 11vw, 4rem); line-height: .98; letter-spacing: -.045em; }
+.invite-hero > p:last-child { max-width: 38rem; color: var(--text-muted); font-size: var(--text-md); line-height: var(--leading-loose); }
 .brandline { margin-bottom: var(--s4); }
 .brandline__symbol { display: grid; place-items: center; width: 38px; height: 38px; color: var(--ink); background: var(--nim); border-radius: 50%; }
 .mark { display: block; }
@@ -370,6 +393,7 @@ function submit(): void {
 }
 
 .atlas-form { padding-top: var(--s5); border-top: 1px solid var(--line); }
+.atlas-form--team-invite { padding-top: 0; border-top: 0; }
 .project-field { max-width: 28rem; }
 .more {
   align-self: flex-start;
@@ -447,6 +471,7 @@ function submit(): void {
 .wallet-card__change { flex: 0 0 auto; margin-left: auto; color: var(--accent); font-size: var(--text-xs); font-weight: 750; }
 .wallet-card__action { min-width: 0; height: auto; min-height: 46px; padding-block: var(--s3); line-height: 1.25; white-space: normal; overflow-wrap: anywhere; }
 .wallet-card__next { color: var(--moss); font-size: var(--text-xs); line-height: var(--leading); overflow-wrap: anywhere; }
+.wallet-card__error { padding: var(--s3); border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--line)); border-radius: var(--r-sm); background: var(--danger-subtle); color: var(--danger); font-size: var(--text-sm); line-height: var(--leading); overflow-wrap: anywhere; }
 
 /* -- submit -------------------------------------------------------------- */
 
