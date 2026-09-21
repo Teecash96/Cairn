@@ -181,6 +181,7 @@ function messageOf(error: unknown): string {
 async function connectIdentity(): Promise<void> {
   const address = await session.connect()
   if (address) {
+    teamError.value = null
     teamRoutes.value = listTeamRoutes(address)
     notify('Wallet connected. Your address is your Cairn identity.', 'success')
   } else {
@@ -190,6 +191,7 @@ async function connectIdentity(): Promise<void> {
 
 function disconnectIdentity(): void {
   session.disconnect()
+  teamError.value = null
   teamRoutes.value = []
   notify('Wallet disconnected', 'info')
 }
@@ -230,7 +232,11 @@ function readLink(): void {
 
   const teamId = params.get('t')
   if (teamId) {
+    view.value = 'new'
+    shared.value = null
+    current.value = null
     pendingTeamId.value = teamId
+    window.scrollTo(0, 0)
     return
   }
 
@@ -1167,6 +1173,7 @@ function ownIt(): void {
       :team-busy="teamLoading"
       :wallet-address="session.address.value"
       :team-invite="Boolean(pendingTeamId)"
+      :team-error="teamError"
       :initial="formInitial"
       @submit="generate"
       @example="openExample"

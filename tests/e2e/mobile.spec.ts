@@ -27,6 +27,20 @@ test('sample opens on Today and exposes the complete product route', async ({ pa
   expect(overflow).toBeLessThanOrEqual(1)
 })
 
+test('team invites put wallet access first on mobile', async ({ page }) => {
+  await page.goto('/?t=team-invite-example')
+
+  await expect(page.getByRole('heading', { name: 'Open the shared work' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Connect Nimiq wallet' })).toBeVisible()
+  await expect(page.getByText('No Cairn account or new plan is required.')).toBeVisible()
+  await expect(page.getByLabel('The rough idea')).toHaveCount(0)
+
+  const connectTop = await page.getByRole('button', { name: 'Connect Nimiq wallet' }).evaluate((element) => element.getBoundingClientRect().top)
+  expect(connectTop).toBeLessThan(page.viewportSize()?.height ?? 700)
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  expect(overflow).toBeLessThanOrEqual(1)
+})
+
 test('landing page has no automatically detectable WCAG A or AA violations', async ({ page }) => {
   await page.goto('/')
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()
