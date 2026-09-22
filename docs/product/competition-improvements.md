@@ -20,6 +20,7 @@ teamwork, task approval, direct teammate rewards, and release preparation.
 | --- | --- | --- |
 | First run | The landing screen explains **Plan once**, **Work daily**, and **Finish together** | A new user can understand the complete product before connecting a wallet |
 | Product proof | The sample route opens on **Today** and exposes Today, Plan, Flow, Build, and Track | Judges can inspect the execution loop without a wallet or generated plan |
+| Generation recovery | A structurally incomplete AI plan is regenerated once with an explicit semantic checklist | A temporary model formatting mistake no longer forces the user to repeat wallet verification and generation manually |
 | Daily execution | Today recommends one available task and shows progress, blockers, reviews, and active experiments | Cairn helps a builder act instead of stopping at a generated document |
 | Wallet action inbox | Routes combines personal next moves, assigned team work, owner reviews, ready rewards, blockers, and signed activity for the verified wallet | A builder or teammate can return and know what needs attention across projects without creating an account or a new plan |
 | Learning loop | Check-ins, validation experiments, the build journal, and progress-aware replanning are connected | Decisions can respond to evidence without replacing completed work |
@@ -38,7 +39,7 @@ teamwork, task approval, direct teammate rewards, and release preparation.
 Every pull request to `main` runs the same validation gate before deployment:
 
 - strict TypeScript checks for the client and Worker
-- 83 client and server tests
+- 84 client and server tests
 - a tracked-file and Git-history secret scan
 - a production dependency audit
 - a production Vite build

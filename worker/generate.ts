@@ -203,6 +203,38 @@ export interface GeneratedRefinement {
   changes: PlanChanges
 }
 
+function generatedPlan(value: unknown): GeneratedPlan {
+  if (typeof value !== 'object' || value === null) throw new Error('The model returned an invalid plan.')
+  const raw = value as Record<string, unknown>
+  return {
+    prd: clampPrd(raw.prd),
+    flow: requireFlow(raw.flow),
+    build: requireBuild(raw.build),
+    realityCheck: requireRealityCheck(raw.realityCheck),
+  }
+}
+
+function retryPrompt(input: PlanInput, reason: unknown): string {
+  const failedPart = reason instanceof Error
+    ? /user flow/i.test(reason.message)
+      ? 'user flow'
+      : /builder pack/i.test(reason.message)
+        ? 'builder pack'
+        : /reality check/i.test(reason.message)
+          ? 'reality check'
+          : 'JSON structure'
+    : 'JSON structure'
+
+  return `${prompt(input)}
+
+RETRY NOTICE: The previous response failed validation in its ${failedPart}. Generate a complete new plan from the source details above. Before returning JSON, verify every item in this checklist:
+- Every required field contains useful text.
+- The flow has 5 to 8 steps, exactly one step whose kind is "decision", and that decision has exactly two non-empty branches.
+- The build has exactly 3 milestones, each milestone has 3 or 4 non-empty tasks, and there are 9 to 12 tasks in total.
+- The realityCheck array has exactly 3 complete items with concern, why, and fix.
+Return only the corrected JSON object.`
+}
+
 function text(value: unknown, max: number): string {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : ''
 }
@@ -434,14 +466,25 @@ export async function generateWithGemini(
   key: string,
   input: PlanInput,
 ): Promise<GeneratedPlan> {
-  const parsed = await askGemini(config, key, prompt(input), 5000, PLAN_SCHEMA)
-  if (typeof parsed !== 'object' || parsed === null) throw new Error('The model returned an invalid plan.')
-  const raw = parsed as Record<string, unknown>
-  return {
-    prd: clampPrd(raw.prd),
-    flow: requireFlow(raw.flow),
-    build: requireBuild(raw.build),
-    realityCheck: requireRealityCheck(raw.realityCheck),
+  let parsed: unknown
+  try {
+    parsed = await askGemini(config, key, prompt(input), 5000, PLAN_SCHEMA)
+  } catch (error) {
+    // Provider, key, quota, and timeout failures need their specific message.
+    // A second request would add delay without repairing the response shape.
+    throw error
+  }
+
+  try {
+    return generatedPlan(parsed)
+  } catch (error) {
+    // Structured JSON cannot express every semantic invariant, especially
+    // "exactly one decision step". Give the model one bounded chance to repair
+    // its own output instead of making the user repeat wallet authentication.
+    const detail = error instanceof Error ? error.message : 'invalid output'
+    console.warn('Gemini plan failed semantic validation; retrying once', detail)
+    const repaired = await askGemini(config, key, retryPrompt(input, error), 5600, PLAN_SCHEMA)
+    return generatedPlan(repaired)
   }
 }
 

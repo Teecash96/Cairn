@@ -116,6 +116,8 @@ session and no payment wall.
    same signature flow. This creates a short lived server session. The prompt
    happens on the action you already chose to take.
 3. Gemini writes the full builder pack. It takes about twenty seconds.
+   If the first response is valid JSON but misses a required planning section,
+   Cairn automatically regenerates it once with an explicit completion checklist.
 4. Open **Today** for the next useful task, progress, blockers, approvals, and
    active validation tests. Add a short check-in when reality changes.
 5. Open **Routes** and verify the connected wallet to load one cross-project

@@ -33,7 +33,7 @@ const generatedPlan = {
     milestones: [
       { title: 'Foundation', outcome: 'A report can be created', tasks: ['Create the form', 'Validate the location', 'Save a report'] },
       { title: 'Ranking', outcome: 'Reports become a useful priority list', tasks: ['Define ranking inputs', 'Calculate street priority', 'Show the ranked list'] },
-      { title: 'Proof', outcome: 'A council user can review the result', tasks: ['Add the council view', 'Test one real report'] },
+      { title: 'Proof', outcome: 'A council user can review the result', tasks: ['Add the council view', 'Test one real report', 'Record the review result'] },
     ],
     risks: ['Reports may lack reliable locations'],
     acceptanceTests: ['A cyclist can submit a report'],
@@ -85,4 +85,34 @@ test('retries Gemini 3 structured output as plain JSON text after a 400', async 
   assert.equal('responseFormat' in secondConfig, false)
   assert.equal('responseMimeType' in secondConfig, false)
   assert.equal('responseSchema' in secondConfig, false)
+})
+
+test('regenerates once when the first plan fails semantic validation', async () => {
+  const calls: Array<Record<string, unknown>> = []
+  const invalid = structuredClone(generatedPlan)
+  invalid.flow = invalid.flow.map((step) => step.kind === 'decision'
+    ? { kind: 'action', title: step.title, action: step.action, result: step.result }
+    : step)
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const payload = JSON.parse(String(init?.body)) as Record<string, unknown>
+    calls.push(payload)
+    const plan = calls.length === 1 ? invalid : generatedPlan
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(plan) }] } }] }), { status: 200 })
+  }) as typeof fetch
+
+  try {
+    const result = await generateWithGemini(config, 'test-key', {
+      name: 'Pothole report',
+      idea: 'An app where cyclists report potholes and the council ranks streets.',
+    })
+    assert.equal(result.flow.filter((step) => step.kind === 'decision').length, 1)
+  } finally {
+    globalThis.fetch = previousFetch
+  }
+
+  assert.equal(calls.length, 2)
+  const retry = (((calls[1]?.contents as Array<Record<string, unknown>>)?.[0]?.parts as Array<Record<string, unknown>>)?.[0]?.text as string)
+  assert.match(retry, /RETRY NOTICE/)
+  assert.match(retry, /exactly one step whose kind is "decision"/)
 })
