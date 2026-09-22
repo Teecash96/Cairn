@@ -21,6 +21,7 @@ teamwork, task approval, direct teammate rewards, and release preparation.
 | First run | The landing screen explains **Plan once**, **Work daily**, and **Finish together** | A new user can understand the complete product before connecting a wallet |
 | Product proof | The sample route opens on **Today** and exposes Today, Plan, Flow, Build, and Track | Judges can inspect the execution loop without a wallet or generated plan |
 | Daily execution | Today recommends one available task and shows progress, blockers, reviews, and active experiments | Cairn helps a builder act instead of stopping at a generated document |
+| Wallet action inbox | Routes combines personal next moves, assigned team work, owner reviews, ready rewards, blockers, and signed activity for the verified wallet | A builder or teammate can return and know what needs attention across projects without creating an account or a new plan |
 | Learning loop | Check-ins, validation experiments, the build journal, and progress-aware replanning are connected | Decisions can respond to evidence without replacing completed work |
 | Reporting | Progress, milestone, validation, and stakeholder drafts are built from recorded execution data and remain fully editable | Builders can communicate what happened without reconstructing the project from memory |
 | Teamwork | Nimiq wallet identity supports team discovery, roles, assignments, proof, owner review, and activity history | Named teammates can work in a protected Track workspace without creating Cairn accounts |
@@ -37,12 +38,13 @@ teamwork, task approval, direct teammate rewards, and release preparation.
 Every pull request to `main` runs the same validation gate before deployment:
 
 - strict TypeScript checks for the client and Worker
-- 78 client and server tests
+- 83 client and server tests
 - a tracked-file and Git-history secret scan
 - a production dependency audit
 - a production Vite build
-- four mobile Chromium end-to-end checks covering the landing message, sample
-  route, horizontal overflow, JSON-LD metadata, and automated WCAG A/AA rules
+- six mobile Chromium end-to-end checks covering the landing message, sample
+  route, wallet action inbox, protected invites, horizontal overflow, JSON-LD
+  metadata, and automated WCAG A/AA rules
 
 The deployment job runs only after validation succeeds. It rebuilds the app and
 deploys the Worker and static assets through Wrangler.

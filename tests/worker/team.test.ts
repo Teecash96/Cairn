@@ -109,7 +109,13 @@ test('discovers current teams for each signed wallet', async () => {
     planId: 'discoverable-plan', name: 'Discovered team', build: build(),
   }, 'https://cairn.example')
 
-  assert.deepEqual((await listTeams(testEnv, owner, 'https://cairn.example')).map((team) => team.teamId), [created.teamId])
+  const ownerTeams = await listTeams(testEnv, owner, 'https://cairn.example')
+  assert.deepEqual(ownerTeams.map((team) => team.teamId), [created.teamId])
+  assert.equal(ownerTeams[0]?.planId, 'discoverable-plan')
+  assert.equal(ownerTeams[0]?.role, 'owner')
+  assert.equal(ownerTeams[0]?.build.milestones[0]?.tasks[0]?.text, 'Ship the first release')
+  assert.equal('notes' in (ownerTeams[0]?.build.milestones[0]?.tasks[0] ?? {}), false)
+  assert.deepEqual(ownerTeams[0]?.activity, [])
   await addMember(testEnv, created.teamId, owner, member, 'editor', 'https://cairn.example')
   assert.deepEqual((await listTeams(testEnv, member, 'https://cairn.example')).map((team) => team.name), ['Discovered team'])
 

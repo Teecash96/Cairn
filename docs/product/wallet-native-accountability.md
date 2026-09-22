@@ -20,6 +20,8 @@ address that the owner added to the team.
   one-time message without creating a plan.
 - Editors update the shared Track board; Viewers can follow progress.
 - The connected wallet discovers its protected team routes on any device.
+- Routes gives that wallet one action inbox across assigned work, owner reviews,
+  ready rewards, blocked milestones, reward history, and signed team activity.
 - The owner assigns each task to one Editor wallet.
 - An assignee submits completion proof; the owner approves it or returns it.
 - A signed activity feed records protected changes and server timestamps.
@@ -28,6 +30,18 @@ address that the owner added to the team.
 - Cairn never holds teammate reward funds.
 
 ## Accountability workflow
+
+### Wallet action inbox
+
+After signature verification, Cairn loads the public Track projection for every
+team available to the wallet. It combines that protected data with the personal
+routes on the current device. No email, profile, or Cairn account is created.
+
+The inbox is role-aware. Editors see unfinished tasks assigned to their wallet
+and any work returned for changes. Owners see proof waiting for approval and
+approved tasks that are ready for a direct NIM reward. Everyone can see relevant
+blockers, rewards received by their wallet, and recent signed activity. Opening
+an item takes the user to its route; permission is checked again by the Worker.
 
 ### 1. Wallet assignment
 
@@ -79,6 +93,7 @@ available only to authenticated members.
 ## Acceptance criteria
 
 - A teammate joins with a Nimiq wallet address only; no signup form exists.
+- A verified wallet can see its cross-route work without first creating a plan.
 - The owner can assign each task to one current member.
 - An authenticated member cannot submit another wallet's assigned task.
 - Completion requires owner approval before a reward can be sent.

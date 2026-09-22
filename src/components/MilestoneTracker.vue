@@ -35,6 +35,7 @@ const { readOnly = false, editing = false, teamMode = false, teamAddress = '', t
 
 const emit = defineEmits<{
   'team-task': [taskId: string, operation: 'assign' | 'submit' | 'approve' | 'return', value?: string]
+  'team-reward': [address: string]
 }>()
 
 type View = 'board' | 'timeline'
@@ -365,6 +366,15 @@ function returnTask(task: Task): void {
                 <button type="button" class="btn btn--primary btn--sm" :disabled="teamBusy" @click="emit('team-task', task.id, 'approve')">Approve</button>
                 <button type="button" class="btn btn--secondary btn--sm" :disabled="teamBusy" @click="returnTask(task)">Return</button>
               </template>
+              <button
+                v-if="teamRole === 'owner' && task.status === 'done' && task.approvalStatus === 'approved' && task.assignee && !task.reward"
+                type="button"
+                class="btn btn--primary btn--sm"
+                :disabled="teamBusy"
+                @click="emit('team-reward', task.assignee)"
+              >
+                Send NIM reward
+              </button>
             </div>
             <div class="task-actions">
               <button type="button" class="status-button" :disabled="readOnly || teamMode" :aria-label="`Change status, currently ${TASK_STATUS_LABEL[task.status]}`" @click.stop="cycleStatus(task)">{{ TASK_STATUS_LABEL[task.status] }}</button>

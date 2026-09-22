@@ -90,11 +90,15 @@ export interface TeamActivity {
   createdAt: number
 }
 
-export interface TeamSummary {
+/** Compact protected data used to build the cross-route wallet inbox. */
+export interface TeamInboxTeam {
   teamId: string
+  planId: string
   name: string
   role: TeamAccess
   updatedAt: number
+  build: PublicBuildPlan
+  activity: TeamActivity[]
 }
 
 /** Protected team state. Only the public Track projection is returned. */
@@ -392,8 +396,8 @@ export function createTeam(body: {
 }
 
 /** Discover every current team for the authenticated wallet. */
-export async function listTeams(): Promise<TeamSummary[]> {
-  const result = await request<{ teams: TeamSummary[] }>('/team', { auth: true })
+export async function listTeams(): Promise<TeamInboxTeam[]> {
+  const result = await request<{ teams: TeamInboxTeam[] }>('/team', { auth: true })
   return result.teams
 }
 

@@ -28,6 +28,7 @@ evidence, team accountability, rewards, and release:
 | --- | --- |
 | **Plan** | An editable PRD, Visual PRD, user flow, MVP, milestones, risks, acceptance tests, and initial tasks |
 | **Focus** | A Today workspace with progress signals, active blockers, reviews, experiments, and one recommended next task |
+| **Inbox** | One wallet view for personal next moves, assigned team tasks, owner reviews, rewards, blockers, and signed activity across every route |
 | **Execute** | A board and timeline with task status, dates, labels, dependencies, priorities, and private notes |
 | **Learn** | Daily check-ins, a chronological build journal, and validation experiments that connect hypotheses to evidence and decisions |
 | **Report** | Editable progress, milestone, validation, and stakeholder reports drafted from the route's real execution data |
@@ -117,18 +118,21 @@ session and no payment wall.
 3. Gemini writes the full builder pack. It takes about twenty seconds.
 4. Open **Today** for the next useful task, progress, blockers, approvals, and
    active validation tests. Add a short check-in when reality changes.
-5. Edit anything. It autosaves to your device.
-6. Open **Plan** and choose **Map** for a one page view of the problem, user,
+5. Open **Routes** and verify the connected wallet to load one cross-project
+   action inbox. It shows personal next moves, assigned work, reviews, rewards,
+   blockers, and recent signed team activity without creating a Cairn account.
+6. Edit anything. It autosaves to your device.
+7. Open **Plan** and choose **Map** for a one page view of the problem, user,
    promise, first release, proof, and guardrails.
-7. Open **Track** to update task status, dates, labels, blockers, and private
+8. Open **Track** to update task status, dates, labels, blockers, and private
    notes. Changes save on this device.
-8. Choose **Replan from progress** after a check-in. Cairn uses the task state,
+9. Choose **Replan from progress** after a check-in. Cairn uses the task state,
    blocker, and validation evidence to propose the smallest useful adjustment.
-9. Open **Reports** in Today to draft an editable progress update, milestone
+10. Open **Reports** in Today to draft an editable progress update, milestone
    review, validation report, or stakeholder brief from the work already recorded.
-10. Use **Release mode** to check readiness and copy a launch pack with release
+11. Use **Release mode** to check readiness and copy a launch pack with release
    notes, product copy, social copy, a demo outline, known issues, and metrics.
-11. Copy the plan as Markdown, share a public read only link, or create a protected
+12. Copy the plan as Markdown, share a public read only link, or create a protected
    team workspace for Track.
 
 ### Daily execution
@@ -211,6 +215,13 @@ any device. Cairn also remembers recently opened locators on the current device.
 A route row never grants access: opening it requires the matching wallet
 signature. Owner-created plans remain in Personal work and can be exported as a
 JSON backup.
+
+At the top of Routes, the **Wallet action inbox** combines the current device's
+personal next moves with every protected team available to the verified wallet.
+Editors see assigned work and requested changes. Owners see completion proof,
+approved tasks ready for a direct NIM reward, and blocked milestones. Reward
+history and signed team activity stay visible as proof. Selecting an inbox item
+opens the correct personal route or protected Track workspace directly.
 
 Team members see and, when allowed, edit Track only. The shared snapshot contains
 milestones, task text, status, labels, dates, and the owner's milestone blocker

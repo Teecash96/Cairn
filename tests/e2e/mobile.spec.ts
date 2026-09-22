@@ -41,6 +41,18 @@ test('team invites put wallet access first on mobile', async ({ page }) => {
   expect(overflow).toBeLessThanOrEqual(1)
 })
 
+test('Routes opens a wallet action inbox without mobile overflow', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Routes' }).click()
+
+  await expect(page.getByRole('heading', { name: 'What needs you now' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Connect wallet' })).toBeVisible()
+  await expect(page.getByText("Cairn combines this device's personal work")).toBeVisible()
+
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  expect(overflow).toBeLessThanOrEqual(1)
+})
+
 test('landing page has no automatically detectable WCAG A or AA violations', async ({ page }) => {
   await page.goto('/')
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze()

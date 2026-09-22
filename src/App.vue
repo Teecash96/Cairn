@@ -39,7 +39,7 @@ import {
   updateTeamTask,
   updateTeamTracker,
 } from './lib/api'
-import type { RefineAction, TeamResult, TeamRole } from './lib/api'
+import type { RefineAction, TeamInboxTeam, TeamResult, TeamRole } from './lib/api'
 import { copyText, shareLink } from './lib/clipboard'
 import {
   createPlan,
@@ -70,6 +70,7 @@ import { mergeRefinement, snapshotPlan } from './lib/refinement'
 import { createExamplePlan } from './lib/example'
 import { stubGenerate, stubRefinement } from './lib/stub'
 import { forgetTeamRoute, listTeamRoutes, rememberTeamRoute, type TeamRoute } from './lib/team-library'
+import { buildWalletInbox } from './lib/inbox'
 
 type View = 'new' | 'workspace' | 'library'
 type Tone = 'info' | 'success' | 'error'
@@ -79,6 +80,11 @@ const session = useSession()
 const view = ref<View>('new')
 const plans = ref<Plan[]>([])
 const teamRoutes = ref<TeamRoute[]>([])
+const walletTeams = ref<TeamInboxTeam[]>([])
+const inboxReady = ref(false)
+const inboxLoading = ref(false)
+const inboxError = ref<string | null>(null)
+const inboxUpdatedAt = ref<number>()
 const current = ref<Plan | null>(null)
 const persistent = ref(true)
 
@@ -126,6 +132,9 @@ const rewardStatus = ref('')
 const rewardError = ref<string | null>(null)
 const rewardPending = ref(loadPendingReward())
 let teamSyncTimer: ReturnType<typeof setTimeout> | undefined
+
+const walletInbox = computed(() => buildWalletInbox(plans.value, walletTeams.value, session.address.value))
+const rewardPlan = computed(() => current.value ?? teamPlan.value)
 
 /** `vite dev` without `VITE_API_BASE` has no Worker behind its `/api` paths. */
 const localPreview = import.meta.env.DEV && !import.meta.env.VITE_API_BASE
@@ -183,6 +192,8 @@ async function connectIdentity(): Promise<void> {
   if (address) {
     teamError.value = null
     teamRoutes.value = listTeamRoutes(address)
+    inboxReady.value = false
+    inboxError.value = null
     notify('Wallet connected. Your address is your Cairn identity.', 'success')
   } else {
     notify(session.lastError.value ?? 'Choose a Nimiq wallet to continue.', 'error')
@@ -193,6 +204,10 @@ function disconnectIdentity(): void {
   session.disconnect()
   teamError.value = null
   teamRoutes.value = []
+  walletTeams.value = []
+  inboxReady.value = false
+  inboxError.value = null
+  inboxUpdatedAt.value = undefined
   notify('Wallet disconnected', 'info')
 }
 
@@ -359,15 +374,21 @@ onUnmounted(() => {
 
 // -- navigation -------------------------------------------------------------
 
-async function refreshTeamRoutes(): Promise<void> {
+async function refreshWalletInbox(): Promise<void> {
   const wallet = session.address.value
   const local = listTeamRoutes(wallet)
   if (!wallet) {
     teamRoutes.value = []
+    walletTeams.value = []
+    inboxReady.value = false
     return
   }
+  inboxLoading.value = true
+  inboxError.value = null
   try {
-    const remote = (await discoverTeams())
+    const teams = await discoverTeams()
+    walletTeams.value = teams
+    const remote = teams
       .filter((team) => team.role !== 'owner')
       .map((team): TeamRoute => ({
         teamId: team.teamId,
@@ -379,12 +400,37 @@ async function refreshTeamRoutes(): Promise<void> {
     const merged = new Map(local.map((route) => [route.teamId, route]))
     for (const route of remote) merged.set(route.teamId, route)
     teamRoutes.value = [...merged.values()].sort((a, b) => b.updatedAt - a.updatedAt)
+    inboxReady.value = true
+    inboxUpdatedAt.value = Date.now()
   } catch (error) {
     teamRoutes.value = local
-    if (!(error instanceof ApiError) || error.code !== 'auth_required') {
-      notify('Could not refresh teammate work. Showing saved routes.', 'error')
-    }
+    walletTeams.value = []
+    inboxReady.value = false
+    inboxError.value = error instanceof ApiError && error.code === 'auth_required'
+      ? 'Verify this wallet to load protected team actions.'
+      : 'Could not refresh protected team actions. Personal work is still available.'
+  } finally {
+    inboxLoading.value = false
   }
+}
+
+async function loadWalletInbox(): Promise<void> {
+  if (inboxLoading.value) return
+  if (!session.address.value) {
+    await connectIdentity()
+    return
+  }
+  inboxLoading.value = true
+  inboxError.value = null
+  const authenticated = await session.authenticate()
+  if (!authenticated) {
+    inboxLoading.value = false
+    inboxReady.value = false
+    inboxError.value = session.lastError.value ?? 'Verify your Nimiq wallet to load protected actions.'
+    return
+  }
+  inboxLoading.value = false
+  await refreshWalletInbox()
 }
 
 function goNew(input?: PlanInput): void {
@@ -412,14 +458,19 @@ async function goLibrary(): Promise<void> {
   view.value = 'library'
   if (session.address.value) {
     const authenticated = await session.authenticate()
-    if (authenticated) await refreshTeamRoutes()
+    if (authenticated) await refreshWalletInbox()
+    else {
+      inboxReady.value = false
+      inboxError.value = session.lastError.value ?? 'Verify your Nimiq wallet to load protected actions.'
+    }
   }
 }
 
-function openTeamRoute(teamId: string): void {
+async function openTeamRoute(teamId: string): Promise<void> {
   goNew()
   pendingTeamId.value = teamId
   window.scrollTo(0, 0)
+  await loadTeamLink(teamId)
 }
 
 function forgetRememberedTeam(teamId: string): void {
@@ -526,8 +577,8 @@ async function createOwnerTeam(): Promise<void> {
 }
 
 function activeOwnerTeamId(): string | null {
-  const id = current.value?.teamId
-  return id && teamResult.value?.teamId === id ? id : null
+  const id = current.value?.teamId ?? teamPlan.value?.teamId
+  return id && teamResult.value?.teamId === id && teamResult.value.role === 'owner' ? id : null
 }
 
 async function addOwnerMember(address: string, role: TeamRole): Promise<void> {
@@ -584,7 +635,7 @@ async function copyTeamInvite(url: string): Promise<void> {
 }
 
 function openTeamReward(address: string): void {
-  const plan = current.value
+  const plan = rewardPlan.value
   if (!plan) return
   const available = plan.build.milestones.flatMap((milestone) => milestone.tasks)
     .some((task) => task.status === 'done' && task.approvalStatus === 'approved' && task.assignee === address && !task.reward)
@@ -611,7 +662,7 @@ function closeTeamReward(): void {
 async function sendTeamReward(value: { taskId: string; amountLuna: number }): Promise<void> {
   const teamId = activeOwnerTeamId()
   const recipient = rewardRecipient.value
-  const plan = current.value
+  const plan = rewardPlan.value
   const state = teamResult.value
   if (!teamId || !recipient || !plan || !state || rewardBusy.value) return
   const task = plan.build.milestones.flatMap((milestone) => milestone.tasks).find((item) => item.id === value.taskId)
@@ -678,9 +729,14 @@ async function sendTeamReward(value: { taskId: string; amountLuna: number }): Pr
     rewardPending.value = null
     clearPendingReward()
     teamResult.value = result
-    const verified = result.build.milestones.flatMap((milestone) => milestone.tasks).find((item) => item.id === task.id)?.reward
-    if (verified) task.reward = { ...verified }
-    flush()
+    if (teamPlan.value?.teamId === teamId) {
+      teamPlan.value.build = hydratePublicBuild(result.build)
+      teamPlan.value.updatedAt = Date.now()
+    }
+    if (current.value?.teamId === teamId) {
+      applyTeamAccountability(current.value, result.build)
+      flush()
+    }
     rewardStatus.value = 'Reward confirmed and attached to the completed task.'
     notify('Teammate reward confirmed', 'success')
     await new Promise((resolve) => setTimeout(resolve, 900))
@@ -1149,6 +1205,7 @@ function ownIt(): void {
     @track-change="onTrackChange"
     @team-retry="retryTeamSave"
     @team-task="teamTaskAction"
+    @team-reward="openTeamReward"
     @notify="notify"
   >
     <template #banner>
@@ -1217,9 +1274,17 @@ function ownIt(): void {
       :plans="plans"
       :team-routes="teamRoutes"
       :wallet-connected="Boolean(session.address.value)"
+      :wallet-address="session.address.value"
+      :wallet-inbox="walletInbox"
+      :inbox-ready="inboxReady"
+      :inbox-loading="inboxLoading || session.connecting.value"
+      :inbox-error="inboxError"
+      :inbox-updated-at="inboxUpdatedAt"
       :persistent="persistent"
       @open="open"
       @open-team="openTeamRoute"
+      @connect="connectIdentity"
+      @refresh-inbox="loadWalletInbox"
       @forget-team="forgetRememberedTeam"
       @create="goNew()"
       @remove="remove"
@@ -1278,9 +1343,9 @@ function ownIt(): void {
   />
 
   <RewardSheet
-    v-if="rewardRecipient && current"
+    v-if="rewardRecipient && rewardPlan"
     :recipient="rewardRecipient"
-    :tasks="current.build.milestones.flatMap((milestone) => milestone.tasks).filter((task) => task.status === 'done' && task.approvalStatus === 'approved' && task.assignee === rewardRecipient && !task.reward).map((task) => ({ id: task.id, text: task.text }))"
+    :tasks="rewardPlan.build.milestones.flatMap((milestone) => milestone.tasks).filter((task) => task.status === 'done' && task.approvalStatus === 'approved' && task.assignee === rewardRecipient && !task.reward).map((task) => ({ id: task.id, text: task.text }))"
     :busy="rewardBusy"
     :status="rewardStatus"
     :error="rewardError"
