@@ -157,10 +157,10 @@ function submit(): void {
         <span>Route 01</span>
         <span class="atlas-meta__free">Free to use</span>
       </div>
-      <h1 class="hero">Turn the idea into work that ships.</h1>
+      <h1 class="hero">Turn a rough idea into work your team can prove, reward, and ship.</h1>
       <p class="hero-copy">
-        Describe the rough version once. Cairn maps it, chooses the next useful move,
-        records evidence, coordinates wallet teammates, and prepares the release.
+        For indie builders and small teams. Your Nimiq wallet is your identity,
+        team key, and reward address. No sign-ups.
       </p>
 
       <button type="button" class="btn btn--secondary" :disabled="busy" @click="emit('example')">Explore a sample plan · no wallet needed</button>

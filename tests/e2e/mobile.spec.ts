@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test'
 test('landing page explains the complete route without mobile overflow', async ({ page }) => {
   await page.goto('/')
 
-  await expect(page.getByRole('heading', { name: 'Turn the idea into work that ships.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Turn a rough idea into work your team can prove, reward, and ship.' })).toBeVisible()
   await expect(page.getByText('Plan once')).toBeVisible()
   await expect(page.getByText('Work daily')).toBeVisible()
   await expect(page.getByText('Finish together')).toBeVisible()
