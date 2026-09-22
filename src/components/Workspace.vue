@@ -100,7 +100,7 @@ const routeTabs: Array<{ id: Exclude<Tab, 'team'>; label: string }> = [
 const heading = computed(() => titleOf(plan))
 const edited = computed(() => relativeTime(plan.updatedAt))
 const metaLabel = computed(() => {
-  if (teamOnly) return `Track only · ${readOnly ? 'viewer' : 'editor'}`
+  if (teamOnly) return `Track only · ${teamContext?.role ?? (readOnly ? 'viewer' : 'editor')}`
   return readOnly ? 'shared with you' : `edited ${edited.value}`
 })
 const meaningfulProgress = computed(() => plan.execution.checkIns.length > 0
@@ -397,6 +397,7 @@ function onTabKey(event: KeyboardEvent): void {
           :team-busy="teamContext?.busy"
           @update:model-value="emit('track-change', $event)"
           @team-task="relayTeamTask"
+          @team-reward="emit('team-reward', $event)"
         />
         <section v-if="teamContext?.activity.length" class="activity-log" aria-labelledby="activity-title">
           <div class="activity-log__head">

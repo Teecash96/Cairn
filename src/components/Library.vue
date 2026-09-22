@@ -11,13 +11,21 @@
  */
 import { ref, watch } from 'vue'
 import CairnMark from './CairnMark.vue'
+import WalletActionInbox from './WalletActionInbox.vue'
 import { relativeTime, titleOf, type Plan } from '../lib/plan'
 import type { TeamRoute } from '../lib/team-library'
+import type { WalletInboxData } from '../lib/inbox'
 
-const { plans, teamRoutes, walletConnected = false, persistent = true } = defineProps<{
+const { plans, teamRoutes, walletConnected = false, walletAddress = null, inboxReady = false, inboxLoading = false, inboxError = null, persistent = true } = defineProps<{
   plans: Plan[]
   teamRoutes: TeamRoute[]
   walletConnected?: boolean
+  walletAddress?: string | null
+  walletInbox: WalletInboxData
+  inboxReady?: boolean
+  inboxLoading?: boolean
+  inboxError?: string | null
+  inboxUpdatedAt?: number
   persistent?: boolean
 }>()
 
@@ -29,6 +37,8 @@ const emit = defineEmits<{
   remove: [id: string]
   rename: [id: string, name: string]
   import: [text: string]
+  connect: []
+  'refresh-inbox': []
 }>()
 
 /** Id of the row whose actions are showing, if any. */
@@ -84,6 +94,19 @@ function commitRename(id: string): void {
         Your own plans and the protected team work available to this wallet.
       </p>
     </header>
+
+    <WalletActionInbox
+      :inbox="walletInbox"
+      :wallet-address="walletAddress"
+      :ready="inboxReady"
+      :loading="inboxLoading"
+      :error="inboxError"
+      :updated-at="inboxUpdatedAt"
+      @connect="emit('connect')"
+      @refresh="emit('refresh-inbox')"
+      @open-personal="emit('open', $event)"
+      @open-team="emit('open-team', $event)"
+    />
 
     <div class="storage-note">
       <strong>Personal work stays on this device.</strong>

@@ -37,9 +37,12 @@ export class TeamError extends Error {
 
 export interface TeamSummary {
   teamId: string
+  planId: string
   name: string
   role: 'owner' | TeamRole
   updatedAt: number
+  build: PublicBuildPlan
+  activity: TeamActivity[]
 }
 
 export interface TeamView {
@@ -841,7 +844,15 @@ export async function listTeams(env: Env, addressValue: string, appUrl: string):
   const teamIds = await readWalletTeams(env, address)
   const results = await Promise.allSettled(teamIds.map((teamId) => getTeam(env, teamId, address, appUrl)))
   const teams = results.flatMap((result) => result.status === 'fulfilled'
-    ? [{ teamId: result.value.teamId, name: result.value.name, role: result.value.role, updatedAt: result.value.updatedAt }]
+    ? [{
+        teamId: result.value.teamId,
+        planId: result.value.planId,
+        name: result.value.name,
+        role: result.value.role,
+        updatedAt: result.value.updatedAt,
+        build: result.value.build,
+        activity: result.value.activity.slice(-20),
+      }]
     : [])
   if (teams.length !== teamIds.length) {
     const validIds = teams.map((team) => team.teamId)
