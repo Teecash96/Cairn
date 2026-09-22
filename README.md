@@ -1,6 +1,6 @@
 # Cairn
 
-**Turn the idea into work that ships.**
+**Turn a rough idea into work your team can prove, reward, and ship.**
 
 [![CI](https://github.com/Teecash96/cairn/actions/workflows/ci.yml/badge.svg)](https://github.com/Teecash96/cairn/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-2455d6.svg)](LICENSE)
