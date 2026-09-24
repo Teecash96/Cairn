@@ -81,8 +81,8 @@ test('public usage evidence is readable on mobile without exposing user rows', a
   await page.goto('/usage')
 
   await expect(page.getByRole('heading', { name: 'Real work, counted without tracking people.' })).toBeVisible()
-  await expect(page.getByText('18')).toBeVisible()
-  await expect(page.getByText('2.5')).toBeVisible()
+  await expect(page.getByText('18', { exact: true })).toBeVisible()
+  await expect(page.getByText('2.5', { exact: true })).toBeVisible()
   await expect(page.getByText('No cookies, raw wallet addresses, IP history, plan text, or task content.')).toBeVisible()
   await expect(page.locator('body')).not.toContainText('NQ')
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)

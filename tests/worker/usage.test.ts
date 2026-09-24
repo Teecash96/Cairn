@@ -101,3 +101,9 @@ test('rejects unknown events', async () => {
   }))
   assert.equal(response.status, 400)
 })
+
+test('does not invent a last event time for an empty ledger', async () => {
+  const { object } = ledger()
+  const summary = await (await object.fetch(new Request('https://usage.internal/summary'))).json() as { updatedAt: number }
+  assert.equal(summary.updatedAt, 0)
+})
