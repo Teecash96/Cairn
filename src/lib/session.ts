@@ -13,6 +13,7 @@
  */
 import { computed, readonly, ref } from 'vue'
 import { clearAuthToken, getAuthChallenge, hasAuthToken, setAuthToken, verifyAuth } from './api'
+import { acquisitionSource } from './acquisition'
 import {
   ProviderError,
   chooseAddressInBrowser,
@@ -219,6 +220,7 @@ export function useSession() {
           challenge: challenge.challenge,
           publicKey: signed.publicKey,
           signature: signed.signature,
+          source: acquisitionSource(),
         })
         if (compact(result.address) !== compact(signed.address)) {
           throw new Error('The wallet session did not match the connected wallet.')
@@ -240,6 +242,7 @@ export function useSession() {
         challenge: challenge.challenge,
         publicKey: signed.publicKey,
         signature: signed.signature,
+        source: acquisitionSource(),
       })
       if (compact(result.address) !== compact(wallet)) {
         throw new Error('The wallet session did not match the connected wallet.')

@@ -32,6 +32,7 @@ teamwork, task approval, direct teammate rewards, and release preparation.
 | Accessibility | Secondary text meets WCAG AA contrast, browser zoom remains available, and the phone layout has no horizontal overflow | The core route remains readable and usable in a portrait mobile WebView |
 | Trust | Product metadata correctly describes Cairn as free; the public privacy copy explains each data boundary | Users are not shown an obsolete 1 NIM product price and can understand what leaves the device |
 | Operations | Sampled logs contain only API category, method, status, and duration | Service failures can be diagnosed without recording prompts, URLs, identifiers, wallets, bodies, or network addresses |
+| Usage evidence | A public dashboard counts distinct signed wallets, activation, repeat use, completed product actions, and confirmed NIM rewards | Judges can inspect real use while raw wallet addresses and project content remain private |
 | Presentation | The social preview is a valid 1200 × 630 PNG and public copy uses the idea-to-release message | Shared links show the current product instead of an outdated planning-only description |
 
 ## Automated release evidence
@@ -39,11 +40,11 @@ teamwork, task approval, direct teammate rewards, and release preparation.
 Every pull request to `main` runs the same validation gate before deployment:
 
 - strict TypeScript checks for the client and Worker
-- 84 client and server tests
+- the complete client and Worker unit test suite, including privacy-safe usage accounting
 - a tracked-file and Git-history secret scan
 - a production dependency audit
 - a production Vite build
-- six mobile Chromium end-to-end checks covering the landing message, sample
+- seven mobile Chromium end-to-end checks covering the landing message, sample
   route, wallet action inbox, protected invites, horizontal overflow, JSON-LD
   metadata, and automated WCAG A/AA rules
 
@@ -64,6 +65,9 @@ deploys the Worker and static assets through Wrangler.
   selected action.
 - Cairn has no email, password, profile, or Cairn username. The wallet address
   is the identity, permission key, and direct reward address.
+- Aggregate product evidence uses a keyed wallet digest created inside one
+  Durable Object. It does not store raw wallet addresses or project content,
+  and referral cohorts smaller than three wallets remain hidden.
 
 ## Manual release evidence still required
 

@@ -18,6 +18,8 @@ export interface Env {
   CAIRN: KVNamespace
   CREDIT_LEDGER: DurableObjectNamespace
   TEAM_COORDINATOR?: DurableObjectNamespace
+  /** Privacy-safe aggregate product usage. Raw wallet addresses never persist here. */
+  USAGE_LEDGER?: DurableObjectNamespace
   /** Explicit cutover gate; legacy KV must be frozen before enabling. */
   CREDIT_LEDGER_READY?: string
   /** The built app. Used for static asset fallback. */

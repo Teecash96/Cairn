@@ -6,9 +6,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-2455d6.svg)](LICENSE)
 
 [Open Cairn](https://cairn.cairn-planner.workers.dev/) ·
+[Live usage evidence](https://cairn.cairn-planner.workers.dev/usage) ·
 [Competition](https://miniappscompetition.com/submissions/cycle2) ·
 [Architecture](docs/architecture.md) ·
 [Daily execution](docs/product/daily-execution-loop.md) ·
+[Usage method](docs/product/usage-evidence.md) ·
 [Competition improvements](docs/product/competition-improvements.md) ·
 [Release checklist](docs/release-checklist.md)
 
@@ -276,6 +278,20 @@ before changing bindings or migrations. The checked-in production configuration
 has the reconciled ledger enabled; do not change its binding, class, or object
 name after it has accepted production writes.
 
+## Public usage evidence
+
+Cairn publishes a read-only [usage dashboard](https://cairn.cairn-planner.workers.dev/usage)
+for judges and the community. It counts distinct signed wallets, activation,
+repeat use, successful planning actions, team work, and confirmed direct NIM
+rewards. Failed or rejected actions do not increase the product counts.
+
+The usage ledger creates a private HMAC key inside its own Durable Object and
+stores only keyed wallet digests. Raw wallet addresses, plan text, task content,
+IP history, balances, and transaction details are never exposed in the report.
+Referral labels are first-party, tab-scoped values such as `?ref=x-launch`, and
+the dashboard hides any source represented by fewer than three wallets. The
+complete metric contract is in [usage evidence](docs/product/usage-evidence.md).
+
 ## What leaves your phone
 
 Stated plainly, because it matters:
@@ -289,16 +305,18 @@ Stated plainly, because it matters:
 | **Replan from progress** | Cairn's server and Gemini receive a compact check-in summary, task status and due dates, and milestone blocker state. Private notes, priorities, dependencies, wallet assignments, rewards, the full journal, and release drafts stay on the device |
 | A plan you tap **Share** on | Cairn's server, so the link can be opened until you revoke it. Progress, milestone dates, task due dates, labels, and recorded reward proofs are shared. Notes, priorities, and dependencies are not shared |
 | A protected team workspace | Cairn's server, so named wallet members can use Track until the owner deletes it. Milestones, task text, status, labels, dates, milestone blocker flags, and recorded reward proofs are shared. The PRD, flow, Build summary, notes, priorities, and dependencies are not shared |
-| Your wallet address | Cairn's server, as the identity bound to your short lived wallet session and protected team access |
+| Your wallet address | Cairn's server, as the identity bound to your short lived wallet session and protected team access. The aggregate usage ledger receives it internally, converts it to a keyed digest, and never stores the raw address |
 | A teammate reward transaction hash | Cairn's server and the configured Nimiq RPC service, to verify the public reward transaction |
 | A request network address | A short lived abuse counter in Cairn's server. It is not used for analytics or operational logs |
 
-There is no product analytics, advertising tracking, or third-party script. The
-app loads no external fonts. The browser talks to Cairn's API and the wallet
-flow. Cairn's Worker sends generation requests to Gemini and public payment
-lookups to the configured Nimiq RPC service on the server side. A ten-percent
-operational sample contains only API category, method, status, and duration; it
-excludes prompts, URLs, identifiers, wallets, bodies, and network addresses.
+There are no analytics cookies, advertising trackers, device fingerprints, or
+third-party analytics scripts. Cairn keeps first-party aggregate usage evidence
+from successful, wallet-authenticated actions. The public report contains counts
+only. The app loads no external fonts. Cairn's Worker sends generation requests
+to Gemini and public payment lookups to the configured Nimiq RPC service on the
+server side. A ten-percent operational sample contains only API category,
+method, status, and duration; it excludes prompts, URLs, identifiers, wallets,
+bodies, and network addresses.
 
 Plans are stored per device by design. Clearing the app's storage deletes them,
 and there is no private copy on a server to restore from. Use **Save JSON backup**

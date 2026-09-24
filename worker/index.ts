@@ -1,5 +1,6 @@
 export { CreditLedger } from './credit-ledger'
 export { TeamCoordinator } from './team'
+export { UsageLedger } from './usage'
 import { budgetLeft, chargeBudget, tooFast, tooFastByKey } from './limits'
 import { createChallenge, requireSession, verifyChallenge, type AuthSession } from './auth'
 import { quote, readConfig } from './config'
@@ -10,6 +11,7 @@ import { inspectPayment, type PaymentInspection } from './payments'
 import { clampPlan, isInvalid, readPlanInput } from './shape'
 import { createShare, publicPlan, readShare, revokeShare } from './share'
 import { addMember, createTeam, deleteTeam, getTeam, listTeams, recordReward, removeMember, TeamError, updateMember, updateTeamTask, updateTracker } from './team'
+import { readUsage, recordUsage, type UsageEvent } from './usage'
 import type { Env, PlanInput, RefineAction } from './types'
 
 function bodyRecord(value: unknown): Record<string, unknown> | null {
@@ -100,10 +102,19 @@ async function handleAuthChallenge(env: Env, request: Request, url: URL, cors: R
 
 async function handleAuthVerify(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
   const raw = await readJson(request, 8 * 1024)
-  if (!bodyRecord(raw)) return fail('invalid_request', 'The sign in request is invalid.', 400, cors)
-  const result = await verifyChallenge(env, request, raw)
+  const body = bodyRecord(raw)
+  if (!body) return fail('invalid_request', 'The sign in request is invalid.', 400, cors)
+  const result = await verifyChallenge(env, request, body)
   if (!result) return authRequired(cors)
+  await recordUsage(env, result.address, 'wallet_verified', { source: body.source })
   return json(result, 200, cors)
+}
+
+async function handleUsage(env: Env, cors: Record<string, string>): Promise<Response> {
+  return json(await readUsage(env), 200, {
+    ...cors,
+    'cache-control': 'public, max-age=60',
+  })
 }
 
 async function handleCredits(env: Env, request: Request, cors: Record<string, string>): Promise<Response> {
@@ -134,6 +145,7 @@ async function handleGenerate(env: Env, request: Request, cors: Record<string, s
   await chargeBudget(env)
   try {
     const result = await generateWithGemini(config, geminiKey, input as PlanInput)
+    await recordUsage(env, address, 'plan_generated')
     return json(result, 200, cors)
   } catch (error) {
     return generationFailure(error, 'The AI returned an incomplete plan. Try again.', cors)
@@ -177,6 +189,7 @@ async function handleRefine(env: Env, request: Request, cors: Record<string, str
   await chargeBudget(env)
   try {
     const result = await refineWithGemini(config, geminiKey, plan, action, question)
+    await recordUsage(env, address, 'plan_refined')
     return json(result, 200, cors)
   } catch (error) {
     return generationFailure(error, 'The AI returned an incomplete follow up. Try again.', cors)
@@ -228,6 +241,7 @@ async function handleShare(env: Env, request: Request, cors: Record<string, stri
   if (await tooFast(env, address, 'share')) return fail('rate_limited', 'Please wait a moment before sharing again.', 429, cors)
   try {
     const result = await createShare(env, readConfig(env), address, raw.plan, new URL(request.url))
+    await recordUsage(env, address, 'share_created')
     return json(result, 200, cors)
   } catch (error) {
     return fail('invalid_request', error instanceof Error ? error.message : 'That plan cannot be shared.', 400, cors)
@@ -267,6 +281,7 @@ async function handleTeamCreate(env: Env, request: Request, cors: Record<string,
       name: raw.name as string,
       build: raw.build,
     }, teamBaseUrl(env, request))
+    await recordUsage(env, session.address, 'team_created')
     return json(result, 200, cors)
   } catch (error) {
     return teamFailure(error, cors)
@@ -277,7 +292,9 @@ async function handleTeamList(env: Env, request: Request, cors: Record<string, s
   const session = await requireSession(env, request)
   if (!session) return authRequired(cors)
   try {
-    return json({ teams: await listTeams(env, session.address, teamBaseUrl(env, request)) }, 200, cors)
+    const teams = await listTeams(env, session.address, teamBaseUrl(env, request))
+    if (teams.length) await recordUsage(env, session.address, 'team_opened')
+    return json({ teams }, 200, cors)
   } catch (error) {
     return teamFailure(error, cors)
   }
@@ -288,6 +305,7 @@ async function handleTeamRead(env: Env, request: Request, teamId: string, cors: 
   if (!session) return authRequired(cors)
   try {
     const result = await getTeam(env, teamId, session.address, teamBaseUrl(env, request))
+    await recordUsage(env, session.address, 'team_opened')
     return json(result, 200, cors)
   } catch (error) {
     return teamFailure(error, cors)
@@ -349,6 +367,13 @@ async function handleTeamTask(env: Env, request: Request, teamId: string, taskId
       assignee: raw.assignee,
       note: raw.note,
     }, teamBaseUrl(env, request))
+    const usageEvent: Record<typeof operation, UsageEvent> = {
+      assign: 'task_assigned',
+      submit: 'work_submitted',
+      approve: 'work_approved',
+      return: 'work_returned',
+    }
+    await recordUsage(env, session.address, usageEvent[operation])
     return json(result, 200, cors)
   } catch (error) {
     return teamFailure(error, cors)
@@ -363,6 +388,7 @@ async function handleTeamTracker(env: Env, request: Request, teamId: string, cor
   if (await tooFastByKey(env, session.address, 'team-tracker', 30)) return fail('rate_limited', 'Please wait before saving more tracker changes.', 429, cors)
   try {
     const result = await updateTracker(env, teamId, session.address, raw.build, raw.revision, teamBaseUrl(env, request))
+    await recordUsage(env, session.address, 'tracker_saved')
     return json(result, 200, cors)
   } catch (error) {
     return teamFailure(error, cors)
@@ -408,6 +434,7 @@ async function handleTeamReward(env: Env, request: Request, teamId: string, cors
       transactionHash: inspection.hash,
       revision: raw.revision,
     }, teamBaseUrl(env, request))
+    await recordUsage(env, session.address, 'reward_confirmed', { rewardedLuna: amountLuna })
     return json(result, 200, cors)
   } catch (error) {
     return teamFailure(error, cors)
@@ -437,6 +464,7 @@ async function route(env: Env, request: Request): Promise<Response> {
   }
   const cors = corsHeaders(request)
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: securityHeaders(cors, url.protocol === 'https:') })
+  if (url.pathname === '/api/usage' && request.method === 'GET') return handleUsage(env, cors)
   if (url.pathname === '/api/auth/challenge' && request.method === 'GET') return handleAuthChallenge(env, request, url, cors)
   if (url.pathname === '/api/auth/verify' && request.method === 'POST') return handleAuthVerify(env, request, cors)
   if (url.pathname === '/api/credits' && request.method === 'GET') return handleCredits(env, request, cors)
@@ -470,6 +498,15 @@ async function route(env: Env, request: Request): Promise<Response> {
     const id = url.pathname.slice('/api/share/'.length).replace(/[^a-z0-9]/gi, '').slice(0, 32)
     return id ? handleShareRevoke(env, request, id, cors) : fail('not_found', 'That share link has expired.', 404, cors)
   }
+  if (url.pathname === '/usage' && request.method === 'GET') {
+    const appUrl = new URL('/', request.url)
+    const app = await env.ASSETS.fetch(new Request(appUrl, { headers: request.headers }))
+    return new Response(app.body, {
+      status: app.status,
+      statusText: app.statusText,
+      headers: securityHeaders(app.headers, url.protocol === 'https:'),
+    })
+  }
   const asset = await env.ASSETS.fetch(request)
   if (asset.status !== 404 || url.pathname === '/404.html') {
     return new Response(asset.body, { status: asset.status, statusText: asset.statusText, headers: securityHeaders(asset.headers, url.protocol === 'https:') })
@@ -497,6 +534,7 @@ function operationOf(request: Request): string | null {
   if (path.startsWith('/api/auth/')) return 'auth'
   if (path === '/api/generate') return 'generate'
   if (path === '/api/refine') return 'refine'
+  if (path === '/api/usage') return 'usage'
   if (path.startsWith('/api/team')) return 'team'
   if (path.startsWith('/api/share')) return 'share'
   if (path === '/api/redeem' || path === '/api/credits') return 'legacy_credit'

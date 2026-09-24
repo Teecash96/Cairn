@@ -355,6 +355,7 @@ function submit(): void {
       <a href="/case-studies">Examples</a>
       <a href="/faq">FAQ</a>
       <a href="/privacy">Privacy</a>
+      <a href="/usage">Usage evidence</a>
     </footer>
   </div>
 </template>

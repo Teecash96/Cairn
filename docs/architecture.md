@@ -11,7 +11,7 @@ flowchart TD
   B -->|"Generation and refinement"| D["Google Gemini"]
   B -->|"Public transaction lookup"| E["Nimiq RPC"]
   B -->|"Sessions, shares, team Track"| F["Cloudflare KV"]
-  B -->|"Receipts, legacy credits, team writes"| G["SQLite Durable Objects"]
+  B -->|"Receipts, team writes, keyed usage counts"| G["SQLite Durable Objects"]
 ```
 
 ## Trust boundaries
@@ -27,6 +27,22 @@ flowchart TD
 - Public shares and protected team workspaces are explicit server-side snapshots.
 - Team members receive Track fields only. They do not receive the PRD, flow, Build
   summary, private notes, priorities, or dependency details.
+- The usage ledger hashes signed wallet addresses with a private HMAC key inside
+  the Durable Object. It stores no raw wallet address, plan content, task text,
+  IP address, balance, or browser fingerprint. Its public endpoint returns
+  aggregate counts only.
+
+## Usage evidence
+
+`UsageLedger` is one globally named SQLite Durable Object. That single writer
+keeps distinct-wallet and action counts exact under concurrency. Its HMAC key is
+generated and retained inside Durable Object storage; it is not a repository or
+deployment secret. Successful Worker handlers record semantic events after the
+underlying action completes. The public `GET /api/usage` endpoint exposes only
+the aggregate contract rendered at `/usage`.
+
+See [Usage evidence](product/usage-evidence.md) for metric definitions and the
+privacy model.
 
 ## Reward and legacy payment state
 

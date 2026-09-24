@@ -47,7 +47,7 @@
       <main>
         <p class="eyebrow">Plain language</p>
         <h1>Cairn privacy policy</h1>
-        <p class="lede">This page explains what the mini app sends, stores, and shares. Last updated 18 September 2026.</p>
+        <p class="lede">This page explains what the mini app sends, stores, and shares. Last updated 24 September 2026.</p>
 
         <section class="card">
           <h2>What stays on your device</h2>
@@ -81,12 +81,13 @@
 
         <section class="card">
           <h2>Tracking and analytics</h2>
-          <p>Cairn has no Google Analytics, advertising pixels, product-behaviour analytics, or third party tracking script. To find a slow or failing service, the Worker keeps a ten-percent sample containing only the API category, request method, response status, and duration. It does not log prompts, URLs, share or team identifiers, wallet addresses, request bodies, or network addresses.</p>
+          <p>Cairn has no analytics cookies, Google Analytics, advertising pixels, device fingerprinting, or third party tracking script. It keeps first-party aggregate evidence from successful wallet-authenticated actions. A private key inside one Durable Object converts the signed wallet address to a stable digest; the usage record does not store the raw address, plan text, task content, IP address, balance, or transaction hash. The public <a href="/usage">usage report</a> returns counts only. Optional <code>ref</code> labels stay in the browser tab until wallet verification, and source groups with fewer than three wallets remain hidden.</p>
+          <p>To find a slow or failing service, the Worker also keeps a ten-percent operational sample containing only the API category, request method, response status, and duration. It does not log prompts, URLs, share or team identifiers, wallet addresses, request bodies, or network addresses.</p>
         </section>
 
         <section class="card">
           <h2>Security and retention</h2>
-          <p>Cloudflare manages encryption at rest for server records in KV and SQLite-backed Durable Objects. Wallet sessions expire after twelve hours and login challenges expire after five minutes. Public shared plans and protected team records remain available for up to one year, unless the storage provider removes them sooner. Do not put confidential material in a shared plan or team tracker.</p>
+          <p>Cloudflare manages encryption at rest for server records in KV and SQLite-backed Durable Objects. Wallet sessions expire after twelve hours and login challenges expire after five minutes. Public shared plans and protected team records remain available for up to one year, unless the storage provider removes them sooner. Anonymous usage records remain as competition evidence until the ledger is retired. Do not put confidential material in a shared plan or team tracker.</p>
         </section>
 
         <section class="card">
