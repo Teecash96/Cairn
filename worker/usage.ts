@@ -64,7 +64,7 @@ function safeTimestamp(value: unknown): number {
   return Math.max(0, Math.min(value, Date.now() + 60_000))
 }
 
-function emptySummary(now = Date.now()): UsageSummary {
+function emptySummary(now = 0): UsageSummary {
   return {
     updatedAt: now,
     verifiedWallets: 0,
@@ -150,7 +150,7 @@ export class UsageLedger {
 
   private async summary(): Promise<Response> {
     const now = Date.now()
-    const summary = emptySummary(await this.storage.get<number>('meta:updatedAt') ?? now)
+    const summary = emptySummary(await this.storage.get<number>('meta:updatedAt') ?? 0)
     const today = dayOf(now)
     const sevenDaysAgo = dayOf(now - 6 * 24 * 60 * 60 * 1000)
     const sourceCounts = new Map<string, number>()

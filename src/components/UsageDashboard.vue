@@ -13,7 +13,9 @@ const nimRewarded = computed(() => {
 })
 
 const updated = computed(() => summary.value
-  ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(summary.value.updatedAt)
+  ? summary.value.updatedAt > 0
+    ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(summary.value.updatedAt)
+    : 'No recorded event yet'
   : '')
 
 async function load(): Promise<void> {
