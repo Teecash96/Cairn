@@ -77,6 +77,16 @@ test('remote HTTP is redirected and private routes reject missing sessions', asy
   assert.equal(response.headers.get('x-frame-options'), 'DENY')
 })
 
+test('publishes aggregate usage without requiring a wallet or exposing identifiers', async () => {
+  const response = await worker.fetch(new Request('https://cairn.example/api/usage'), env())
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('cache-control'), 'public, max-age=60')
+  const body = await response.json() as Record<string, unknown>
+  assert.equal(body.verifiedWallets, 0)
+  assert.equal('wallets' in body, false)
+  assert.equal('addresses' in body, false)
+})
+
 test('free generation and refinement do not consult the credit ledger', async () => {
   const kv = new MemoryKV()
   await seedSession(kv)

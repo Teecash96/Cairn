@@ -70,6 +70,24 @@ export interface AuthResult {
   expiresAt: number
 }
 
+export interface UsageSummary {
+  updatedAt: number
+  verifiedWallets: number
+  activatedWallets: number
+  repeatWallets: number
+  activeToday: number
+  active7Days: number
+  plansGenerated: number
+  planRefinements: number
+  sharesCreated: number
+  teamWorkspaces: number
+  teamParticipants: number
+  teamActions: number
+  rewardsConfirmed: number
+  rewardedLuna: number
+  sources: Array<{ source: string; wallets: number }>
+}
+
 export type TeamRole = 'viewer' | 'editor'
 
 export interface TeamMember {
@@ -335,11 +353,17 @@ export function verifyAuth(body: {
   challenge: string
   publicKey: string
   signature: string
+  source?: string
 }): Promise<AuthResult> {
   return request<AuthResult>('/auth/verify', {
     method: 'POST',
     body: JSON.stringify(body),
   })
+}
+
+/** Public aggregate evidence. It contains no addresses, hashes, or project data. */
+export function getUsageSummary(): Promise<UsageSummary> {
+  return request<UsageSummary>('/usage')
 }
 
 export function getCredits(): Promise<CreditsResult> {

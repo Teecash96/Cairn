@@ -25,7 +25,8 @@ invocation_logs = false
 # file from Cloudflare's edge; `run_worker_first` only keeps the header policy in
 # one place.
 #
-# `not_found_handling = "none"` deliberately: Cairn has no client-side router.
+# `not_found_handling = "none"` deliberately: Cairn has one explicit client
+# route (`/usage`) that the Worker rewrites to the app shell itself.
 # Share links are query parameters (`/?s=<id>`) precisely so that no
 # rewrite rule stands between a shared link and a rendered app. Single-page-app
 # handling would also swallow `/api/*` before the Worker ever ran.
@@ -77,6 +78,10 @@ class_name = "CreditLedger"
 name = "TEAM_COORDINATOR"
 class_name = "TeamCoordinator"
 
+[[durable_objects.bindings]]
+name = "USAGE_LEDGER"
+class_name = "UsageLedger"
+
 [[migrations]]
 tag = "v1-credit-ledger"
 new_sqlite_classes = ["CreditLedger"]
@@ -85,3 +90,7 @@ new_sqlite_classes = ["CreditLedger"]
 [[migrations]]
 tag = "v2-team-coordinator"
 new_sqlite_classes = ["TeamCoordinator"]
+
+[[migrations]]
+tag = "v3-usage-ledger"
+new_sqlite_classes = ["UsageLedger"]

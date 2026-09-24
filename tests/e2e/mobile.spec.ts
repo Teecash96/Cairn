@@ -67,3 +67,24 @@ test('structured data describes a free product rather than a NIM price', async (
   expect(product.isAccessibleForFree).toBe(true)
   expect(product.offers).toBeUndefined()
 })
+
+test('public usage evidence is readable on mobile without exposing user rows', async ({ page }) => {
+  await page.route('**/api/usage', async (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      updatedAt: Date.now(), verifiedWallets: 18, activatedWallets: 12, repeatWallets: 7,
+      activeToday: 3, active7Days: 9, plansGenerated: 14, planRefinements: 6,
+      sharesCreated: 4, teamWorkspaces: 3, teamParticipants: 8, teamActions: 11,
+      rewardsConfirmed: 2, rewardedLuna: 250_000, sources: [{ source: 'x-launch', wallets: 5 }],
+    }),
+  }))
+  await page.goto('/usage')
+
+  await expect(page.getByRole('heading', { name: 'Real work, counted without tracking people.' })).toBeVisible()
+  await expect(page.getByText('18')).toBeVisible()
+  await expect(page.getByText('2.5')).toBeVisible()
+  await expect(page.getByText('No cookies, raw wallet addresses, IP history, plan text, or task content.')).toBeVisible()
+  await expect(page.locator('body')).not.toContainText('NQ')
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  expect(overflow).toBeLessThanOrEqual(1)
+})
