@@ -39,5 +39,5 @@
     "node": ">=24 <25"
   },
   "packageManager": "npm@11.9.0",
-  "description": "Turn a rough product idea into daily work, evidence, wallet-native teamwork, rewards, and a release."
+  "description": "Turn an app idea into an execution workspace indie builders and small product teams can use through release."
 }

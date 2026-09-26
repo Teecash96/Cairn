@@ -154,16 +154,18 @@ function submit(): void {
         <span class="brandline__tag">Product atlas</span>
       </div>
       <div class="atlas-meta mono">
-        <span>Route 01</span>
+        <span>For indie builders &amp; small product teams</span>
         <span class="atlas-meta__free">Free to use</span>
       </div>
-      <h1 class="hero">Turn a rough idea into work your team can prove, reward, and ship.</h1>
+      <h1 class="hero">Turn your app idea into work your team can finish.</h1>
       <p class="hero-copy">
-        For indie builders and small teams. Your Nimiq wallet is your identity,
-        team key, and reward address. No sign-ups.
+        Stop losing good ideas inside AI chats and static planning documents.
+        Cairn creates an editable product plan, daily priorities, and a shared
+        task board where Nimiq wallet teammates can submit proof, receive
+        approval, and earn NIM rewards.
       </p>
 
-      <button type="button" class="btn btn--secondary" :disabled="busy" @click="emit('example')">Explore a sample plan · no wallet needed</button>
+      <button type="button" class="btn btn--secondary" :disabled="busy" @click="emit('example')">Explore a sample project · no wallet needed</button>
 
       <ol class="route-preview" aria-label="Cairn moves an idea from planning to release">
         <li class="route-preview__stop route-preview__stop--active"><span>01</span>Idea</li>
@@ -181,12 +183,12 @@ function submit(): void {
       </section>
     </header>
 
-    <form id="new-plan-form" class="form atlas-form" :class="{ 'atlas-form--team-invite': teamInvite }" :aria-label="teamInvite ? 'Open protected team workspace' : 'Create a product plan'" @submit.prevent="submit">
+    <form id="new-plan-form" class="form atlas-form" :class="{ 'atlas-form--team-invite': teamInvite }" :aria-label="teamInvite ? 'Open protected team workspace' : 'Create an execution plan'" @submit.prevent="submit">
       <section class="wallet-card" :class="{ 'wallet-card--connected': walletAddress }" aria-labelledby="wallet-title">
         <div class="wallet-card__copy">
           <p class="eyebrow">Wallet identity</p>
           <h2 id="wallet-title">{{ teamInvite ? 'Open your team workspace' : 'Connect before you generate' }}</h2>
-          <p>No sign-ups. Your Nimiq wallet address is your identity and username in Cairn.</p>
+          <p>No sign-ups. Your Nimiq wallet is your identity, team access key, and reward address.</p>
           <p v-if="teamInvite" class="wallet-card__invite">
             Use the wallet the project owner added. You do not need to create a plan.
           </p>
@@ -243,7 +245,7 @@ function submit(): void {
 
       <div class="idea-field">
         <div class="idea-field__heading">
-          <label class="field__label" for="idea">The rough idea</label>
+          <label class="field__label" for="idea">Describe your app idea</label>
           <span class="idea-field__count">{{ idea.length }}/1500</span>
         </div>
         <textarea
@@ -281,7 +283,7 @@ function submit(): void {
       <div class="submit">
         <button type="submit" class="btn btn--primary btn--block" :disabled="!ready || busy || !walletAddress">
           <span v-if="busy" class="dot" aria-hidden="true"></span>
-          {{ busy ? PHASES[phase] + '…' : walletAddress ? 'Generate my plan' : 'Connect wallet to generate' }}
+          {{ busy ? PHASES[phase] + '…' : walletAddress ? 'Create my execution plan' : 'Connect wallet to create my plan' }}
         </button>
 
         <p v-if="busy" class="foot faint" aria-live="polite">
@@ -370,7 +372,7 @@ function submit(): void {
 .brandline { margin-bottom: var(--s4); }
 .brandline__symbol { display: grid; place-items: center; width: 38px; height: 38px; color: var(--ink); background: var(--nim); border-radius: 50%; }
 .mark { display: block; }
-.atlas-meta { display: flex; align-items: center; gap: var(--s3); color: var(--text-faint); font-size: var(--text-xs); font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
+.atlas-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); color: var(--text-faint); font-size: var(--text-xs); font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
 .atlas-meta__free { display: inline-flex; align-items: center; gap: var(--s2); color: var(--moss); }
 .atlas-meta__free::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .hero { max-width: 13ch; font-family: var(--font-display); font-size: clamp(2.5rem, 12vw, 4.7rem); font-weight: 600; line-height: .97; letter-spacing: -.055em; }

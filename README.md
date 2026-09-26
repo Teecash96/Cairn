@@ -1,6 +1,6 @@
 # Cairn
 
-**Turn a rough idea into work your team can prove, reward, and ship.**
+**Turn your app idea into work your team can finish.**
 
 [![CI](https://github.com/Teecash96/cairn/actions/workflows/ci.yml/badge.svg)](https://github.com/Teecash96/cairn/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-2455d6.svg)](LICENSE)
@@ -16,8 +16,11 @@
 
 ![Cairn turns a rough idea into work that ships through planning, focus, validation, collaboration, rewards, and release.](docs/screenshots/cairn-01-social-preview.png)
 
-Cairn is a Nimiq Pay mini app that turns a few sentences about a product idea into
-a private execution workspace an indie builder can use through release.
+Cairn is a Nimiq Pay mini app for indie builders and small product teams who
+lose good ideas inside AI chats and static planning documents. It turns an app
+idea into an editable execution plan, daily priorities, and a shared task board
+where wallet teammates can submit proof, receive approval, earn direct NIM
+rewards, and move the product to release.
 
 ## What Cairn does now
 

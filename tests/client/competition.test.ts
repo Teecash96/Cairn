@@ -84,7 +84,7 @@ test('the social preview is a valid 1200 by 630 PNG', () => {
 
 test('public metadata describes the free execution product', () => {
   const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8')
-  assert.match(html, /Turn a rough idea into work your team can prove, reward, and ship/)
+  assert.match(html, /Turn your app idea into work your team can finish/)
   const viewport = html.match(/<meta\s+name="viewport"\s+content="([^"]+)"/)
   assert.ok(viewport?.[1])
   assert.doesNotMatch(viewport[1], /maximum-scale|user-scalable=no/)
