@@ -4,11 +4,14 @@ import { expect, test } from '@playwright/test'
 test('landing page explains the complete route without mobile overflow', async ({ page }) => {
   await page.goto('/')
 
-  await expect(page.getByRole('heading', { name: 'Turn a rough idea into work your team can prove, reward, and ship.' })).toBeVisible()
+  await expect(page.getByText('For indie builders & small product teams')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Turn your app idea into work your team can finish.' })).toBeVisible()
+  await expect(page.getByText('Stop losing good ideas inside AI chats and static planning documents.')).toBeVisible()
   await expect(page.getByText('Plan once')).toBeVisible()
   await expect(page.getByText('Work daily')).toBeVisible()
   await expect(page.getByText('Finish together')).toBeVisible()
-  await expect(page.getByText('No sign-ups. Your Nimiq wallet address is your identity and username in Cairn.')).toBeVisible()
+  await expect(page.getByText('No sign-ups. Your Nimiq wallet is your identity, team access key, and reward address.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Connect wallet to create my plan' })).toBeVisible()
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(overflow).toBeLessThanOrEqual(1)
@@ -16,7 +19,7 @@ test('landing page explains the complete route without mobile overflow', async (
 
 test('sample opens on Today and exposes the complete product route', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Explore a sample plan · no wallet needed' }).click()
+  await page.getByRole('button', { name: 'Explore a sample project · no wallet needed' }).click()
 
   await expect(page.getByRole('heading', { name: 'Keep the route moving' })).toBeVisible()
   for (const tab of ['Today', 'Plan', 'Flow', 'Build', 'Track']) {
@@ -33,7 +36,7 @@ test('team invites put wallet access first on mobile', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Open the shared work' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Connect Nimiq wallet' })).toBeVisible()
   await expect(page.getByText('No Cairn account or new plan is required.')).toBeVisible()
-  await expect(page.getByLabel('The rough idea')).toHaveCount(0)
+  await expect(page.getByLabel('Describe your app idea')).toHaveCount(0)
 
   const connectTop = await page.getByRole('button', { name: 'Connect Nimiq wallet' }).evaluate((element) => element.getBoundingClientRect().top)
   expect(connectTop).toBeLessThan(page.viewportSize()?.height ?? 700)

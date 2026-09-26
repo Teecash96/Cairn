@@ -18,7 +18,7 @@ teamwork, task approval, direct teammate rewards, and release preparation.
 
 | Area | Improvement | Why it matters |
 | --- | --- | --- |
-| First run | The landing screen explains **Plan once**, **Work daily**, and **Finish together** | A new user can understand the complete product before connecting a wallet |
+| First run | The first screen names the target user, the problem with AI chats and static documents, the execution outcome, and then explains **Plan once**, **Work daily**, and **Finish together** | A new user or judge can understand who Cairn is for, why it exists, and what makes it different before connecting a wallet |
 | Product proof | The sample route opens on **Today** and exposes Today, Plan, Flow, Build, and Track | Judges can inspect the execution loop without a wallet or generated plan |
 | Generation recovery | A structurally incomplete AI plan is regenerated once with an explicit semantic checklist | A temporary model formatting mistake no longer forces the user to repeat wallet verification and generation manually |
 | Daily execution | Today recommends one available task and shows progress, blockers, reviews, and active experiments | Cairn helps a builder act instead of stopping at a generated document |
